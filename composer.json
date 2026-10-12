@@ -1,0 +1,23 @@
+{
+    "name": "kchaot/chiptune",
+    "type": "project",
+    "require": {
+        "php": "^8.5",
+        "ext-dom": "*",
+        "ext-json": "*",
+        "matthiasmullie/minify": "^1.3",
+        "tempest/markdown": "dev-Multi-Content-PR"
+    },
+    "repositories": [
+        { "type": "vcs", "url": "https://github.com/ek9r/markdown_dev" }
+    ],
+    "minimum-stability": "dev",
+    "prefer-stable": true,
+    "autoload": {
+        "psr-4": { "Chiptune\\": "lib/" }
+    },
+    "config": {
+        "vendor-dir": "opt/packagist",
+        "sort-packages": true
+    }
+}

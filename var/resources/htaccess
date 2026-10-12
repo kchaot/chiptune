@@ -1,0 +1,26 @@
+Options -Indexes
+DirectoryIndex index.html
+ErrorDocument 404 __BASE_PATH__404.html
+
+AddDefaultCharset UTF-8
+AddType "text/markdown; charset=UTF-8" .md
+
+<FilesMatch "^\.chiptune-site$">
+  Require all denied
+</FilesMatch>
+
+<IfModule mod_headers.c>
+  Header always set X-Content-Type-Options "nosniff"
+  Header always set X-Frame-Options "DENY"
+  Header always set Referrer-Policy "strict-origin-when-cross-origin"
+  Header always set Permissions-Policy "camera=(), microphone=(), geolocation=()"
+  Header always set Content-Security-Policy "default-src 'none'; script-src 'self'__ASSET_ORIGIN__; style-src 'self'__ASSET_ORIGIN__; font-src 'self'__ASSET_ORIGIN__; img-src 'self' data:; connect-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'"
+
+  <FilesMatch "\.(css|js|woff2)$">
+    Header set Cache-Control "public, max-age=31536000, immutable"
+  </FilesMatch>
+
+  <FilesMatch "\.(html|md|txt)$">
+    Header set Cache-Control "no-cache"
+  </FilesMatch>
+</IfModule>

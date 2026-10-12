@@ -1,0 +1,361 @@
+<?php
+
+declare(strict_types=1);
+
+namespace Chiptune;
+
+use Tempest\Markdown\Markdown;
+
+final class Builder
+{
+    private const MARKER = '.chiptune-site';
+    private const ASSET_DIR = '_cdn';
+
+    public function __construct(
+        private readonly string $root,
+        private readonly string $public,
+    ) {}
+
+    public function build(bool $fetch = true): int
+    {
+        $site = $this->loadSite();
+        $pages = $this->loadPages();
+        $sources = new Sources($this->root, $this->root . '/.cache/sources');
+        $collected = $sources->collect($this->readJson($this->root . '/etc/sources.json'), $fetch);
+
+        $projects = new ProjectParser();
+        $library = new Library($collected['files'], $projects, new SetParser($projects));
+        $entries = [];
+        $errors = [];
+
+        foreach ($collected['files'] as $file) {
+            $label = "{$file['source']}/{$file['slug']}.md";
+
+            try {
+                $loaded = $library->load("{$file['prefix']}/{$file['slug']}");
+            } catch (BuildError $error) {
+                if ($file['strict']) {
+                    $errors[] = "{$label}: {$error->getMessage()}";
+                } else {
+                    fwrite(STDERR, "ÜBERSPRUNGEN: {$label}: {$error->getMessage()}\n");
+                }
+
+                continue;
+            }
+
+            foreach ($loaded['data']['warnings'] as $warning) {
+                fwrite(STDERR, "Warnung in {$label}: {$warning}\n");
+            }
+
+            $entries[] = [
+                'prefix' => $file['prefix'],
+                'slug' => $file['slug'],
+                'source' => $file['file'],
+                'kind' => $loaded['kind'],
+                'project' => $loaded['data'],
+            ];
+        }
+
+        if ($errors !== []) {
+            fwrite(STDERR, "Der Build wurde abgebrochen:\n- " . implode("\n- ", $errors) . "\n");
+
+            return 1;
+        }
+
+        usort($entries, fn (array $a, array $b): int => strcasecmp($a['project']['title'], $b['project']['title']));
+
+        $authors = array_intersect_key($collected['authors'], array_flip(array_column($entries, 'prefix')));
+
+        foreach ($authors as $prefix => $author) {
+            $profile = $this->loadProfile($prefix, $author['profile'] ?? null);
+            $authors[$prefix]['url'] = $author['url'] !== '' ? $author['url'] : $profile['url'];
+            $authors[$prefix] += ['tagline' => $profile['tagline'], 'html' => $profile['html'], 'author' => $profile['author']];
+        }
+
+        $this->prepareDist();
+        $assets = $this->writeAssets($site['assets_base']);
+        $renderer = new Renderer($site, $assets, $authors, $pages);
+
+        Filesystem::write($this->public . '/index.html', $renderer->library($entries));
+        Filesystem::write($this->public . '/404.html', $renderer->notFound());
+
+        foreach (array_keys($authors) as $prefix) {
+            $own = array_values(array_filter($entries, fn (array $entry): bool => $entry['prefix'] === $prefix));
+            Filesystem::write("{$this->public}/{$prefix}/index.html", $renderer->library($own, $prefix));
+        }
+
+        foreach ($entries as $entry) {
+            $directory = "{$this->public}/{$entry['prefix']}/{$entry['slug']}";
+            Filesystem::write("{$directory}/index.html", $entry['kind'] === 'set' ? $renderer->set($entry) : $renderer->project($entry));
+            Filesystem::write("{$directory}/source.md", (string) file_get_contents($entry['source']));
+        }
+
+        Filesystem::write($this->public . '/robots.txt', $site['noindex'] ? "User-agent: *\nDisallow: /\n" : "User-agent: *\nAllow: /\n");
+        Filesystem::write($this->public . '/' . self::MARKER, "Von build.php erzeugt. Das Deployment ersetzt den Inhalt dieses Ordners.\n");
+
+        $htaccess = $this->root . '/var/resources/htaccess';
+
+        if (is_file($htaccess)) {
+            $origin = $site['assets_origin'] === '' ? '' : ' ' . $site['assets_origin'];
+            Filesystem::write($this->public . '/.htaccess', str_replace(
+                ['__ASSET_ORIGIN__', '__BASE_PATH__'],
+                [$origin, $site['base_path']],
+                (string) file_get_contents($htaccess),
+            ));
+        }
+
+        $sets = count(array_filter($entries, fn (array $entry): bool => $entry['kind'] === 'set'));
+        fwrite(STDOUT, sprintf("%d Projects und %d Sets von %d Autoren gebaut: %s\n", count($entries) - $sets, $sets, count($authors), $this->public));
+
+        return 0;
+    }
+
+    /**
+     * @return array{
+     *     title: string, tagline: string, noindex: bool, prompt: string, outro: string, base_path: string,
+     *     parent: array{title: string, url: string}|null, assets_base: string, assets_origin: string
+     * }
+     */
+    private function loadSite(): array
+    {
+        $config = $this->readJson($this->root . '/etc/site.json');
+
+        $basePath = $config['base_path'] ?? '/';
+
+        if (! is_string($basePath) || preg_match('#^/([A-Za-z0-9_~-][A-Za-z0-9_.~-]*/)*$#', $basePath) !== 1 || str_contains($basePath, '..')) {
+            throw new BuildError('site.json: „base_path“ muss mit / beginnen und enden, zum Beispiel / oder /~kchaot/chiptune/.');
+        }
+
+        $base = $config['assets_base'] ?? $basePath . '_cdn/';
+        $local = is_string($base) && preg_match('#^/(?!/)[A-Za-z0-9_~./-]*/$#', $base) === 1;
+        $external = is_string($base) && preg_match('#^(https://[a-z0-9.-]+(?::\d{1,5})?)(?:/[A-Za-z0-9_~./-]*)?/$#', $base, $match) === 1;
+
+        if ((! $local && ! $external) || str_contains((string) $base, '..')) {
+            throw new BuildError('site.json: „assets_base“ muss ein Pfad wie /_cdn/ oder eine https-Adresse sein und mit / enden.');
+        }
+
+        $prompt = $config['prompt'] ?? '';
+
+        if (! is_string($prompt) || mb_strlen($prompt) > 60 || preg_match('/[\x00-\x1F\x7F]/', $prompt) === 1) {
+            throw new BuildError('site.json: „prompt“ muss ein Text bis 60 Zeichen sein (Hostname, zum Beispiel chiptune.kchaot.de).');
+        }
+
+        $outro = $config['outro'] ?? '';
+
+        if (! is_string($outro) || mb_strlen($outro) > 80 || preg_match('/[\x00-\x1F\x7F]/', $outro) === 1) {
+            throw new BuildError('site.json: „outro“ muss ein Text bis 80 Zeichen sein.');
+        }
+
+        $parent = $config['parent'] ?? null;
+
+        if ($parent !== null) {
+            $title = is_array($parent) ? ($parent['title'] ?? null) : null;
+            $url = is_array($parent) ? ($parent['url'] ?? null) : null;
+
+            if (! is_string($title) || trim($title) === '' || mb_strlen($title) > 40 || ! is_string($url)
+                || preg_match('~^https?://[^\s<>"\']{1,200}$~', $url) !== 1 || str_contains($url, '\\')) {
+                throw new BuildError('site.json: „parent“ braucht „title“ (bis 40 Zeichen) und „url“ (http:// oder https://).');
+            }
+
+            $parent = ['title' => trim($title), 'url' => $url];
+        }
+
+        return [
+            'title' => (string) ($config['title'] ?? 'Chiptune'),
+            'tagline' => (string) ($config['tagline'] ?? ''),
+            'noindex' => (bool) ($config['noindex'] ?? false),
+            'prompt' => $prompt,
+            'outro' => $outro,
+            'base_path' => $basePath,
+            'parent' => $parent,
+            'assets_base' => $base,
+            'assets_origin' => $external ? $match[1] : '',
+        ];
+    }
+
+    /**
+     * @return array{tagline: string, html: string, author: string, url: string}
+     */
+    private function loadProfile(string $prefix, ?string $file): array
+    {
+        $empty = ['tagline' => '', 'html' => '', 'author' => '', 'url' => ''];
+
+        if ($file === null) {
+            return $empty;
+        }
+
+        $content = (string) file_get_contents($file);
+
+        try {
+            if (strlen($content) > 32768) {
+                throw new BuildError('Die Datei ist größer als 32 KB.');
+            }
+
+            $parsed = (new Markdown(null))->parse($content);
+            $tagline = $parsed->frontmatter['tagline'] ?? '';
+
+            if (! is_string($tagline) || mb_strlen($tagline) > 80 || preg_match('/[\x00-\x1F\x7F]/', $tagline) === 1) {
+                throw new BuildError('„tagline“ muss ein Text bis 80 Zeichen sein.');
+            }
+
+            $author = $parsed->frontmatter['author'] ?? '';
+
+            if (! is_string($author) || mb_strlen($author) > 60 || preg_match('/[\x00-\x1F\x7F<>&"]/', $author) === 1) {
+                throw new BuildError('„author“ muss ein Text bis 60 Zeichen ohne < > & " sein.');
+            }
+
+            $url = $parsed->frontmatter['url'] ?? '';
+
+            if (! is_string($url) || ($url !== '' && (preg_match('~^https?://[^\s<>"\']{1,200}$~', $url) !== 1 || str_contains($url, '\\')))) {
+                throw new BuildError('„url“ muss mit http:// oder https:// beginnen.');
+            }
+
+            return [
+                'tagline' => trim($tagline),
+                'html' => (new HtmlSanitizer())->clean($parsed->html),
+                'author' => trim($author),
+                'url' => $url,
+            ];
+        } catch (BuildError $error) {
+            fwrite(STDERR, "ÜBERSPRUNGEN: Profil von „{$prefix}“: {$error->getMessage()}\n");
+
+            return $empty;
+        }
+    }
+
+    /**
+     * @return list<array{slug: string, title: string, html: string}>
+     */
+    private function loadPages(): array
+    {
+        $directory = $this->root . '/var/pages';
+        $markdown = new Markdown(null);
+        $sanitizer = new HtmlSanitizer();
+        $pages = [];
+
+        foreach (is_dir($directory) ? (scandir($directory) ?: []) : [] as $entry) {
+            if (! str_ends_with($entry, '.md') || ! is_file("{$directory}/{$entry}") || is_link("{$directory}/{$entry}")) {
+                continue;
+            }
+
+            $slug = substr($entry, 0, -3);
+
+            if (preg_match('/^[a-z0-9][a-z0-9-]{0,31}$/', $slug) !== 1 || in_array($slug, ['top', 'main'], true)) {
+                throw new BuildError("var/pages/{$entry}: Der Dateiname muss aus a-z, 0-9 und Bindestrich bestehen (zum Beispiel impressum.md).");
+            }
+
+            $content = (string) file_get_contents("{$directory}/{$entry}");
+
+            if (strlen($content) > 32768) {
+                throw new BuildError("var/pages/{$entry}: Die Datei ist größer als 32 KB.");
+            }
+
+            $blocks = [];
+            $content = (string) preg_replace_callback('/^~~~[^\n]*\n(.*?)\n~~~[ \t]*$/ms', function (array $match) use (&$blocks): string {
+                $blocks[] = '<pre><code>' . htmlspecialchars($match[1], ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . '</code></pre>';
+
+                return 'CODEBLOCKPLACEHOLDER' . (count($blocks) - 1) . 'END';
+            }, $content);
+
+            $parsed = $markdown->parse($content);
+            $html = $parsed->html;
+
+            foreach ($blocks as $index => $block) {
+                $html = (string) preg_replace('~<p>CODEBLOCKPLACEHOLDER' . $index . 'END</p>|CODEBLOCKPLACEHOLDER' . $index . 'END~', str_replace('\\', '\\\\', $block), $html);
+            }
+
+            $title = $parsed->frontmatter['title'] ?? ucfirst($slug);
+            $order = $parsed->frontmatter['order'] ?? 100;
+
+            if (! is_string($title) || trim($title) === '' || mb_strlen($title) > 40 || ! is_int($order)) {
+                throw new BuildError("var/pages/{$entry}: „title“ muss ein Text bis 40 Zeichen und „order“ eine ganze Zahl sein.");
+            }
+
+            $pages[] = ['slug' => $slug, 'title' => trim($title), 'order' => $order, 'html' => $sanitizer->clean($html)];
+        }
+
+        usort($pages, fn (array $a, array $b): int => [$a['order'], $a['slug']] <=> [$b['order'], $b['slug']]);
+
+        return array_map(fn (array $page): array => ['slug' => $page['slug'], 'title' => $page['title'], 'html' => $page['html']], $pages);
+    }
+
+    /** @return array<string, mixed> */
+    private function readJson(string $path): array
+    {
+        if (! is_file($path)) {
+            throw new BuildError(basename($path) . ' fehlt.');
+        }
+
+        try {
+            $data = json_decode((string) file_get_contents($path), true, 16, JSON_THROW_ON_ERROR);
+        } catch (\JsonException $exception) {
+            throw new BuildError(basename($path) . ' ist kein gültiges JSON: ' . $exception->getMessage());
+        }
+
+        if (! is_array($data)) {
+            throw new BuildError(basename($path) . ' muss ein JSON-Objekt enthalten.');
+        }
+
+        return $data;
+    }
+
+    private function prepareDist(): void
+    {
+        $dist = $this->public;
+
+        if ($dist !== $this->root . '/tmp/public') {
+            throw new BuildError('Der Ausgabeordner muss tmp/public im Projektordner sein.');
+        }
+
+        Filesystem::removeDirectory($dist);
+
+        if (! mkdir($dist, 0775, true) && ! is_dir($dist)) {
+            throw new BuildError("Ausgabeordner konnte nicht angelegt werden: {$dist}");
+        }
+    }
+
+    /**
+     * @return array{css: array{url: string, integrity: string}, js: array{url: string, integrity: string}}
+     */
+    private function writeAssets(string $base): array
+    {
+        $assets = [];
+        $fonts = [];
+
+        foreach (glob($this->root . '/var/resources/fonts/*.woff2') ?: [] as $font) {
+            $content = (string) file_get_contents($font);
+            $name = basename($font, '.woff2') . '.' . substr(sha1($content), 0, 10) . '.woff2';
+            Filesystem::write("{$this->public}/" . self::ASSET_DIR . "/fonts/{$name}", $content);
+            $fonts['fonts/' . basename($font)] = 'fonts/' . $name;
+        }
+
+        foreach (glob($this->root . '/var/resources/fonts/LICENSE-*.txt') ?: [] as $license) {
+            Filesystem::write("{$this->public}/" . self::ASSET_DIR . '/fonts/' . basename($license), (string) file_get_contents($license));
+        }
+
+        foreach (['css' => 'style', 'js' => 'player'] as $extension => $name) {
+            $source = "{$this->root}/var/resources/{$name}.{$extension}";
+
+            if (! is_file($source)) {
+                throw new BuildError("var/resources/{$name}.{$extension} fehlt.");
+            }
+
+            $content = (string) file_get_contents($source);
+
+            if ($extension === 'css') {
+                $content = (new \MatthiasMullie\Minify\CSS(strtr($content, $fonts)))->minify();
+            } else {
+                $content = (new \MatthiasMullie\Minify\JS($content))->minify();
+            }
+
+            $file = "{$name}." . substr(sha1($content), 0, 10) . ".{$extension}";
+            Filesystem::write("{$this->public}/" . self::ASSET_DIR . "/{$file}", $content);
+            $assets[$extension] = [
+                'url' => $base . $file,
+                'integrity' => 'sha384-' . base64_encode(hash('sha384', $content, true)),
+            ];
+        }
+
+        return $assets;
+    }
+}

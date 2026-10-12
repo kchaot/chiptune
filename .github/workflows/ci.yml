@@ -1,0 +1,26 @@
+name: Build prüfen
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: "8.5"
+          extensions: dom, mbstring
+          tools: composer
+
+      - name: Abhängigkeiten installieren
+        run: composer install --no-interaction --no-progress --prefer-dist
+
+      - name: Seite bauen
+        run: php bin/build.php

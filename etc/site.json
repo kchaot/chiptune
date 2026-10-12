@@ -1,0 +1,12 @@
+{
+    "title": "Chiptune",
+    "tagline": "",
+    "noindex": false,
+    "prompt": "chiptune.kchaot.de",
+    "base_path": "/",
+    "parent": {
+        "title": "🚧",
+        "url": "https://github.com/kchaot/chiptune/tree/dev"
+    },
+    "outro": "<-- Chaos mit K -->"
+}
