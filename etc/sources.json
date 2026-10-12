@@ -1,0 +1,5 @@
+{
+    "sources": [
+        { "name": "kchaot", "prefix": "kchaot", "title": "KChaot", "path": "var/projects/kchaot" }
+    ]
+}

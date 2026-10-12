@@ -1,0 +1,53 @@
+name: Build veröffentlichen
+
+on:
+  push:
+    branches: [main]
+  schedule:
+    - cron: "23 4 * * *"
+  workflow_dispatch:
+  repository_dispatch:
+    types: [library-updated]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: publish
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: "8.5"
+          extensions: dom, mbstring
+          tools: composer
+
+      - name: Abhängigkeiten installieren
+        run: composer install --no-interaction --no-progress --prefer-dist
+
+      - name: Seite bauen
+        run: php bin/build.php
+
+      - name: Paket schnüren
+        run: |
+          tar -C tmp/public --sort=name --owner=0 --group=0 --numeric-owner -czf public.tar.gz .
+          sha256sum public.tar.gz > public.tar.gz.sha256
+          cat public.tar.gz.sha256
+
+      - name: Im Release "build" veröffentlichen
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release view build >/dev/null 2>&1 \
+            || gh release create build --target "$GITHUB_SHA" --latest=false \
+                 --title "Aktueller Build" --notes "Wird bei jedem Build ersetzt. Der Server holt sich dieses Paket mit bin/pull.sh."
+          gh release upload build public.tar.gz --clobber
+          gh release upload build public.tar.gz.sha256 --clobber

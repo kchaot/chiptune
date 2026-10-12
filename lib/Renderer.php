@@ -1,0 +1,664 @@
+<?php
+
+declare(strict_types=1);
+
+namespace Chiptune;
+
+final class Renderer
+{
+    private const DRUM_ORDER = ['k', 'c', 's', 'o', 'h'];
+
+    /**
+     * @param array{title: string, tagline: string, noindex: bool, prompt?: string, outro?: string, base_path?: string, parent?: array{title: string, url: string}|null} $site
+     * @param array{css: array{url: string, integrity: string}, js: array{url: string, integrity: string}} $assets
+     * @param array<string, array{title: string, url: string, tagline?: string, html?: string}> $authors
+     * @param list<array{slug: string, title: string, html: string}> $pages
+     */
+    public function __construct(
+        private readonly array $site,
+        private readonly array $assets,
+        private readonly array $authors = [],
+        private readonly array $pages = [],
+    ) {}
+
+    /**
+     * @param list<array{prefix: string, slug: string, project: array<string, mixed>}> $entries
+     * @param string|null $prefix
+     */
+    public function library(array $entries, ?string $prefix = null): string
+    {
+        $items = '';
+
+        foreach ($entries as $entry) {
+            $project = $entry['project'];
+            $href = $this->url($entry['prefix'] . '/' . $entry['slug'] . '/');
+            $title = $this->e($project['title']);
+            $artist = $this->artistLine($project['artist'], $entry['prefix'], 'span');
+            $author = $prefix !== null
+                ? ''
+                : '<span class="author">von <a href="' . $this->url($entry['prefix'] . '/') . '">' . $this->e($this->authorTitle($entry['prefix'])) . '</a></span>';
+            $tags = implode('', array_map(fn (string $tag): string => '<li>' . $this->e($tag) . '</li>', $project['tags']));
+            $tags = $tags === '' ? '' : '<ul class="tags">' . $tags . '</ul>';
+            if (($entry['kind'] ?? 'project') === 'set') {
+                $parts = count($project['parts']);
+                $length = $this->duration($project['duration']);
+                $facts = "<span><b>{$parts}</b> Parts</span> <span><b>{$length}</b> Länge</span>";
+                $thumbnail = $this->setThumbnail($project);
+                $badge = '<span class="badge">Set</span> ';
+            } else {
+                $bpm = $this->number($project['bpm']);
+                $bars = $this->number($project['bars']);
+                $tracks = count($project['tracks']);
+                $length = $this->duration($project['steps'] * $project['stepSeconds']);
+                $facts = "<span><b>{$bpm}</b> BPM</span> <span><b>{$bars}</b> Bars</span> <span><b>{$tracks}</b> Tracks</span> <span><b>{$length}</b> Länge</span>";
+                $thumbnail = $this->thumbnail($project);
+                $badge = $this->projectBadge($project);
+            }
+
+            $items .= <<<HTML
+
+      <li class="project">
+        <div class="title">
+          <h2>{$badge}<a href="{$href}">{$title}</a></h2>
+          {$artist}{$author}
+        </div>
+        {$thumbnail}
+        <p class="facts">{$facts}</p>
+        {$tags}
+      </li>
+HTML;
+        }
+
+        $list = $items === ''
+            ? '<p class="empty">Noch keine Projekte.<br> Lege eine Markdown-Datei in einer Quelle (etc/sources.json) an und baue die Seite neu.</p>'
+            : '<ul class="projects">' . $items . "\n    </ul>";
+
+        if ($prefix === null) {
+            $list = $this->authorList($entries);
+            $heading = $this->e($this->site['title']);
+            $lead = $this->e($this->site['tagline']);
+            $title = $this->site['title'];
+            $sections = '';
+            $label = '';
+            $command = 'ls .';
+        } else {
+            $author = $this->authors[$prefix] ?? ['title' => $prefix, 'url' => ''];
+            $heading = $this->e($author['title']);
+            $name = $this->e((string) ($author['author'] ?? ''));
+            $url = (string) ($author['url'] ?? '');
+            $link = $url === '' ? '' : '<a href="' . $this->e($url) . '" rel="noopener noreferrer">' . $this->e(preg_replace('~^https?://~', '', $url)) . '</a>';
+            $lead = $name !== '' && $link !== '' ? "{$name} · {$link}" : $name . $link;
+            $title = $author['title'] . ' – ' . $this->site['title'];
+            $tagline = $author['tagline'] ?? '';
+            $label = $tagline === '' ? '' : '<p class="tagline">' . $this->e($tagline) . '</p>';
+            $profile = $author['html'] ?? '';
+            $sections = $profile === '' ? '' : "\n    <section class=\"profile panel\"><div class=\"panel-inner\"><div class=\"notes\">{$profile}</div></div></section>";
+            $command = 'ls .';
+        }
+
+        $lead = $lead === '' ? '' : "\n      <p class=\"lead\">{$lead}</p>";
+        $head = $this->head($prefix, $command, $prefix !== null, false);
+        $views = $prefix === null ? $this->pageViews() : '';
+
+        return $this->page($title, 'library', <<<HTML
+  <div class="home">
+  {$head}
+  <main>
+    <div class="heading">
+      <h1>{$heading}</h1>{$label}{$lead}
+    </div>{$sections}
+    {$list}
+  </main>
+  </div>{$views}
+HTML);
+    }
+
+    /**
+     * @param list<array{prefix: string, slug: string, kind: string, project: array<string, mixed>}> $entries
+     */
+    private function authorList(array $entries): string
+    {
+        if ($this->authors === []) {
+            return '<p class="empty">Noch keine Projekte.<br> Lege eine Markdown-Datei in einer Quelle (etc/sources.json) an und baue die Seite neu.</p>';
+        }
+
+        $items = '';
+
+        foreach ($this->authors as $prefix => $author) {
+            $own = array_filter($entries, fn (array $entry): bool => $entry['prefix'] === $prefix);
+            $sets = count(array_filter($own, fn (array $entry): bool => $entry['kind'] === 'set'));
+            $projects = count($own) - $sets;
+            $facts = '<span><b>' . $projects . '</b> ' . ($projects === 1 ? 'Project' : 'Projects') . '</span>';
+
+            if ($sets > 0) {
+                $facts .= ' <span><b>' . $sets . '</b> ' . ($sets === 1 ? 'Set' : 'Sets') . '</span>';
+            }
+
+            $count = [];
+
+            foreach ($own as $entry) {
+                foreach ($entry['project']['tags'] as $tag) {
+                    $count[$tag] = ($count[$tag] ?? 0) + 1;
+                }
+            }
+
+            arsort($count);
+            $tags = implode('', array_map(fn (string $tag): string => '<li>' . $this->e($tag) . '</li>', array_slice(array_keys($count), 0, 6)));
+            $tags = $tags === '' ? '' : '<ul class="tags">' . $tags . '</ul>';
+            $tagline = ($author['tagline'] ?? '') === '' ? '' : '<p class="tagline">' . $this->e($author['tagline']) . '</p>';
+            $href = $this->url($prefix . '/');
+            $title = $this->e($author['title']);
+
+            $items .= <<<HTML
+
+      <li class="author-card">
+        <h2><a href="{$href}">{$title}</a></h2>
+        {$tagline}
+        <p class="facts">{$facts}</p>
+        {$tags}
+      </li>
+HTML;
+        }
+
+        return '<ul class="authors">' . $items . "\n    </ul>";
+    }
+
+    private function pageViews(): string
+    {
+        $html = '';
+
+        foreach ($this->pages as $page) {
+            $head = $this->head(null, 'cat ' . $page['slug'] . '.md');
+            $html .= sprintf(
+                "\n  <div class=\"page\" id=\"%s\">\n  %s\n  <main>\n    <div class=\"heading\"><h1>%s</h1></div>\n    <section class=\"panel\"><div class=\"panel-inner\"><div class=\"notes\">%s</div></div></section>\n  </main>\n  </div>",
+                $this->e($page['slug']),
+                $head,
+                $this->e($page['title']),
+                $page['html'],
+            );
+        }
+
+        return $html;
+    }
+
+    private function url(string $path): string
+    {
+        return $this->e(($this->site['base_path'] ?? '/') . $path);
+    }
+
+    /**
+     * @param string|null $prefix
+     * @param bool $linkHost
+     * @param bool $linkPrefix
+     */
+    private function head(?string $prefix, string $command, bool $linkHost = true, bool $linkPrefix = true): string
+    {
+        $host = ($this->site['prompt'] ?? '') !== '' ? $this->site['prompt'] : $this->site['title'];
+        $hostHtml = $linkHost
+            ? '<a class="p-user" href="' . $this->url('') . '">' . $this->e($host) . '</a>'
+            : '<span class="p-user">' . $this->e($host) . '</span>';
+        $path = '';
+
+        if ($prefix !== null) {
+            $path = $linkPrefix
+                ? '<a class="p-path" href="' . $this->url($prefix . '/') . '">' . $this->e('/' . $prefix) . '</a>'
+                : '<span class="p-path">' . $this->e('/' . $prefix) . '</span>';
+        }
+
+        return '<header class="pagehead"><nav class="prompt" aria-label="Brotkrümel">' . $hostHtml . $path
+            . '<span class="p-dollar">$</span> <span class="p-cmd">' . $this->e($command) . '</span></nav></header>';
+    }
+
+    private function artistLine(string $artist, string $prefix, string $tag): string
+    {
+        if ($artist === '' || strcasecmp(trim($artist), $this->authorTitle($prefix)) === 0) {
+            return '';
+        }
+
+        return "<{$tag} class=\"artist\">" . $this->e($artist) . "</{$tag}>";
+    }
+
+    private function authorTitle(string $prefix): string
+    {
+        return $this->authors[$prefix]['title'] ?? $prefix;
+    }
+
+    private function projectBadge(array $project): string
+    {
+        if (! empty($project['layers'])) {
+            return '<span class="badge">Layer</span> ';
+        }
+
+        return ($project['credits'] ?? []) === [] ? '' : '<span class="badge">Remix</span> ';
+    }
+
+    /**
+     * @param array<string, mixed> $project
+     */
+    private function layersPanel(array $project): string
+    {
+        if (empty($project['layers'])) {
+            return '';
+        }
+
+        $descriptions = [];
+
+        foreach ($project['tracks'] as $track) {
+            if (isset($track['group']) && ! isset($descriptions[$track['group']['ref']])) {
+                $descriptions[$track['group']['ref']] = $track['group']['description'];
+            }
+        }
+
+        $items = '';
+
+        foreach ($project['layers'] as $index => $layer) {
+            $href = $this->url($layer['ref'] . '/');
+            $original = abs($layer['bpm'] - $project['bpm']) < 0.05
+                ? $this->number($layer['bpm']) . ' BPM'
+                : $this->number($layer['bpm']) . ' -> ' . $this->number($project['bpm']) . ' BPM';
+            $text = $descriptions[$layer['ref']] ?? '';
+            $items .= sprintf(
+                "\n      <li class=\"layer t%d\"><p><a href=\"%s\">%s</a> <span class=\"layer-facts\">steigt ein bei Bar %d, %s</span></p>%s</li>",
+                $index % 8,
+                $href,
+                $this->e($layer['title']),
+                $layer['at'],
+                $original,
+                $text === '' ? '' : '<div class="notes">' . $text . '</div>',
+            );
+        }
+
+        return '<section class="layers"><h2 class="label">Layer</h2><ol>' . $items . "\n    </ol></section>";
+    }
+
+    /** @param array{prefix: string, slug: string, project: array<string, mixed>} $entry */
+    public function project(array $entry): string
+    {
+        $project = $entry['project'];
+        $title = $this->e($project['title']);
+        $artist = $this->artistLine($project['artist'], $entry['prefix'], 'p');
+        $tags = implode('', array_map(fn (string $tag): string => '<li>' . $this->e($tag) . '</li>', $project['tags']));
+        $tags = $tags === '' ? '' : '<ul class="tags">' . $tags . '</ul>';
+        $notes = $project['notesHtml'] === '' ? '' : '<section class="project-notes panel"><div class="panel-inner"><div class="notes">' . $project['notesHtml'] . '</div></div></section>';
+        $head = $this->head($entry['prefix'], 'play ' . $entry['slug']);
+        $credits = $this->credits($project['credits'] ?? []);
+        $thumbnail = $this->thumbnail($project);
+
+        $payload = json_encode([
+            'title' => $project['title'],
+            'bpm' => $project['bpm'],
+            'stepsPerBeat' => $project['stepsPerBeat'],
+            'stepsPerBar' => $project['stepsPerBar'],
+            'stepSeconds' => $project['stepSeconds'],
+            'loop' => $project['loop'],
+            'steps' => $project['steps'],
+            'tracks' => array_map(function (array $track): array {
+                $notes = $track['notesHtml'] !== '';
+                unset($track['notesHtml']);
+
+                $track['refs'] = array_map(fn (array $ref): array => $ref + ['href' => $this->url($ref['ref'] . '/')], $track['refs'] ?? []);
+
+                if (isset($track['group'])) {
+                    $track['group'] = [
+                        'title' => $track['group']['title'],
+                        'href' => $this->url($track['group']['ref'] . '/'),
+                        'bpm' => $track['group']['bpm'],
+                    ];
+                }
+
+                return $track + ['notes' => $notes];
+            }, $project['tracks']),
+        ], JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_THROW_ON_ERROR);
+
+        $trackNotes = $this->trackNotes($project['tracks']);
+        $layersPanel = $this->layersPanel($project);
+        $badge = $this->projectBadge($project);
+
+        return $this->page($project['title'] . ' – ' . $this->site['title'], 'project-page', <<<HTML
+  <script type="application/json" id="project">{$payload}</script>
+  {$head}
+  <main>
+    <div class="heading">
+      <h1>{$badge}{$title}</h1>
+      {$artist}
+      {$tags}
+    </div>
+    <div class="daw" id="daw">
+      <noscript>
+        {$thumbnail}
+        <p>Zum Abspielen braucht diese Seite JavaScript.</p>
+      </noscript>
+    </div>
+    {$layersPanel}
+    {$trackNotes}
+    {$notes}
+    {$credits}
+    <p class="source"><a href="source.md">Quelltext dieses Projects</a></p>
+  </main>
+HTML, withScript: true);
+    }
+
+    /**
+     * @param array<string, mixed> $set
+     */
+    private function setThumbnail(array $set): string
+    {
+        $scale = 10;
+        $height = 96;
+        $width = max(1, (int) round($set['duration'] * $scale));
+        $svg = sprintf(
+            '<svg class="thumb" viewBox="0 0 %d %d" height="%d" preserveAspectRatio="none" shape-rendering="crispEdges" aria-hidden="true" focusable="false">',
+            $width,
+            $height,
+            $height,
+        );
+        $x = 0.0;
+
+        foreach ($set['parts'] as $part) {
+            $run = ($part['stop'] - $part['start']) * $part['stepSeconds'] * $scale;
+
+            for ($i = 0; $i < $part['repeat']; $i++) {
+                $svg .= sprintf(
+                    '<svg x="%s" y="0" width="%s" height="%d" viewBox="%d 0 %d %d" preserveAspectRatio="none">%s</svg>',
+                    $this->number($x, 2),
+                    $this->number($run, 2),
+                    $height - 2,
+                    $part['start'],
+                    $part['stop'] - $part['start'],
+                    $this->rowsHeight($part['tracks']),
+                    $this->rows($part['tracks']),
+                );
+                $x += $run;
+            }
+
+            $svg .= sprintf('<rect class="sep" x="%s" y="0" width="1" height="%d"/>', $this->number($x - 0.5, 2), $height);
+        }
+
+        return $svg . '</svg>';
+    }
+
+    /**
+     * @param list<array{prefix: string, slug: string, title: string}> $credits
+     */
+    private function credits(array $credits): string
+    {
+        if ($credits === []) {
+            return '';
+        }
+
+        $links = array_map(
+            fn (array $credit): string => '<a href="' . $this->url($credit['prefix'] . '/' . $credit['slug'] . '/') . '">' . $this->e($credit['title']) . '</a> von ' . $this->e($this->authorTitle($credit['prefix'])),
+            $credits,
+        );
+
+        return '<p class="credits">Enthält Material aus ' . implode(', ', $links) . '.</p>';
+    }
+
+    /**
+     * @param array{prefix: string, slug: string, project: array<string, mixed>} $entry
+     */
+    public function set(array $entry): string
+    {
+        $set = $entry['project'];
+        $title = $this->e($set['title']);
+        $artist = $this->artistLine($set['artist'], $entry['prefix'], 'p');
+        $tags = implode('', array_map(fn (string $tag): string => '<li>' . $this->e($tag) . '</li>', $set['tags']));
+        $tags = $tags === '' ? '' : '<ul class="tags">' . $tags . '</ul>';
+        $notes = $set['notesHtml'] === '' ? '' : '<section class="project-notes panel"><div class="panel-inner"><div class="notes">' . $set['notesHtml'] . '</div></div></section>';
+        $head = $this->head($entry['prefix'], 'play ' . $entry['slug']);
+
+        $payload = json_encode([
+            'title' => $set['title'],
+            'loop' => $set['loop'],
+            'parts' => array_map(fn (array $part): array => [
+                'title' => $part['title'],
+                'bpm' => $part['bpm'],
+                'stepSeconds' => $part['stepSeconds'],
+                'stepsPerBar' => $part['stepsPerBar'],
+                'stepsPerBeat' => $part['stepsPerBeat'],
+                'start' => $part['start'],
+                'stop' => $part['stop'],
+                'startBar' => $part['startBar'],
+                'repeat' => $part['repeat'],
+                'tracks' => array_map(fn (array $track): array => [
+                    'instrument' => $track['instrument'],
+                    'volume' => $track['volume'],
+                    'gate' => $track['gate'],
+                    'pw' => $track['pw'],
+                    'events' => $track['events'],
+                ], $part['tracks']),
+            ], $set['parts']),
+        ], JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_THROW_ON_ERROR);
+
+        $items = '';
+
+        foreach ($set['parts'] as $index => $part) {
+            $number = $index + 1;
+            $href = $this->url($part['prefix'] . '/' . $part['slug'] . '/');
+            $partTitle = $this->e($part['title']);
+            $by = $this->e($this->authorTitle($part['prefix']));
+            $bpm = $this->number($part['bpm']);
+            $from = $part['startBar'];
+            $to = $from + intdiv($part['stop'] - $part['start'], $part['stepsPerBar']) - 1;
+            $bars = $from === $to ? "Bar {$from}" : "Bars {$from}–{$to}";
+            $repeat = $part['repeat'] > 1 ? ' <span>× <b>' . $part['repeat'] . '</b></span>' : '';
+            $length = $this->duration(($part['stop'] - $part['start']) * $part['stepSeconds'] * $part['repeat']);
+            $thumb = $this->thumbnail(['tracks' => $part['tracks'], 'steps' => $part['steps']], [$part['start'], $part['stop']]);
+            $text = $part['notesHtml'] === '' ? '' : '<div class="notes inner">' . $part['notesHtml'] . '</div>';
+
+            $items .= <<<HTML
+
+      <li class="part" id="part-{$number}">
+        <div class="part-title">
+          <span class="num">{$number}</span>
+          <h2><a href="{$href}">{$partTitle}</a></h2>
+          <span class="by">von {$by}</span>
+        </div>
+        <p class="facts"><span><b>{$bpm}</b> BPM</span> <span>{$bars}</span>{$repeat} <span><b>{$length}</b> Länge</span></p>
+        {$thumb}
+        <div class="part-bar" aria-hidden="true"><span class="part-progress"></span></div>
+        {$text}
+      </li>
+HTML;
+        }
+
+        return $this->page($set['title'] . ' – ' . $this->site['title'], 'project-page set-page', <<<HTML
+  <script type="application/json" id="set">{$payload}</script>
+  {$head}
+  <main>
+    <div class="heading">
+      <h1><span class="badge">Set</span> {$title}</h1>
+      {$artist}
+      {$tags}
+    </div>
+    <div class="daw" id="daw">
+      <noscript><p>Zum Abspielen braucht diese Seite JavaScript.</p></noscript>
+    </div>
+    <ol class="parts">{$items}
+    </ol>
+    {$notes}
+    <p class="source"><a href="source.md">Quelltext dieses Sets</a></p>
+  </main>
+HTML, withScript: true);
+    }
+
+    /** @param list<array<string, mixed>> $tracks */
+    private function trackNotes(array $tracks): string
+    {
+        $html = '';
+
+        foreach ($tracks as $index => $track) {
+            if ($track['notesHtml'] === '') {
+                continue;
+            }
+
+            $html .= sprintf(
+                "\n      <details class=\"track-note t%d\" id=\"track-%d\"><summary><span class=\"name\">%s</span> <span class=\"instrument\">%s</span></summary><div class=\"notes inner\">%s</div></details>",
+                $index % 8,
+                $index + 1,
+                $this->e(isset($track['group']) ? $track['group']['title'] . ' · ' . $track['name'] : $track['name']),
+                $this->e($track['instrument']),
+                $track['notesHtml'],
+            );
+        }
+
+        return $html === '' ? '' : '<section class="track-notes"><h2 class="label">Tracks</h2>' . $html . "\n    </section>";
+    }
+
+    public function notFound(): string
+    {
+        $site = $this->e($this->site['title']);
+        $home = $this->url('');
+        $head = $this->head(null, 'cat 404.html');
+
+        return $this->page('Nicht gefunden – ' . $this->site['title'], 'library', <<<HTML
+  {$head}
+  <main>
+    <div class="heading">
+      <h1>Nicht gefunden</h1>
+      <p class="lead">Diese Adresse gibt es nicht. Alle Autoren stehen auf der <a href="{$home}">Startseite</a>.</p>
+    </div>
+  </main>
+HTML);
+    }
+
+    public function thumbnail(array $project, ?array $window = null): string
+    {
+        $tracks = $project['tracks'];
+        [$from, $to] = $window ?? [0, $project['steps']];
+
+        return sprintf(
+            '<svg class="thumb" viewBox="%d 0 %d %d" height="%d" preserveAspectRatio="none" shape-rendering="crispEdges" aria-hidden="true" focusable="false">',
+            $from,
+            $to - $from,
+            $this->rowsHeight($tracks),
+            max(96, count($tracks) * 24),
+        ) . $this->rows($tracks) . '</svg>';
+    }
+
+    private const ROW = 8;
+    private const GAP = 3;
+
+    /** @param list<array<string, mixed>> $tracks */
+    private function rowsHeight(array $tracks): int
+    {
+        return count($tracks) * (self::ROW + self::GAP) - self::GAP;
+    }
+
+    private function rows(array $tracks): string
+    {
+        $row = self::ROW;
+        $svg = '';
+
+        foreach ($tracks as $index => $track) {
+            $top = $index * ($row + self::GAP);
+            $svg .= '<g class="t' . ($index % 8) . '">';
+
+            if ($track['instrument'] === 'drums') {
+                $kinds = array_values(array_filter(self::DRUM_ORDER, fn (string $kind): bool => in_array($kind, array_column($track['events'], 'd'), true)));
+                $part = $kinds === [] ? $row : $row / count($kinds);
+
+                foreach ($track['events'] as $event) {
+                    $svg .= $this->rect($event['t'], $top + array_search($event['d'], $kinds, true) * $part, $event['len'], max($part - ($part < $row ? 0.5 : 0), 0.5));
+                }
+            } else {
+                $midis = array_map(fn (array $event): float => 69 + 12 * log($event['f'] / 440, 2), $track['events']);
+                $low = $midis === [] ? 0 : min($midis);
+                $span = $midis === [] ? 1 : max($midis) - $low;
+
+                foreach ($track['events'] as $position => $event) {
+                    $level = $span > 0 ? ($midis[$position] - $low) / $span : 0.5;
+                    $svg .= $this->rect($event['t'], $top + (1 - $level) * ($row - 2.5), $event['len'], 2.5);
+                }
+            }
+
+            $svg .= '</g>';
+        }
+
+        return $svg;
+    }
+
+    private function rect(int $x, float $y, int $width, float $height): string
+    {
+        return sprintf('<rect x="%d" y="%s" width="%d" height="%s"/>', $x, $this->number($y, 2), $width, $this->number($height, 2));
+    }
+
+    private function page(string $title, string $bodyClass, string $body, bool $withScript = false): string
+    {
+        $title = $this->e($title);
+        $css = $this->e($this->assets['css']['url']);
+        $cssIntegrity = $this->e($this->assets['css']['integrity']);
+        $robots = $this->site['noindex'] ? "\n  <meta name=\"robots\" content=\"noindex, nofollow\">" : '';
+        $script = $withScript
+            ? "\n  <script src=\"" . $this->e($this->assets['js']['url']) . '" integrity="' . $this->e($this->assets['js']['integrity']) . '"' . $this->crossorigin($this->assets['js']['url']) . ' defer></script>'
+            : '';
+        $cssCross = $this->crossorigin($this->assets['css']['url']);
+        $footer = $this->footer();
+
+        return <<<HTML
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{$title}</title>{$robots}
+  <link rel="stylesheet" href="{$css}" integrity="{$cssIntegrity}"{$cssCross}>{$script}
+</head>
+<body class="{$bodyClass}">
+  <div class="rainbow"></div>
+{$body}{$footer}
+</body>
+</html>
+
+HTML;
+    }
+
+    private function crossorigin(string $url): string
+    {
+        return str_starts_with($url, 'https://') ? ' crossorigin="anonymous"' : '';
+    }
+
+    private function footer(): string
+    {
+        $links = array_map(
+            fn (array $page): string => '<a href="' . $this->url('#' . $page['slug']) . '">' . $this->e($page['title']) . '</a>',
+            $this->pages,
+        );
+
+        $parent = $this->site['parent'] ?? null;
+
+        if ($parent !== null) {
+            $links[] = '<a href="' . $this->e($parent['url']) . '">' . $this->e($parent['title']) . '</a>';
+        }
+
+        $outro = $this->site['outro'] ?? '';
+
+        if ($links === [] && $outro === '') {
+            return '';
+        }
+
+        $nav = $links === [] ? '' : '<nav aria-label="Informationen">' . implode(' ', $links) . '</nav>';
+        $outro = $outro === '' ? '' : '<div class="outro">' . $this->e($outro) . '</div>';
+
+        return "\n  <footer class=\"footer\">{$nav}{$outro}</footer>";
+    }
+
+    private function number(float|int $value, int $decimals = 1): string
+    {
+        $text = number_format((float) $value, $decimals, '.', '');
+
+        return str_contains($text, '.') ? rtrim(rtrim($text, '0'), '.') : $text;
+    }
+
+    private function duration(float $seconds): string
+    {
+        $seconds = (int) round($seconds);
+
+        return intdiv($seconds, 60) . ':' . str_pad((string) ($seconds % 60), 2, '0', STR_PAD_LEFT);
+    }
+
+    private function e(string $text): string
+    {
+        return htmlspecialchars($text, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+    }
+}
