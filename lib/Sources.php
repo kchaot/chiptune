@@ -113,7 +113,7 @@ final class Sources
                     throw new BuildError("„{$key}“ kommt in den Quellen „{$projects[$key]['source']}“ und „{$name}“ vor.");
                 }
 
-                $projects[$key] = ['source' => $name, 'prefix' => $prefix, 'slug' => $slug, 'file' => $file, 'strict' => $strict];
+                $projects[$key] = ['source' => $name, 'prefix' => $prefix, 'slug' => (string) $slug, 'file' => $file, 'strict' => $strict];
             }
         }
 
@@ -221,7 +221,6 @@ final class Sources
                 continue;
             }
 
-            // Dateien mit führendem Unterstrich sind keine Projects. Nur _profile.md hat eine Bedeutung.
             if (str_starts_with($entry, '_')) {
                 continue;
             }

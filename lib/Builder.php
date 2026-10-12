@@ -67,6 +67,7 @@ final class Builder
         $authors = array_intersect_key($collected['authors'], array_flip(array_column($entries, 'prefix')));
 
         foreach ($authors as $prefix => $author) {
+            $prefix = (string) $prefix;
             $profile = $this->loadProfile($prefix, $author['profile'] ?? null);
             $authors[$prefix]['url'] = $author['url'] !== '' ? $author['url'] : $profile['url'];
             $authors[$prefix] += ['tagline' => $profile['tagline'], 'html' => $profile['html'], 'author' => $profile['author']];
@@ -79,7 +80,7 @@ final class Builder
         Filesystem::write($this->public . '/index.html', $renderer->library($entries));
         Filesystem::write($this->public . '/404.html', $renderer->notFound());
 
-        foreach (array_keys($authors) as $prefix) {
+        foreach (array_map(strval(...), array_keys($authors)) as $prefix) {
             $own = array_values(array_filter($entries, fn (array $entry): bool => $entry['prefix'] === $prefix));
             Filesystem::write("{$this->public}/{$prefix}/index.html", $renderer->library($own, $prefix));
         }

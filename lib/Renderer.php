@@ -125,6 +125,7 @@ HTML);
         $items = '';
 
         foreach ($this->authors as $prefix => $author) {
+            $prefix = (string) $prefix;
             $own = array_filter($entries, fn (array $entry): bool => $entry['prefix'] === $prefix);
             $sets = count(array_filter($own, fn (array $entry): bool => $entry['kind'] === 'set'));
             $projects = count($own) - $sets;
@@ -143,7 +144,7 @@ HTML);
             }
 
             arsort($count);
-            $tags = implode('', array_map(fn (string $tag): string => '<li>' . $this->e($tag) . '</li>', array_slice(array_keys($count), 0, 6)));
+            $tags = implode('', array_map(fn (string $tag): string => '<li>' . $this->e($tag) . '</li>', array_slice(array_map(strval(...), array_keys($count)), 0, 6)));
             $tags = $tags === '' ? '' : '<ul class="tags">' . $tags . '</ul>';
             $tagline = ($author['tagline'] ?? '') === '' ? '' : '<p class="tagline">' . $this->e($author['tagline']) . '</p>';
             $href = $this->url($prefix . '/');
