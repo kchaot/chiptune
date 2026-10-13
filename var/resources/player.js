@@ -558,7 +558,7 @@
     position.setAttribute('role', 'timer');
     const partOut = el('b', null, '1');
     const barOut = el('b', null, '1');
-    position.append(document.createTextNode('Part '), partOut, document.createTextNode('/' + parts.length + ' Bar '), barOut);
+    position.append(document.createTextNode((set.album ? 'Song ' : 'Part ')), partOut, document.createTextNode('/' + parts.length + ' Bar '), barOut);
 
     const bpmOut = el('b', null, String(Number(parts[0].bpm.toFixed(1))));
     const tempo = el('span', 'tempo');

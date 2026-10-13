@@ -24,7 +24,8 @@ final class Builder
         $collected = $sources->collect($this->readJson($this->root . '/etc/sources.json'), $fetch);
 
         $projects = new ProjectParser();
-        $library = new Library($collected['files'], $projects, new SetParser($projects));
+        $sets = new SetParser($projects);
+        $library = new Library($collected['files'], $projects, $sets);
         $entries = [];
         $errors = [];
 
@@ -50,10 +51,29 @@ final class Builder
             $entries[] = [
                 'prefix' => $file['prefix'],
                 'slug' => $file['slug'],
+                'album' => $file['album'],
                 'source' => $file['file'],
                 'kind' => $loaded['kind'],
                 'project' => $loaded['data'],
             ];
+        }
+
+        usort($entries, fn (array $a, array $b): int => strcasecmp($a['project']['title'], $b['project']['title']));
+
+        $albumEntries = [];
+
+        foreach ($collected['albums'] as $album) {
+            $label = "{$album['source']}/{$album['slug']}/";
+
+            try {
+                $albumEntries[] = $this->buildAlbum($album, $entries, $library, $sets);
+            } catch (BuildError $error) {
+                if ($album['strict']) {
+                    $errors[] = "{$label}: {$error->getMessage()}";
+                } else {
+                    fwrite(STDERR, "ÜBERSPRUNGEN: {$label}: {$error->getMessage()}\n");
+                }
+            }
         }
 
         if ($errors !== []) {
@@ -62,7 +82,8 @@ final class Builder
             return 1;
         }
 
-        usort($entries, fn (array $a, array $b): int => strcasecmp($a['project']['title'], $b['project']['title']));
+        usort($albumEntries, fn (array $a, array $b): int => strcasecmp($a['project']['title'], $b['project']['title']));
+        $entries = $this->linkAlbums($entries, $albumEntries);
 
         $authors = array_intersect_key($collected['authors'], array_flip(array_column($entries, 'prefix')));
 
@@ -77,12 +98,17 @@ final class Builder
         $assets = $this->writeAssets($site['assets_base']);
         $renderer = new Renderer($site, $assets, $authors, $pages);
 
-        Filesystem::write($this->public . '/index.html', $renderer->library($entries));
+        Filesystem::write($this->public . '/index.html', $renderer->library([...$entries, ...$albumEntries]));
         Filesystem::write($this->public . '/404.html', $renderer->notFound());
 
         foreach (array_map(strval(...), array_keys($authors)) as $prefix) {
-            $own = array_values(array_filter($entries, fn (array $entry): bool => $entry['prefix'] === $prefix));
-            Filesystem::write("{$this->public}/{$prefix}/index.html", $renderer->library($own, $prefix));
+            $ownAlbums = array_values(array_filter($albumEntries, fn (array $entry): bool => $entry['prefix'] === $prefix));
+            $singles = array_values(array_filter($entries, fn (array $entry): bool => $entry['prefix'] === $prefix && $entry['album'] === null));
+            Filesystem::write("{$this->public}/{$prefix}/index.html", $renderer->library([...$ownAlbums, ...$singles], $prefix));
+        }
+
+        foreach ($albumEntries as $entry) {
+            Filesystem::write("{$this->public}/{$entry['prefix']}/{$entry['slug']}/index.html", $renderer->set($entry));
         }
 
         foreach ($entries as $entry) {
@@ -105,10 +131,140 @@ final class Builder
             ));
         }
 
-        $sets = count(array_filter($entries, fn (array $entry): bool => $entry['kind'] === 'set'));
-        fwrite(STDOUT, sprintf("%d Projects und %d Sets von %d Autoren gebaut: %s\n", count($entries) - $sets, $sets, count($authors), $this->public));
+        $setCount = count(array_filter($entries, fn (array $entry): bool => $entry['kind'] === 'set'));
+        fwrite(STDOUT, sprintf("%d Projects, %d Sets und %d Alben von %d Autoren gebaut: %s\n", count($entries) - $setCount, $setCount, count($albumEntries), count($authors), $this->public));
 
         return 0;
+    }
+
+    /**
+     * @param array{source: string, prefix: string, slug: string, file: string|null, strict: bool, items: list<string>} $album
+     * @param list<array<string, mixed>> $entries
+     * @return array<string, mixed>
+     */
+    private function buildAlbum(array $album, array $entries, Library $library, SetParser $sets): array
+    {
+        $meta = [];
+        $html = '';
+
+        if ($album['file'] !== null) {
+            $content = (string) file_get_contents($album['file']);
+
+            if (strlen($content) > 32768) {
+                throw new BuildError('_album.md ist größer als 32 KB.');
+            }
+
+            $parsed = (new Markdown(null))->parse($content);
+            $meta = $parsed->frontmatter;
+            $html = (new HtmlSanitizer())->clean($parsed->html);
+        }
+
+        $unknown = array_diff(array_keys($meta), ['title', 'artist', 'tags', 'tracks']);
+
+        if ($unknown !== []) {
+            throw new BuildError('_album.md: unbekannter Schlüssel „' . implode('“, „', array_map('strval', $unknown)) . '“ (erlaubt: title, artist, tags, tracks).');
+        }
+
+        $available = [];
+
+        foreach ($entries as $entry) {
+            if ($entry['prefix'] === $album['prefix'] && $entry['album'] === $album['slug'] && $entry['kind'] === 'project') {
+                $available[substr($entry['slug'], strlen($album['slug']) + 1)] = $entry['prefix'] . '/' . $entry['slug'];
+            }
+        }
+
+        ksort($available);
+        $order = [];
+
+        if (isset($meta['tracks'])) {
+            if (! is_array($meta['tracks']) || ! array_is_list($meta['tracks'])) {
+                throw new BuildError('_album.md: „tracks“ muss eine Liste von Dateinamen ohne .md sein.');
+            }
+
+            foreach ($meta['tracks'] as $name) {
+                $name = is_int($name) ? (string) $name : $name;
+
+                if (! is_string($name) || ! isset($available[$name])) {
+                    throw new BuildError('_album.md: „tracks“ nennt „' . (is_string($name) ? $name : json_encode($name)) . '“, das ist kein Project in diesem Album.');
+                }
+
+                $order[$name] = $available[$name];
+            }
+        }
+
+        $order += $available;
+
+        if ($order === []) {
+            throw new BuildError('Das Album enthält kein Project, das sich abspielen lässt.');
+        }
+
+        $head = ['format' => 1, 'kind' => 'set', 'loop' => false, 'title' => $meta['title'] ?? ucfirst(str_replace('-', ' ', $album['slug']))];
+
+        foreach (['artist', 'tags'] as $key) {
+            if (isset($meta[$key])) {
+                $head[$key] = $meta[$key];
+            }
+        }
+
+        $source = "---\n" . json_encode($head, JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR) . "\n---\n\n";
+
+        foreach ($order as $ref) {
+            $source .= "<!-- part: {$ref} -->\n\n";
+        }
+
+        $data = $sets->parse($source, $album['slug'], fn (string $ref): array => $library->project($ref));
+        $data['notesHtml'] = $html;
+
+        return [
+            'prefix' => $album['prefix'],
+            'slug' => $album['slug'],
+            'album' => $album['slug'],
+            'source' => null,
+            'kind' => 'album',
+            'project' => $data,
+            'order' => array_map(strval(...), array_keys($order)),
+        ];
+    }
+
+    /**
+     * @param list<array<string, mixed>> $entries
+     * @param list<array<string, mixed>> $albums
+     * @return list<array<string, mixed>>
+     */
+    private function linkAlbums(array $entries, array $albums): array
+    {
+        $titles = [];
+
+        foreach ($entries as $entry) {
+            $titles[$entry['prefix'] . '/' . $entry['slug']] = $entry['project']['title'];
+        }
+
+        $navigation = [];
+
+        foreach ($albums as $album) {
+            $order = $album['order'];
+
+            foreach ($order as $index => $name) {
+                $link = fn (?string $other): ?array => $other === null ? null : [
+                    'slug' => "{$album['slug']}/{$other}",
+                    'title' => $titles["{$album['prefix']}/{$album['slug']}/{$other}"] ?? $other,
+                ];
+
+                $navigation["{$album['prefix']}/{$album['slug']}/{$name}"] = [
+                    'album' => ['slug' => $album['slug'], 'title' => $album['project']['title']],
+                    'number' => $index + 1,
+                    'total' => count($order),
+                    'prev' => $link($order[$index - 1] ?? null),
+                    'next' => $link($order[$index + 1] ?? null),
+                ];
+            }
+        }
+
+        return array_map(function (array $entry) use ($navigation): array {
+            $entry['nav'] = $navigation[$entry['prefix'] . '/' . $entry['slug']] ?? null;
+
+            return $entry;
+        }, $entries);
     }
 
     /**

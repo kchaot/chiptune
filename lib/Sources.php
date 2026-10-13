@@ -18,7 +18,8 @@ final class Sources
     /**
      * @param array<string, mixed> $config
      * @return array{
-     *     files: list<array{source: string, prefix: string, slug: string, file: string, strict: bool}>,
+     *     files: list<array{source: string, prefix: string, slug: string, album: string|null, file: string, strict: bool}>,
+     *     albums: array<string, array{source: string, prefix: string, slug: string, file: string|null, strict: bool, items: list<string>}>,
      *     authors: array<string, array{title: string, url: string, profile: string|null}>
      * }
      */
@@ -31,6 +32,7 @@ final class Sources
         }
 
         $projects = [];
+        $albums = [];
         $authors = [];
         $seenNames = [];
 
@@ -106,20 +108,47 @@ final class Sources
                 $authors[$prefix]['profile'] = $profile;
             }
 
-            foreach ($this->projectFiles($name, $directory) as $slug => $file) {
+            $found = $this->projectFiles($name, $directory);
+
+            foreach ($found['files'] as $slug => $file) {
                 $key = "{$prefix}/{$slug}";
 
                 if (isset($projects[$key])) {
                     throw new BuildError("„{$key}“ kommt in den Quellen „{$projects[$key]['source']}“ und „{$name}“ vor.");
                 }
 
-                $projects[$key] = ['source' => $name, 'prefix' => $prefix, 'slug' => (string) $slug, 'file' => $file, 'strict' => $strict];
+                $projects[$key] = ['source' => $name, 'prefix' => $prefix, 'slug' => (string) $slug, 'album' => null, 'file' => $file, 'strict' => $strict];
+            }
+
+            foreach ($found['albums'] as $album => $info) {
+                $album = (string) $album;
+                $albumKey = "{$prefix}/{$album}";
+                $albums[$albumKey] ??= ['source' => $name, 'prefix' => $prefix, 'slug' => $album, 'file' => null, 'strict' => $strict, 'items' => []];
+                $albums[$albumKey]['file'] ??= $info['file'];
+
+                foreach ($info['files'] as $slug => $file) {
+                    $key = "{$prefix}/{$album}/{$slug}";
+
+                    if (isset($projects[$key])) {
+                        throw new BuildError("„{$key}“ kommt in den Quellen „{$projects[$key]['source']}“ und „{$name}“ vor.");
+                    }
+
+                    $projects[$key] = ['source' => $name, 'prefix' => $prefix, 'slug' => "{$album}/{$slug}", 'album' => $album, 'file' => $file, 'strict' => $strict];
+                    $albums[$albumKey]['items'][] = (string) $slug;
+                }
+            }
+        }
+
+        foreach (array_keys($albums) as $albumKey) {
+            if (isset($projects[$albumKey])) {
+                throw new BuildError("„{$albumKey}“ ist ein Album (Ordner) und ein Project (Datei). Der Name darf nur einmal vorkommen.");
             }
         }
 
         ksort($projects);
+        ksort($albums);
 
-        return ['files' => array_values($projects), 'authors' => $authors];
+        return ['files' => array_values($projects), 'albums' => $albums, 'authors' => $authors];
     }
 
     /** @param array<string, mixed> $source */
@@ -210,13 +239,44 @@ final class Sources
         }
     }
 
-    /** @return array<string, string> */
+    /**
+     * @return array{files: array<string, string>, albums: array<string, array{file: string|null, files: array<string, string>}>}
+     */
     private function projectFiles(string $source, string $directory): array
     {
-        $files = [];
-        $entries = scandir($directory) ?: [];
+        $files = $this->markdownFiles($source, $directory);
+        $albums = [];
 
-        foreach ($entries as $entry) {
+        foreach (scandir($directory) ?: [] as $entry) {
+            $path = $directory . '/' . $entry;
+
+            if ($entry === '.' || $entry === '..' || str_starts_with($entry, '.') || str_starts_with($entry, '_') || is_link($path) || ! is_dir($path)) {
+                continue;
+            }
+
+            if (preg_match(self::SLUG, $entry) !== 1) {
+                throw new BuildError("Quelle „{$source}“, Ordner „{$entry}“: Ein Album-Ordner muss aus a-z, 0-9 und Bindestrich bestehen (zum Beispiel beat-fuer-beat).");
+            }
+
+            $inside = $this->markdownFiles($source, $path);
+
+            if ($inside === []) {
+                continue;
+            }
+
+            $meta = $path . '/_album.md';
+            $albums[$entry] = ['file' => is_file($meta) && ! is_link($meta) ? $meta : null, 'files' => $inside];
+        }
+
+        return ['files' => $files, 'albums' => $albums];
+    }
+
+    /** @return array<string, string> */
+    private function markdownFiles(string $source, string $directory): array
+    {
+        $files = [];
+
+        foreach (scandir($directory) ?: [] as $entry) {
             if (! str_ends_with(strtolower($entry), '.md') || is_link($directory . '/' . $entry) || ! is_file($directory . '/' . $entry)) {
                 continue;
             }

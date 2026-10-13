@@ -507,3 +507,13 @@ body:has(.page:target) .home { display: none; }
 .author-card .tagline { margin: 0; color: var(--ink-soft); }
 .author-card .facts { display: flex; flex-wrap: wrap; gap: 0.15rem 1.1rem; margin: 0; color: var(--ink-soft); font-size: 0.85rem; }
 .author-card .facts b { color: var(--cream); font-weight: 800; }
+
+.album-nav { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 0.5rem 1rem; margin: 1.5rem 0 0; padding: 0.6rem 0.9rem; background: var(--panel-solid); border-left: 4px solid var(--c, #ff2e6e); font-size: 0.9rem; }
+.album-nav .where { color: var(--ink-soft); text-align: center; border: 0; }
+.album-nav .prev { justify-self: start; }
+.album-nav .next { justify-self: end; text-align: right; }
+.album-nav b { font-weight: 800; }
+@media (max-width: 40rem) {
+  .album-nav { grid-template-columns: 1fr 1fr; }
+  .album-nav .where { grid-column: 1 / -1; grid-row: 1; }
+}
