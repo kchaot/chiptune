@@ -349,7 +349,7 @@ main, .pagehead { max-width: 75rem; margin-inline: auto; padding-inline: clamp(1
 .notes.inner { margin: 0; padding: 0 1rem 0.5rem; }
 
 .aside.wide { max-width: none; margin-top: 2rem; }
-.aside.wide .notes { column-width: 30rem; column-gap: 3rem; }
+.aside.wide .notes { max-width: 75ch; }
 
 .source { margin: 2.5rem 0 3rem; }
 
