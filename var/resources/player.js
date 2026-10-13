@@ -11,11 +11,16 @@
   const DRUM_ORDER = ['k', 'c', 's', 'o', 'h'];
   const LOOKAHEAD = 0.6;
 
-  // Audio-Zustand, gemeinsam für Project und Set
   const pulseCache = new Map();
   let ctx = null;
   let master = null;
   let noise = null;
+  let rate = 1;
+
+  const fx = { low: 0, mid: 0, high: 0, filter: 0, echo: false, beat: 0.5 };
+  const kill = { low: false, mid: false, high: false };
+  const hold = { loopBars: 0, roll: 0, version: 0 };
+  let fxNodes = null;
 
   function el(tag, className, text) {
     const node = document.createElement(tag);
@@ -43,6 +48,238 @@
     return track.instrument;
   }
 
+  function signed(value, digits) {
+    return (value > 0 ? '+' : value < 0 ? '\u2212' : '\u00b1') + Math.abs(value).toFixed(digits);
+  }
+
+  const KNOBS = [
+    { key: 'low', name: 'Tief', min: -12, max: 12, step: 0.5, kill: true },
+    { key: 'mid', name: 'Mitte', min: -12, max: 12, step: 0.5, kill: true },
+    { key: 'high', name: 'Hoch', min: -12, max: 12, step: 0.5, kill: true },
+    { key: 'filter', name: 'Filter', min: -100, max: 100, step: 1 },
+  ];
+
+  function knobText(key, value) {
+    if (key === 'filter') {
+      if (value === 0) return 'aus';
+      return (value < 0 ? 'Tiefpass ' : 'Hochpass ') + Math.abs(value) + ' %';
+    }
+
+    return signed(value, 1) + ' dB';
+  }
+
+  function pressButton(label, aria) {
+    const button = el('button', 'skip', label);
+    button.type = 'button';
+    button.setAttribute('aria-pressed', 'false');
+    if (aria) button.setAttribute('aria-label', aria);
+    return button;
+  }
+
+  function deskControl(onTempo) {
+    const desk = el('details', 'desk');
+    const summary = el('summary');
+    const state = el('span', 'desk-state');
+    summary.append(el('span', null, 'Pult'), state);
+    desk.append(summary);
+
+    try {
+      desk.open = localStorage.getItem('chiptune-desk') === 'open';
+    } catch (error) {
+      //
+    }
+
+    desk.addEventListener('toggle', () => {
+      try {
+        localStorage.setItem('chiptune-desk', desk.open ? 'open' : 'closed');
+      } catch (error) {
+        //
+      }
+    });
+
+    const body = el('div', 'desk-body');
+    const refreshers = [];
+
+    function refresh() {
+      const active = rate !== 1 || fx.low || fx.mid || fx.high || fx.filter || fx.echo || kill.low || kill.mid || kill.high;
+      state.textContent = active ? 'aktiv' : '';
+      refreshers.forEach(fn => fn());
+    }
+
+    const tempoRow = el('div', 'pitch');
+    const tempoSlider = el('input');
+    tempoSlider.type = 'range';
+    tempoSlider.min = '-16';
+    tempoSlider.max = '16';
+    tempoSlider.step = '0.1';
+    tempoSlider.value = '0';
+    tempoSlider.setAttribute('aria-label', 'Tempo anpassen, in Prozent');
+    const tempoOut = el('b', null, '\u00b10.0 %');
+    const tempoReset = el('button', 'skip', '1:1');
+    tempoReset.type = 'button';
+    tempoReset.setAttribute('aria-label', 'Tempo zurücksetzen');
+
+    function applyTempo() {
+      const value = Number(tempoSlider.value);
+      rate = 1 + value / 100;
+      tempoOut.textContent = signed(value, 1) + ' %';
+      onTempo();
+      refresh();
+    }
+
+    tempoSlider.addEventListener('input', applyTempo);
+    tempoSlider.addEventListener('dblclick', () => {
+      tempoSlider.value = '0';
+      applyTempo();
+    });
+    tempoReset.addEventListener('click', () => {
+      tempoSlider.value = '0';
+      applyTempo();
+    });
+    tempoRow.append(el('span', 'pitch-name', 'Tempo'), tempoSlider, tempoOut, tempoReset);
+    body.append(tempoRow);
+
+    const mixer = el('div', 'mixer');
+    const sliders = [];
+
+    function showKnob(entry, slider, out) {
+      const value = Number(slider.value);
+      out.textContent = knobText(entry.key, value);
+      fx[entry.key] = entry.key === 'filter' ? value / 100 : value;
+      applyFx(false);
+      refresh();
+    }
+
+    KNOBS.forEach(entry => {
+      const slider = el('input');
+      slider.type = 'range';
+      slider.min = String(entry.min);
+      slider.max = String(entry.max);
+      slider.step = String(entry.step);
+      slider.value = '0';
+      slider.setAttribute('aria-label', entry.name + (entry.key === 'filter' ? ' (links Tiefpass, rechts Hochpass)' : ' in dB'));
+
+      const out = el('b', null, knobText(entry.key, 0));
+      slider.addEventListener('input', () => showKnob(entry, slider, out));
+      slider.addEventListener('dblclick', () => {
+        slider.value = '0';
+        showKnob(entry, slider, out);
+      });
+
+      const group = el('div', 'knob');
+      group.append(el('span', 'pitch-name', entry.name), slider, out);
+
+      if (entry.kill) {
+        const button = pressButton('Kill', entry.name + ' wegnehmen');
+        button.addEventListener('click', () => {
+          kill[entry.key] = !kill[entry.key];
+          button.setAttribute('aria-pressed', String(kill[entry.key]));
+          applyFx(false);
+          refresh();
+        });
+        refreshers.push(() => button.setAttribute('aria-pressed', String(kill[entry.key])));
+        group.append(button);
+      }
+
+      mixer.append(group);
+      sliders.push([entry, slider, out]);
+    });
+
+    body.append(mixer);
+
+    const effects = el('div', 'effects');
+
+    function group(name) {
+      const box = el('div', 'effect');
+      box.append(el('span', 'pitch-name', name));
+      effects.append(box);
+      return box;
+    }
+
+    const loopBox = group('Loop');
+    const loopButtons = [1, 2, 4].map(bars => {
+      const button = pressButton(String(bars), 'Loop ' + bars + (bars === 1 ? ' Takt' : ' Takte'));
+      button.addEventListener('click', () => {
+        hold.loopBars = hold.loopBars === bars ? 0 : bars;
+        hold.version++;
+        loopButtons.forEach((other, index) => other.setAttribute('aria-pressed', String(hold.loopBars === [1, 2, 4][index])));
+      });
+      loopBox.append(button);
+      return button;
+    });
+
+    const rollBox = group('Roll');
+    [[1, '1/1'], [0.5, '1/2'], [0.25, '1/4']].forEach(([fraction, label]) => {
+      const button = pressButton(label, 'Roll ' + label + ' Beat, solange gedrückt');
+      const release = () => {
+        if (hold.roll === fraction) {
+          hold.roll = 0;
+          hold.version++;
+          button.setAttribute('aria-pressed', 'false');
+        }
+      };
+      const press = () => {
+        hold.roll = fraction;
+        hold.version++;
+        button.setAttribute('aria-pressed', 'true');
+      };
+
+      button.addEventListener('pointerdown', press);
+      ['pointerup', 'pointerleave', 'pointercancel', 'blur'].forEach(name => button.addEventListener(name, release));
+      button.addEventListener('keydown', event => {
+        if ((event.key === ' ' || event.key === 'Enter') && !event.repeat) {
+          event.preventDefault();
+          press();
+        }
+      });
+      button.addEventListener('keyup', event => {
+        if (event.key === ' ' || event.key === 'Enter') release();
+      });
+      rollBox.append(button);
+    });
+
+    const echoBox = group('Echo');
+    const echoButton = pressButton('Echo');
+    echoButton.addEventListener('click', () => {
+      fx.echo = !fx.echo;
+      echoButton.setAttribute('aria-pressed', String(fx.echo));
+      applyFx(false);
+      refresh();
+    });
+    echoBox.append(echoButton);
+
+    const resetButton = el('button', 'skip', 'Reset');
+    resetButton.type = 'button';
+    resetButton.setAttribute('aria-label', 'Pult zurücksetzen');
+    resetButton.addEventListener('click', () => {
+      sliders.forEach(([entry, slider, out]) => {
+        slider.value = '0';
+        out.textContent = knobText(entry.key, 0);
+        fx[entry.key] = 0;
+      });
+      kill.low = kill.mid = kill.high = false;
+      fx.echo = false;
+      echoButton.setAttribute('aria-pressed', 'false');
+      hold.loopBars = 0;
+      hold.roll = 0;
+      hold.version++;
+      loopButtons.forEach(button => button.setAttribute('aria-pressed', 'false'));
+      tempoSlider.value = '0';
+      applyFx(false);
+      applyTempo();
+    });
+    effects.append(resetButton);
+    body.append(effects);
+    desk.append(body);
+    refresh();
+
+    return desk;
+  }
+
+  function bpmText(bpm) {
+    return String(Number((bpm * rate).toFixed(1)));
+  }
+
   if (setData) mountSet(JSON.parse(setData.textContent));
   else mountProject(JSON.parse(projectData.textContent));
 
@@ -50,7 +287,53 @@
     ctx = new (window.AudioContext || window.webkitAudioContext)();
     master = ctx.createGain();
     master.gain.value = 0.8;
-    master.connect(ctx.destination);
+
+    const low = ctx.createBiquadFilter();
+    low.type = 'lowshelf';
+    low.frequency.value = 200;
+
+    const mid = ctx.createBiquadFilter();
+    mid.type = 'peaking';
+    mid.frequency.value = 1000;
+    mid.Q.value = 0.9;
+
+    const high = ctx.createBiquadFilter();
+    high.type = 'highshelf';
+    high.frequency.value = 3500;
+
+    const sweep = ctx.createBiquadFilter();
+    const limiter = ctx.createDynamicsCompressor();
+    limiter.threshold.value = -2;
+    limiter.knee.value = 3;
+    limiter.ratio.value = 20;
+    limiter.attack.value = 0.003;
+    limiter.release.value = 0.1;
+
+    const delay = ctx.createDelay(2);
+    const feedback = ctx.createGain();
+    feedback.gain.value = 0.4;
+    const damp = ctx.createBiquadFilter();
+    damp.type = 'lowpass';
+    damp.frequency.value = 3200;
+    const wet = ctx.createGain();
+    wet.gain.value = 0;
+
+    master.connect(delay);
+    delay.connect(damp);
+    damp.connect(feedback);
+    feedback.connect(delay);
+    delay.connect(wet);
+    wet.connect(low);
+
+    master.connect(low);
+    low.connect(mid);
+    mid.connect(high);
+    high.connect(sweep);
+    sweep.connect(limiter);
+    limiter.connect(ctx.destination);
+
+    fxNodes = { low, mid, high, sweep, delay, wet };
+    applyFx(true);
 
     noise = ctx.createBuffer(1, ctx.sampleRate, ctx.sampleRate);
     const samples = noise.getChannelData(0);
@@ -62,6 +345,49 @@
   function closeAudio() {
     if (ctx) ctx.close();
     ctx = null;
+    fxNodes = null;
+  }
+
+  function applyEchoTime() {
+    if (!ctx || !fxNodes) return;
+    fxNodes.delay.delayTime.setTargetAtTime(Math.min(1.9, fx.beat * 0.75), ctx.currentTime, 0.05);
+  }
+
+  function holdRegion(latch, pointer, limit, stepsPerBar, stepsPerBeat) {
+    const length = hold.roll
+      ? Math.max(1, Math.round(stepsPerBeat * hold.roll))
+      : hold.loopBars * stepsPerBar;
+
+    if (!length) return null;
+
+    if (latch && latch.version === hold.version) return latch;
+
+    const start = Math.floor(Math.min(pointer, limit - 1) / length) * length;
+
+    return { version: hold.version, start, end: Math.min(start + length, limit) };
+  }
+
+  function applyFx(instant) {
+    if (!ctx || !fxNodes) return;
+
+    const now = ctx.currentTime;
+    const set = (param, value) => {
+      if (instant) param.value = value;
+      else param.setTargetAtTime(value, now, 0.02);
+    };
+
+    set(fxNodes.low.gain, kill.low ? -40 : fx.low);
+    set(fxNodes.mid.gain, kill.mid ? -40 : fx.mid);
+    set(fxNodes.high.gain, kill.high ? -40 : fx.high);
+    set(fxNodes.wet.gain, fx.echo ? 0.45 : 0);
+    applyEchoTime();
+
+    const amount = fx.filter;
+    const sweep = fxNodes.sweep;
+
+    sweep.type = amount > 0 ? 'highpass' : 'lowpass';
+    set(sweep.frequency, amount > 0 ? 20 * Math.pow(250, amount) : 20000 * Math.pow(0.0125, -amount));
+    set(sweep.Q, amount === 0 ? 0.7 : 2.5);
   }
 
   function makeBus() {
@@ -120,7 +446,6 @@
     const gain = ctx.createGain();
     gain.gain.setValueAtTime(0.0001, when);
 
-    // Mehrere kurze Anschläge hintereinander ergeben den Clap.
     bursts.forEach((offset, i) => {
       const last = i === bursts.length - 1;
       gain.gain.setValueAtTime(volume, when + offset);
@@ -175,14 +500,16 @@
 
   function mountProject(project) {
     const tracks = project.tracks;
-    const passSeconds = project.steps * project.stepSeconds;
     const bars = project.steps / project.stepsPerBar;
 
     let buses = [];
     let timer = null;
     let frameId = 0;
-    let startTime = 0;
-    let nextStart = 0;
+    let nextTime = 0;
+    let nextStep = 0;
+    let ended = false;
+    let marks = [];
+    let latch = null;
     let playing = false;
     let starting = false;
 
@@ -200,11 +527,19 @@
     position.setAttribute('role', 'timer');
     position.append(document.createTextNode('Bar '), barOut, document.createTextNode(' Beat '), beatOut);
 
+    const bpmOut = el('b', null, bpmText(project.bpm));
     const tempo = el('span', 'tempo');
-    tempo.append(el('b', null, String(Number(project.bpm.toFixed(1)))), document.createTextNode(' BPM'));
+    tempo.append(bpmOut, document.createTextNode(' BPM'));
 
     const transport = el('div', 'transport');
     transport.append(playButton, position, tempo);
+
+    const desk = deskControl(() => {
+      bpmOut.textContent = bpmText(project.bpm);
+    });
+
+    const byStep = Array.from({ length: project.steps }, () => []);
+    tracks.forEach((track, index) => track.events.forEach(event => byStep[event.t] && byStep[event.t].push([index, event])));
 
     const arrangement = el('div', 'arrangement');
     arrangement.style.setProperty('--bars', String(bars));
@@ -233,7 +568,7 @@
     const ruler = el('div', 'ruler');
     ruler.append(gridSvg());
     ruler.setAttribute('aria-hidden', 'true');
-    // Auf schmalen Bildschirmen bekommt bei vielen Bars nur jeder vierte eine Nummer.
+
     const narrow = typeof window.matchMedia === 'function' && window.matchMedia('(max-width: 44rem)').matches;
     const labelStep = narrow && bars > 8 ? 4 : 1;
 
@@ -349,7 +684,7 @@
     layer.append(playhead);
     arrangement.append(layer);
 
-    root.replaceChildren(transport, arrangement);
+    root.replaceChildren(transport, desk, arrangement);
     applyMix();
 
     function formatBpm(value) {
@@ -435,15 +770,16 @@
     function frame() {
       if (!playing || !ctx) return;
 
-      const elapsed = ctx.currentTime - startTime;
+      const now = ctx.currentTime;
 
-      if (elapsed >= 0) {
-        const progress = project.loop
-          ? (elapsed % passSeconds) / passSeconds
-          : Math.min(elapsed / passSeconds, 1);
-        const step = Math.min(progress * project.steps, project.steps - 1e-6);
+      while (marks.length > 1 && marks[1].time <= now) marks.shift();
 
-        playhead.style.left = percent(progress);
+      const mark = marks[0];
+
+      if (mark && now >= mark.time) {
+        const step = Math.min(mark.step + (now - mark.time) / mark.dur, project.steps - 1e-6);
+
+        playhead.style.left = percent(step / project.steps);
         barOut.textContent = String(Math.floor(step / project.stepsPerBar) + 1);
         beatOut.textContent = String(Math.floor((step % project.stepsPerBar) / project.stepsPerBeat) + 1);
       }
@@ -451,26 +787,39 @@
       frameId = requestAnimationFrame(frame);
     }
 
-
-    function schedulePass(start) {
-      tracks.forEach((track, index) => {
-        const play = track.instrument === 'drums' ? drum : tone;
-        track.events.forEach(event => play(track, buses[index], event, start + event.t * project.stepSeconds, project.stepSeconds));
-      });
-    }
-
     function tick() {
       if (!ctx) return;
 
-      if (!project.loop) {
-        if (ctx.currentTime > nextStart) stop();
-        return;
+      while (!ended && nextTime - ctx.currentTime < LOOKAHEAD) {
+        latch = holdRegion(latch, nextStep, project.steps, project.stepsPerBar, project.stepsPerBeat);
+
+        if (latch && nextStep >= latch.end) nextStep = latch.start;
+
+        if (nextStep >= project.steps) {
+          if (!project.loop) {
+            ended = true;
+            break;
+          }
+
+          nextStep = 0;
+        }
+
+        const dur = project.stepSeconds / rate;
+        fx.beat = dur * project.stepsPerBeat;
+
+        byStep[nextStep].forEach(([index, event]) => {
+          const voice = tracks[index].instrument === 'drums' ? drum : tone;
+          voice(tracks[index], buses[index], event, nextTime, dur);
+        });
+
+        marks.push({ time: nextTime, dur, step: nextStep });
+        nextTime += dur;
+        nextStep++;
       }
 
-      while (nextStart - ctx.currentTime < LOOKAHEAD) {
-        schedulePass(nextStart);
-        nextStart += passSeconds;
-      }
+      applyEchoTime();
+
+      if (ended && ctx.currentTime > nextTime) stop();
     }
 
     async function play() {
@@ -484,10 +833,12 @@
       starting = false;
       applyMix();
 
-      startTime = ctx.currentTime + 0.1;
-      nextStart = startTime;
-      schedulePass(nextStart);
-      nextStart += passSeconds;
+      marks = [];
+      latch = null;
+      ended = false;
+      nextStep = 0;
+      nextTime = ctx.currentTime + 0.1;
+      tick();
 
       timer = setInterval(tick, 100);
       playing = true;
@@ -501,6 +852,7 @@
 
       closeAudio();
       buses = [];
+      marks = [];
       playing = false;
       renderButton();
     }
@@ -538,11 +890,15 @@
     const cards = parts.map((_, index) => document.getElementById('part-' + (index + 1)));
     const bars = cards.map(card => (card ? card.querySelector('.part-progress') : null));
 
-    let runs = [];
+    let marks = [];
     let timer = null;
     let frameId = 0;
     let nextTime = 0;
-    let nextIndex = 0;
+    let nextPart = 0;
+    let nextRepeat = 0;
+    let nextStep = 0;
+    let ended = false;
+    let latch = null;
     let current = 0;
     let playing = false;
     let starting = false;
@@ -575,13 +931,30 @@
     const barOut = el('b', null, '1');
     position.append(document.createTextNode((set.album ? 'Song ' : 'Part ')), partOut, document.createTextNode('/' + parts.length + ' Bar '), barOut);
 
-    const bpmOut = el('b', null, String(Number(parts[0].bpm.toFixed(1))));
+    const bpmOut = el('b', null, bpmText(parts[0].bpm));
     const tempo = el('span', 'tempo');
     tempo.append(bpmOut, document.createTextNode(' BPM'));
 
     const transport = el('div', 'transport');
     transport.append(playButton, prevButton, nextButton, loopButton, position, tempo);
-    root.replaceChildren(transport);
+
+    const desk = deskControl(() => {
+      bpmOut.textContent = bpmText(parts[current].bpm);
+    });
+    root.replaceChildren(transport, desk);
+
+    const layout = parts.map(part => {
+      const runSteps = part.stop - part.start;
+      const byStep = Array.from({ length: runSteps }, () => []);
+
+      part.tracks.forEach((track, index) => track.events.forEach(event => {
+        if (event.t >= part.start && event.t < part.stop) {
+          byStep[event.t - part.start].push([index, Object.assign({}, event, { len: Math.min(event.len, part.stop - event.t) })]);
+        }
+      }));
+
+      return { runSteps, byStep, buses: [] };
+    });
 
     function renderState() {
       playButton.textContent = playing ? 'Stop' : 'Play';
@@ -590,7 +963,7 @@
       if (!playing) {
         partOut.textContent = '1';
         barOut.textContent = String(parts[0].startBar);
-        bpmOut.textContent = String(Number(parts[0].bpm.toFixed(1)));
+        bpmOut.textContent = bpmText(parts[0].bpm);
         cards.forEach(card => card && card.classList.remove('active'));
         bars.forEach(bar => bar && (bar.style.width = '0%'));
       }
@@ -601,67 +974,84 @@
 
       const now = ctx.currentTime;
 
-      runs = runs.filter(run => run.end > now - 1);
-      const run = runs.find(candidate => now >= candidate.start && now < candidate.end);
+      while (marks.length > 1 && marks[1].time <= now) marks.shift();
 
-      if (run) {
-        const part = parts[run.index];
-        const elapsed = now - run.start;
-        const within = (elapsed % run.runSeconds) / part.stepSeconds;
+      const mark = marks[0];
 
-        current = run.index;
-        partOut.textContent = String(run.index + 1);
+      if (mark && now >= mark.time) {
+        const part = parts[mark.part];
+        const info = layout[mark.part];
+        const pos = mark.step + (now - mark.time) / mark.dur;
+        const within = pos % info.runSteps;
+
+        current = mark.part;
+        partOut.textContent = String(mark.part + 1);
         barOut.textContent = String(part.startBar + Math.floor(within / part.stepsPerBar));
-        bpmOut.textContent = String(Number(part.bpm.toFixed(1)));
+        bpmOut.textContent = bpmText(part.bpm);
 
         cards.forEach((card, index) => {
-          if (card) card.classList.toggle('active', index === run.index);
-          if (bars[index]) bars[index].style.width = index === run.index ? percent(elapsed / (run.end - run.start)) : '0%';
+          if (card) card.classList.toggle('active', index === mark.part);
+          if (bars[index]) bars[index].style.width = index === mark.part ? percent(Math.min(pos / (info.runSteps * part.repeat), 1)) : '0%';
         });
       }
 
       frameId = requestAnimationFrame(frame);
     }
 
-    function scheduleRun(index, start) {
-      const part = parts[index];
-      const runSeconds = (part.stop - part.start) * part.stepSeconds;
-
-      for (let repeat = 0; repeat < part.repeat; repeat++) {
-        const base = start + repeat * runSeconds;
-
-        part.tracks.forEach(track => {
-          const bus = makeBus();
-          const play = track.instrument === 'drums' ? drum : tone;
-
-          track.events.forEach(event => {
-            if (event.t < part.start || event.t >= part.stop) return;
-
-            const clipped = Object.assign({}, event, { len: Math.min(event.len, part.stop - event.t) });
-            play(track, bus, clipped, base + (event.t - part.start) * part.stepSeconds, part.stepSeconds);
-          });
-        });
-      }
-
-      runs.push({ index, start, end: start + runSeconds * part.repeat, runSeconds });
-
-      return runSeconds * part.repeat;
-    }
-
     function tick() {
       if (!ctx) return;
 
-      while (nextTime - ctx.currentTime < LOOKAHEAD) {
-        if (nextIndex >= parts.length) {
-          if (!looping) break;
-          nextIndex = 0;
+      while (!ended && nextTime - ctx.currentTime < LOOKAHEAD) {
+        if (latch && latch.part !== nextPart) latch = null;
+
+        if (nextPart < parts.length) {
+          const first = parts[nextPart];
+
+          latch = holdRegion(latch, nextStep, layout[nextPart].runSteps, first.stepsPerBar, first.stepsPerBeat);
+
+          if (latch) {
+            latch.part = nextPart;
+            if (nextStep >= latch.end) nextStep = latch.start;
+          }
         }
 
-        nextTime += scheduleRun(nextIndex, nextTime);
-        nextIndex++;
+        if (nextPart >= parts.length) {
+          if (!looping) {
+            ended = true;
+            break;
+          }
+
+          nextPart = 0;
+        }
+
+        const part = parts[nextPart];
+        const info = layout[nextPart];
+        const dur = part.stepSeconds / rate;
+        fx.beat = dur * part.stepsPerBeat;
+
+        info.byStep[nextStep].forEach(([index, event]) => {
+          const voice = part.tracks[index].instrument === 'drums' ? drum : tone;
+          voice(part.tracks[index], info.buses[index], event, nextTime, dur);
+        });
+
+        marks.push({ time: nextTime, dur, part: nextPart, step: nextStep + nextRepeat * info.runSteps });
+        nextTime += dur;
+        nextStep++;
+
+        if (nextStep >= info.runSteps) {
+          nextStep = 0;
+          nextRepeat++;
+
+          if (nextRepeat >= part.repeat) {
+            nextRepeat = 0;
+            nextPart++;
+          }
+        }
       }
 
-      if (!looping && nextIndex >= parts.length && ctx.currentTime > nextTime) stop();
+      applyEchoTime();
+
+      if (ended && ctx.currentTime > nextTime) stop();
     }
 
     async function play(from = 0) {
@@ -669,11 +1059,18 @@
       starting = true;
 
       initAudio();
+      layout.forEach((info, index) => {
+        info.buses = parts[index].tracks.map(makeBus);
+      });
       await ctx.resume();
 
       starting = false;
-      runs = [];
-      nextIndex = from;
+      marks = [];
+      latch = null;
+      ended = false;
+      nextPart = from;
+      nextRepeat = 0;
+      nextStep = 0;
       nextTime = ctx.currentTime + 0.1;
       tick();
 
@@ -687,7 +1084,7 @@
       clearInterval(timer);
       cancelAnimationFrame(frameId);
       closeAudio();
-      runs = [];
+      marks = [];
       playing = false;
       renderState();
     }

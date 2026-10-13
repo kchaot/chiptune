@@ -239,6 +239,27 @@ main, .pagehead { max-width: 75rem; margin-inline: auto; padding-inline: clamp(1
 
 .position, .tempo { color: var(--ink-soft); font-size: 1.1rem; font-variant-numeric: tabular-nums; }
 .position { min-width: 15ch; }
+.desk { margin: 0 0 1rem; }
+.desk summary { display: inline-flex; align-items: center; gap: 0.6rem; min-height: 2.25rem; padding: 0 0.9rem; border: 1px solid var(--line); border-radius: 4px; background: var(--panel-solid); color: var(--ink-soft); font-weight: 800; cursor: pointer; list-style: none; }
+.desk summary::-webkit-details-marker { display: none; }
+.desk summary::before { content: "\25B8"; color: var(--cyan); }
+.desk[open] summary::before { content: "\25BE"; }
+.desk summary:hover { border-color: var(--cream); color: var(--cream); }
+.desk-state { color: var(--green); font-size: 0.8rem; font-weight: 400; }
+.desk-body { display: grid; gap: 0.9rem; margin-top: 0.75rem; padding: 1rem; border: 1px solid var(--line); border-radius: 6px; background: var(--panel-solid); color: var(--ink-soft); font-size: 0.95rem; }
+.pitch { display: flex; align-items: center; gap: 0.6rem; }
+.pitch input[type="range"] { width: 12rem; accent-color: var(--green); }
+.pitch b { min-width: 7ch; color: var(--cream); font-variant-numeric: tabular-nums; text-align: right; }
+.pitch-name { min-width: 5ch; }
+.mixer { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.6rem 1.5rem; }
+.knob { display: flex; align-items: center; gap: 0.6rem; min-width: 0; }
+.knob input[type="range"] { flex: 1; min-width: 3.5rem; accent-color: var(--cyan); }
+.knob b { min-width: 8ch; color: var(--cream); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.effects { display: flex; flex-wrap: wrap; align-items: center; gap: 0.6rem 2rem; }
+.effect { display: flex; align-items: center; gap: 0.4rem; }
+.desk .skip { min-width: 0; min-height: 2.25rem; padding: 0 0.7rem; font-size: 0.9rem; }
+.desk .skip[aria-pressed="true"] { border-color: var(--green); color: var(--green); }
+@media (max-width: 40rem) { .mixer { grid-template-columns: minmax(0, 1fr); } .pitch input[type="range"] { width: 8rem; } }
 .loop { min-height: 3rem; padding: 0 1rem; border: 1px solid var(--line); border-radius: 4px; background: var(--panel-solid); color: var(--ink-soft); font-size: 0.95rem; font-weight: 800; cursor: pointer; }
 .loop[aria-pressed="true"] { border-color: var(--green); color: var(--green); }
 .position b, .tempo b { color: var(--cream); font-weight: 800; }
