@@ -255,6 +255,11 @@
         return;
       }
 
+      if (details.open) {
+        details.open = false;
+        return;
+      }
+
       details.open = true;
       details.scrollIntoView({ block: 'center' });
       const summary = details.querySelector('summary');
@@ -354,7 +359,7 @@
     function layoutClips(track, lane) {
       (track.refs || []).forEach(ref => {
         const band = el('span', 'clip');
-        band.title = ref.title + ' · ' + ref.track;
+        band.title = ref.title + ' | ' + ref.track;
         band.style.left = percent(ref.start / project.steps);
         band.style.width = percent(ref.len / project.steps);
         band.append(el('span', null, ref.title));
@@ -554,18 +559,28 @@
     nextButton.type = 'button';
     nextButton.setAttribute('aria-label', 'Nächster Part');
 
+    let looping = Boolean(set.loop);
+
+    const loopButton = el('button', 'loop', 'Endlos');
+    loopButton.type = 'button';
+    loopButton.setAttribute('aria-pressed', String(looping));
+    loopButton.addEventListener('click', () => {
+      looping = !looping;
+      loopButton.setAttribute('aria-pressed', String(looping));
+    });
+
     const position = el('div', 'position');
     position.setAttribute('role', 'timer');
     const partOut = el('b', null, '1');
     const barOut = el('b', null, '1');
-    position.append(document.createTextNode('Part '), partOut, document.createTextNode('/' + parts.length + ' Bar '), barOut);
+    position.append(document.createTextNode((set.album ? 'Song ' : 'Part ')), partOut, document.createTextNode('/' + parts.length + ' Bar '), barOut);
 
     const bpmOut = el('b', null, String(Number(parts[0].bpm.toFixed(1))));
     const tempo = el('span', 'tempo');
     tempo.append(bpmOut, document.createTextNode(' BPM'));
 
     const transport = el('div', 'transport');
-    transport.append(playButton, prevButton, nextButton, position, tempo);
+    transport.append(playButton, prevButton, nextButton, loopButton, position, tempo);
     root.replaceChildren(transport);
 
     function renderState() {
@@ -638,7 +653,7 @@
 
       while (nextTime - ctx.currentTime < LOOKAHEAD) {
         if (nextIndex >= parts.length) {
-          if (!set.loop) break;
+          if (!looping) break;
           nextIndex = 0;
         }
 
@@ -646,7 +661,7 @@
         nextIndex++;
       }
 
-      if (!set.loop && nextIndex >= parts.length && ctx.currentTime > nextTime) stop();
+      if (!looping && nextIndex >= parts.length && ctx.currentTime > nextTime) stop();
     }
 
     async function play(from = 0) {

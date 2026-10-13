@@ -56,13 +56,13 @@ final class Library
 
             if ($fileKind === 'set') {
                 $kind = 'set';
-                $data = $this->sets->parse($source, $file['slug'], $resolve);
+                $data = $this->sets->parse($source, basename($file['slug']), $resolve);
             } elseif ($fileKind === 'layer') {
                 $kind = 'project';
-                $data = $this->projects->parseLayer($source, $file['slug'], $resolve, $file['prefix']);
+                $data = $this->projects->parseLayer($source, basename($file['slug']), $resolve, $file['prefix']);
             } else {
                 $kind = 'project';
-                $data = $this->projects->parse($source, $file['slug'], $resolve, $file['prefix']);
+                $data = $this->projects->parse($source, basename($file['slug']), $resolve, $file['prefix']);
             }
         } catch (BuildError $error) {
             $this->failed[$key] = $error->getMessage();

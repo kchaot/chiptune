@@ -68,7 +68,7 @@ final class SetParser
             $ref = trim((string) $chunk->name);
             $where = 'Part ' . ($index + 1) . " („{$ref}“)";
 
-            if (preg_match('/^([a-z0-9][a-z0-9-]*)\/([a-z0-9][a-z0-9-]*)$/', $ref, $m) !== 1) {
+            if (preg_match('/^([a-z0-9][a-z0-9-]*)\/([a-z0-9][a-z0-9-]*(?:\/[a-z0-9][a-z0-9-]*)?)$/', $ref, $m) !== 1) {
                 throw new BuildError("{$where}: Der Marker muss die Form <!-- part: prefix/slug --> haben.");
             }
 

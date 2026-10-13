@@ -39,12 +39,14 @@ final class Renderer
                 : '<span class="author">von <a href="' . $this->url($entry['prefix'] . '/') . '">' . $this->e($this->authorTitle($entry['prefix'])) . '</a></span>';
             $tags = implode('', array_map(fn (string $tag): string => '<li>' . $this->e($tag) . '</li>', $project['tags']));
             $tags = $tags === '' ? '' : '<ul class="tags">' . $tags . '</ul>';
-            if (($entry['kind'] ?? 'project') === 'set') {
+            if (in_array($entry['kind'] ?? 'project', ['set', 'album'], true)) {
+                $isAlbum = $entry['kind'] === 'album';
                 $parts = count($project['parts']);
                 $length = $this->duration($project['duration']);
-                $facts = "<span><b>{$parts}</b> Parts</span> <span><b>{$length}</b> Länge</span>";
+                $noun = $isAlbum ? ($parts === 1 ? 'Song' : 'Songs') : ($parts === 1 ? 'Part' : 'Parts');
+                $facts = "<span><b>{$parts}</b> {$noun}</span> <span><b>{$length}</b> Länge</span>";
                 $thumbnail = $this->setThumbnail($project);
-                $badge = '<span class="badge">Set</span> ';
+                $badge = '<span class="badge">' . ($isAlbum ? 'Album' : 'Set') . '</span> ';
             } else {
                 $bpm = $this->number($project['bpm']);
                 $bars = $this->number($project['bars']);
@@ -87,12 +89,12 @@ HTML;
             $name = $this->e((string) ($author['author'] ?? ''));
             $url = (string) ($author['url'] ?? '');
             $link = $url === '' ? '' : '<a href="' . $this->e($url) . '" rel="noopener noreferrer">' . $this->e(preg_replace('~^https?://~', '', $url)) . '</a>';
-            $lead = $name !== '' && $link !== '' ? "{$name} · {$link}" : $name . $link;
+            $lead = $name !== '' && $link !== '' ? "{$name} | {$link}" : $name . $link;
             $title = $author['title'] . ' – ' . $this->site['title'];
             $tagline = $author['tagline'] ?? '';
             $label = $tagline === '' ? '' : '<p class="tagline">' . $this->e($tagline) . '</p>';
             $profile = $author['html'] ?? '';
-            $sections = $profile === '' ? '' : "\n    <section class=\"profile panel\"><div class=\"panel-inner\"><div class=\"notes\">{$profile}</div></div></section>";
+            $sections = $profile === '' ? '' : "\n    <section class=\"profile aside\"><div class=\"notes\">{$profile}</div></section>";
             $command = 'ls .';
         }
 
@@ -128,8 +130,13 @@ HTML);
             $prefix = (string) $prefix;
             $own = array_filter($entries, fn (array $entry): bool => $entry['prefix'] === $prefix);
             $sets = count(array_filter($own, fn (array $entry): bool => $entry['kind'] === 'set'));
-            $projects = count($own) - $sets;
+            $albums = count(array_filter($own, fn (array $entry): bool => $entry['kind'] === 'album'));
+            $projects = count($own) - $sets - $albums;
             $facts = '<span><b>' . $projects . '</b> ' . ($projects === 1 ? 'Project' : 'Projects') . '</span>';
+
+            if ($albums > 0) {
+                $facts .= ' <span><b>' . $albums . '</b> ' . ($albums === 1 ? 'Album' : 'Alben') . '</span>';
+            }
 
             if ($sets > 0) {
                 $facts .= ' <span><b>' . $sets . '</b> ' . ($sets === 1 ? 'Set' : 'Sets') . '</span>';
@@ -201,9 +208,16 @@ HTML;
         $path = '';
 
         if ($prefix !== null) {
-            $path = $linkPrefix
-                ? '<a class="p-path" href="' . $this->url($prefix . '/') . '">' . $this->e('/' . $prefix) . '</a>'
-                : '<span class="p-path">' . $this->e('/' . $prefix) . '</span>';
+            $segments = explode('/', $prefix);
+            $walked = '';
+
+            foreach ($segments as $index => $segment) {
+                $walked .= ($walked === '' ? '' : '/') . $segment;
+                $last = $index === count($segments) - 1;
+                $path .= $linkPrefix || ! $last
+                    ? '<a class="p-path" href="' . $this->url($walked . '/') . '">' . $this->e('/' . $segment) . '</a>'
+                    : '<span class="p-path">' . $this->e('/' . $segment) . '</span>';
+            }
         }
 
         return '<header class="pagehead"><nav class="prompt" aria-label="Brotkrümel">' . $hostHtml . $path
@@ -269,7 +283,7 @@ HTML;
             );
         }
 
-        return '<section class="layers"><h2 class="label">Layer</h2><ol>' . $items . "\n    </ol></section>";
+        return '<section class="layers"><h2 class="sub">Layer</h2><ol>' . $items . "\n    </ol></section>";
     }
 
     /** @param array{prefix: string, slug: string, project: array<string, mixed>} $entry */
@@ -280,9 +294,10 @@ HTML;
         $artist = $this->artistLine($project['artist'], $entry['prefix'], 'p');
         $tags = implode('', array_map(fn (string $tag): string => '<li>' . $this->e($tag) . '</li>', $project['tags']));
         $tags = $tags === '' ? '' : '<ul class="tags">' . $tags . '</ul>';
-        $notes = $project['notesHtml'] === '' ? '' : '<section class="project-notes panel"><div class="panel-inner"><div class="notes">' . $project['notesHtml'] . '</div></div></section>';
-        $head = $this->head($entry['prefix'], 'play ' . $entry['slug']);
+        $notes = $project['notesHtml'] === '' ? '' : '<section class="aside wide"><div class="notes">' . $project['notesHtml'] . '</div></section>';
+        $head = $this->head($entry['prefix'] . ($entry['album'] !== null ? '/' . $entry['album'] : ''), 'play ' . basename($entry['slug']));
         $credits = $this->credits($project['credits'] ?? []);
+        $albumNav = $this->albumNav($entry['nav'] ?? null, $entry['prefix']);
         $thumbnail = $this->thumbnail($project);
 
         $payload = json_encode([
@@ -330,6 +345,7 @@ HTML;
         <p>Zum Abspielen braucht diese Seite JavaScript.</p>
       </noscript>
     </div>
+    {$albumNav}
     {$layersPanel}
     {$trackNotes}
     {$notes}
@@ -381,6 +397,26 @@ HTML, withScript: true);
     /**
      * @param list<array{prefix: string, slug: string, title: string}> $credits
      */
+    /**
+     * @param array{album: array{slug: string, title: string}, number: int, total: int, prev: array{slug: string, title: string}|null, next: array{slug: string, title: string}|null}|null $nav
+     */
+    private function albumNav(?array $nav, string $prefix): string
+    {
+        if ($nav === null) {
+            return '';
+        }
+
+        $link = fn (?array $target, string $class, string $label): string => $target === null
+            ? '<span class="' . $class . ' off"></span>'
+            : '<a class="' . $class . '" href="' . $this->url($prefix . '/' . $target['slug'] . '/') . '" rel="' . ($class === 'prev' ? 'prev' : 'next') . '">' . $label . ' <b>' . $this->e($target['title']) . '</b></a>';
+
+        return '<nav class="album-nav" aria-label="Album">'
+            . $link($nav['prev'], 'prev', '←')
+            . '<a class="where" href="' . $this->url($prefix . '/' . $nav['album']['slug'] . '/') . '">' . $this->e($nav['album']['title']) . ' | ' . $nav['number'] . ' von ' . $nav['total'] . '</a>'
+            . $link($nav['next'], 'next', '→')
+            . '</nav>';
+    }
+
     private function credits(array $credits): string
     {
         if ($credits === []) {
@@ -401,15 +437,21 @@ HTML, withScript: true);
     public function set(array $entry): string
     {
         $set = $entry['project'];
+        $isAlbum = $entry['kind'] === 'album';
         $title = $this->e($set['title']);
         $artist = $this->artistLine($set['artist'], $entry['prefix'], 'p');
         $tags = implode('', array_map(fn (string $tag): string => '<li>' . $this->e($tag) . '</li>', $set['tags']));
         $tags = $tags === '' ? '' : '<ul class="tags">' . $tags . '</ul>';
-        $notes = $set['notesHtml'] === '' ? '' : '<section class="project-notes panel"><div class="panel-inner"><div class="notes">' . $set['notesHtml'] . '</div></div></section>';
-        $head = $this->head($entry['prefix'], 'play ' . $entry['slug']);
+        $notes = $set['notesHtml'] === '' ? '' : ('<section class="aside' . ($isAlbum ? '' : ' wide') . '"><div class="notes">' . $set['notesHtml'] . '</div></section>');
+        $head = $isAlbum ? $this->head($entry['prefix'], 'ls ' . $entry['slug']) : $this->head($entry['prefix'], 'play ' . basename($entry['slug']));
+        $badge = $isAlbum ? 'Album' : 'Set';
+        $source = $isAlbum ? '' : '<p class="source"><a href="source.md">Quelltext dieses Sets</a></p>';
+        $introNotes = $isAlbum ? $notes : '';
+        $closingNotes = $isAlbum ? '' : $notes;
 
         $payload = json_encode([
             'title' => $set['title'],
+            'album' => $entry['kind'] === 'album',
             'loop' => $set['loop'],
             'parts' => array_map(fn (array $part): array => [
                 'title' => $part['title'],
@@ -468,17 +510,18 @@ HTML;
   {$head}
   <main>
     <div class="heading">
-      <h1><span class="badge">Set</span> {$title}</h1>
+      <h1><span class="badge">{$badge}</span> {$title}</h1>
       {$artist}
       {$tags}
     </div>
+    {$introNotes}
     <div class="daw" id="daw">
       <noscript><p>Zum Abspielen braucht diese Seite JavaScript.</p></noscript>
     </div>
     <ol class="parts">{$items}
     </ol>
-    {$notes}
-    <p class="source"><a href="source.md">Quelltext dieses Sets</a></p>
+    {$closingNotes}
+    {$source}
   </main>
 HTML, withScript: true);
     }
@@ -497,13 +540,13 @@ HTML, withScript: true);
                 "\n      <details class=\"track-note t%d\" id=\"track-%d\"><summary><span class=\"name\">%s</span> <span class=\"instrument\">%s</span></summary><div class=\"notes inner\">%s</div></details>",
                 $index % 8,
                 $index + 1,
-                $this->e(isset($track['group']) ? $track['group']['title'] . ' · ' . $track['name'] : $track['name']),
+                $this->e(isset($track['group']) ? $track['group']['title'] . ' | ' . $track['name'] : $track['name']),
                 $this->e($track['instrument']),
                 $track['notesHtml'],
             );
         }
 
-        return $html === '' ? '' : '<section class="track-notes"><h2 class="label">Tracks</h2>' . $html . "\n    </section>";
+        return $html === '' ? '' : '<section class="track-notes"><h2 class="sub">Zusätzliche Spurinformationen</h2>' . $html . "\n    </section>";
     }
 
     public function notFound(): string

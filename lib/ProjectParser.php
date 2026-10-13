@@ -202,7 +202,7 @@ final class ProjectParser
             $ref = trim((string) $chunk->name);
             $where = 'Layer ' . ($index + 1) . " („{$ref}“)";
 
-            if (preg_match('/^([a-z0-9][a-z0-9-]*)\/([a-z0-9][a-z0-9-]*)$/', $ref, $m) !== 1) {
+            if (preg_match('/^([a-z0-9][a-z0-9-]*)\/([a-z0-9][a-z0-9-]*(?:\/[a-z0-9][a-z0-9-]*)?)$/', $ref, $m) !== 1) {
                 throw new BuildError("{$where}: Der Marker muss die Form <!-- layer: prefix/slug --> haben.");
             }
 
@@ -541,7 +541,7 @@ final class ProjectParser
 
             $from = $clip['from'] ?? null;
 
-            if (! is_string($from) || preg_match('/^([a-z0-9][a-z0-9-]*)\/([a-z0-9][a-z0-9-]*)#(.{1,32})$/', trim($from), $m) !== 1) {
+            if (! is_string($from) || preg_match('/^([a-z0-9][a-z0-9-]*)\/([a-z0-9][a-z0-9-]*(?:\/[a-z0-9][a-z0-9-]*)?)#(.{1,32})$/', trim($from), $m) !== 1) {
                 throw new BuildError("{$label}: „from“ muss die Form prefix/slug#track haben.");
             }
 
