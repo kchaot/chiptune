@@ -7,6 +7,7 @@ namespace Chiptune;
 final class Renderer
 {
     private const DRUM_ORDER = ['k', 'c', 's', 'o', 'h'];
+    public const JSON_FLAGS = JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_THROW_ON_ERROR;
 
     /**
      * @param array{title: string, tagline: string, noindex: bool, prompt?: string, outro?: string, base_path?: string, parent?: array{title: string, url: string}|null} $site
@@ -286,21 +287,13 @@ HTML;
         return '<section class="layers"><h2 class="sub">Layer</h2><ol>' . $items . "\n    </ol></section>";
     }
 
-    /** @param array{prefix: string, slug: string, project: array<string, mixed>} $entry */
-    public function project(array $entry): string
+    /**
+     * @param array<string, mixed> $project
+     * @return array<string, mixed>
+     */
+    public function projectPayload(array $project): array
     {
-        $project = $entry['project'];
-        $title = $this->e($project['title']);
-        $artist = $this->artistLine($project['artist'], $entry['prefix'], 'p');
-        $tags = implode('', array_map(fn (string $tag): string => '<li>' . $this->e($tag) . '</li>', $project['tags']));
-        $tags = $tags === '' ? '' : '<ul class="tags">' . $tags . '</ul>';
-        $notes = $project['notesHtml'] === '' ? '' : '<section class="aside wide"><div class="notes">' . $project['notesHtml'] . '</div></section>';
-        $head = $this->head($entry['prefix'] . ($entry['album'] !== null ? '/' . $entry['album'] : ''), 'play ' . basename($entry['slug']));
-        $credits = $this->credits($project['credits'] ?? []);
-        $albumNav = $this->albumNav($entry['nav'] ?? null, $entry['prefix']);
-        $thumbnail = $this->thumbnail($project);
-
-        $payload = json_encode([
+        return [
             'title' => $project['title'],
             'bpm' => $project['bpm'],
             'stepsPerBeat' => $project['stepsPerBeat'],
@@ -324,7 +317,47 @@ HTML;
 
                 return $track + ['notes' => $notes];
             }, $project['tracks']),
-        ], JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_THROW_ON_ERROR);
+        ];
+    }
+
+    /**
+     * @param list<array{id: string, title: string, artist: string, source: string, sourceId: string, album: string, albumId: string, tags: list<string>, bpm: float|int, bars: float|int, href: string, data: string}> $catalog
+     */
+    public function mix(array $catalog): string
+    {
+        $payload = json_encode(['catalog' => $catalog], self::JSON_FLAGS);
+        $head = $this->head(null, 'mix');
+        $title = 'Mixer';
+
+        return $this->page($title . ' – ' . $this->site['title'], 'project-page mix-page', <<<HTML
+  <script type="application/json" id="mix">{$payload}</script>
+  {$head}
+  <main>
+    <div class="heading">
+      <h1>Mixer</h1>
+    </div>
+    <div class="daw mixer-page" id="daw">
+      <noscript><p class="empty">Der Mix braucht JavaScript.</p></noscript>
+    </div>
+  </main>
+HTML, true, false);
+    }
+
+    /** @param array{prefix: string, slug: string, project: array<string, mixed>} $entry */
+    public function project(array $entry): string
+    {
+        $project = $entry['project'];
+        $title = $this->e($project['title']);
+        $artist = $this->artistLine($project['artist'], $entry['prefix'], 'p');
+        $tags = implode('', array_map(fn (string $tag): string => '<li>' . $this->e($tag) . '</li>', $project['tags']));
+        $tags = $tags === '' ? '' : '<ul class="tags">' . $tags . '</ul>';
+        $notes = $project['notesHtml'] === '' ? '' : '<section class="aside wide"><div class="notes">' . $project['notesHtml'] . '</div></section>';
+        $head = $this->head($entry['prefix'] . ($entry['album'] !== null ? '/' . $entry['album'] : ''), 'play ' . basename($entry['slug']));
+        $credits = $this->credits($project['credits'] ?? []);
+        $albumNav = $this->albumNav($entry['nav'] ?? null, $entry['prefix']);
+        $thumbnail = $this->thumbnail($project);
+
+        $payload = json_encode($this->projectPayload($project), self::JSON_FLAGS);
 
         $trackNotes = $this->trackNotes($project['tracks']);
         $layersPanel = $this->layersPanel($project);
@@ -627,7 +660,7 @@ HTML);
         return sprintf('<rect x="%d" y="%s" width="%d" height="%s"/>', $x, $this->number($y, 2), $width, $this->number($height, 2));
     }
 
-    private function page(string $title, string $bodyClass, string $body, bool $withScript = false): string
+    private function page(string $title, string $bodyClass, string $body, bool $withScript = false, bool $mixLink = true): string
     {
         $title = $this->e($title);
         $css = $this->e($this->assets['css']['url']);
@@ -637,7 +670,7 @@ HTML);
             ? "\n  <script src=\"" . $this->e($this->assets['js']['url']) . '" integrity="' . $this->e($this->assets['js']['integrity']) . '"' . $this->crossorigin($this->assets['js']['url']) . ' defer></script>'
             : '';
         $cssCross = $this->crossorigin($this->assets['css']['url']);
-        $footer = $this->footer();
+        $footer = $this->footer($mixLink);
 
         return <<<HTML
 <!DOCTYPE html>
@@ -662,7 +695,7 @@ HTML;
         return str_starts_with($url, 'https://') ? ' crossorigin="anonymous"' : '';
     }
 
-    private function footer(): string
+    private function footer(bool $mixLink = true): string
     {
         $links = array_map(
             fn (array $page): string => '<a href="' . $this->url('#' . $page['slug']) . '">' . $this->e($page['title']) . '</a>',
@@ -677,11 +710,15 @@ HTML;
 
         $outro = $this->site['outro'] ?? '';
 
-        if ($links === [] && $outro === '') {
+        $mix = $mixLink
+            ? '<a class="mix-link" href="' . $this->url('+mixer/') . '" title="Mixer: zwei Decks, Crossfader und Effekte" aria-label="Mixer: zwei Decks, Crossfader und Effekte"><b>+</b>Mixer</a>'
+            : '';
+
+        if ($links === [] && $outro === '' && $mix === '') {
             return '';
         }
 
-        $nav = $links === [] ? '' : '<nav aria-label="Informationen">' . implode(' ', $links) . '</nav>';
+        $nav = $links === [] && $mix === '' ? '' : '<nav aria-label="Informationen">' . implode(' ', $links) . $mix . '</nav>';
         $outro = $outro === '' ? '' : '<div class="outro">' . $this->e($outro) . '</div>';
 
         return "\n  <footer class=\"footer\">{$nav}{$outro}</footer>";
