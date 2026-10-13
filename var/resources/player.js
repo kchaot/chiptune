@@ -17,7 +17,9 @@
   let noise = null;
   let rate = 1;
 
-  const fx = { low: 0, mid: 0, high: 0, filter: 0 };
+  const fx = { low: 0, mid: 0, high: 0, filter: 0, echo: false, beat: 0.5 };
+  const kill = { low: false, mid: false, high: false };
+  const hold = { loopBars: 0, roll: 0, version: 0 };
   let fxNodes = null;
 
   function el(tag, className, text) {
@@ -46,68 +48,109 @@
     return track.instrument;
   }
 
-  function tempoControl(onChange) {
-    const slider = el('input');
-    slider.type = 'range';
-    slider.min = '-16';
-    slider.max = '16';
-    slider.step = '0.1';
-    slider.value = '0';
-    slider.setAttribute('aria-label', 'Tempo anpassen, in Prozent');
-
-    const out = el('b', null, '±0.0 %');
-    const reset = el('button', 'skip', '1:1');
-    reset.type = 'button';
-    reset.setAttribute('aria-label', 'Tempo zurücksetzen');
-
-    function apply() {
-      const value = Number(slider.value);
-      rate = 1 + value / 100;
-      out.textContent = (value > 0 ? '+' : value < 0 ? '\u2212' : '\u00b1') + Math.abs(value).toFixed(1) + ' %';
-      onChange();
-    }
-
-    slider.addEventListener('input', apply);
-    reset.addEventListener('click', () => {
-      slider.value = '0';
-      apply();
-    });
-
-    const box = el('div', 'pitch');
-    box.append(el('span', 'pitch-name', 'Tempo'), slider, out, reset);
-
-    return box;
+  function signed(value, digits) {
+    return (value > 0 ? '+' : value < 0 ? '\u2212' : '\u00b1') + Math.abs(value).toFixed(digits);
   }
 
-  const MIXER = [
-    { key: 'low', name: 'Tief', min: -12, max: 12, step: 0.5 },
-    { key: 'mid', name: 'Mitte', min: -12, max: 12, step: 0.5 },
-    { key: 'high', name: 'Hoch', min: -12, max: 12, step: 0.5 },
+  const KNOBS = [
+    { key: 'low', name: 'Tief', min: -12, max: 12, step: 0.5, kill: true },
+    { key: 'mid', name: 'Mitte', min: -12, max: 12, step: 0.5, kill: true },
+    { key: 'high', name: 'Hoch', min: -12, max: 12, step: 0.5, kill: true },
     { key: 'filter', name: 'Filter', min: -100, max: 100, step: 1 },
   ];
 
-  function mixerText(key, value) {
+  function knobText(key, value) {
     if (key === 'filter') {
       if (value === 0) return 'aus';
       return (value < 0 ? 'Tiefpass ' : 'Hochpass ') + Math.abs(value) + ' %';
     }
 
-    return (value > 0 ? '+' : value < 0 ? '\u2212' : '\u00b1') + Math.abs(value).toFixed(1) + ' dB';
+    return signed(value, 1) + ' dB';
   }
 
-  // EQ und DJ-Filter für den ganzen Mix. Doppelklick auf einen Regler setzt ihn zurück.
-  function mixerControl() {
-    const box = el('div', 'mixer');
-    const sliders = [];
+  function pressButton(label, aria) {
+    const button = el('button', 'skip', label);
+    button.type = 'button';
+    button.setAttribute('aria-pressed', 'false');
+    if (aria) button.setAttribute('aria-label', aria);
+    return button;
+  }
 
-    function show(entry, slider, out) {
-      const value = Number(slider.value);
-      out.textContent = mixerText(entry.key, value);
-      fx[entry.key] = entry.key === 'filter' ? value / 100 : value;
-      applyFx(false);
+  function deskControl(onTempo) {
+    const desk = el('details', 'desk');
+    const summary = el('summary');
+    const state = el('span', 'desk-state');
+    summary.append(el('span', null, 'Pult'), state);
+    desk.append(summary);
+
+    try {
+      desk.open = localStorage.getItem('chiptune-desk') === 'open';
+    } catch (error) {
+      //
     }
 
-    MIXER.forEach(entry => {
+    desk.addEventListener('toggle', () => {
+      try {
+        localStorage.setItem('chiptune-desk', desk.open ? 'open' : 'closed');
+      } catch (error) {
+        //
+      }
+    });
+
+    const body = el('div', 'desk-body');
+    const refreshers = [];
+
+    function refresh() {
+      const active = rate !== 1 || fx.low || fx.mid || fx.high || fx.filter || fx.echo || kill.low || kill.mid || kill.high;
+      state.textContent = active ? 'aktiv' : '';
+      refreshers.forEach(fn => fn());
+    }
+
+    const tempoRow = el('div', 'pitch');
+    const tempoSlider = el('input');
+    tempoSlider.type = 'range';
+    tempoSlider.min = '-16';
+    tempoSlider.max = '16';
+    tempoSlider.step = '0.1';
+    tempoSlider.value = '0';
+    tempoSlider.setAttribute('aria-label', 'Tempo anpassen, in Prozent');
+    const tempoOut = el('b', null, '\u00b10.0 %');
+    const tempoReset = el('button', 'skip', '1:1');
+    tempoReset.type = 'button';
+    tempoReset.setAttribute('aria-label', 'Tempo zurücksetzen');
+
+    function applyTempo() {
+      const value = Number(tempoSlider.value);
+      rate = 1 + value / 100;
+      tempoOut.textContent = signed(value, 1) + ' %';
+      onTempo();
+      refresh();
+    }
+
+    tempoSlider.addEventListener('input', applyTempo);
+    tempoSlider.addEventListener('dblclick', () => {
+      tempoSlider.value = '0';
+      applyTempo();
+    });
+    tempoReset.addEventListener('click', () => {
+      tempoSlider.value = '0';
+      applyTempo();
+    });
+    tempoRow.append(el('span', 'pitch-name', 'Tempo'), tempoSlider, tempoOut, tempoReset);
+    body.append(tempoRow);
+
+    const mixer = el('div', 'mixer');
+    const sliders = [];
+
+    function showKnob(entry, slider, out) {
+      const value = Number(slider.value);
+      out.textContent = knobText(entry.key, value);
+      fx[entry.key] = entry.key === 'filter' ? value / 100 : value;
+      applyFx(false);
+      refresh();
+    }
+
+    KNOBS.forEach(entry => {
       const slider = el('input');
       slider.type = 'range';
       slider.min = String(entry.min);
@@ -116,29 +159,121 @@
       slider.value = '0';
       slider.setAttribute('aria-label', entry.name + (entry.key === 'filter' ? ' (links Tiefpass, rechts Hochpass)' : ' in dB'));
 
-      const out = el('b', null, mixerText(entry.key, 0));
-      slider.addEventListener('input', () => show(entry, slider, out));
+      const out = el('b', null, knobText(entry.key, 0));
+      slider.addEventListener('input', () => showKnob(entry, slider, out));
       slider.addEventListener('dblclick', () => {
         slider.value = '0';
-        show(entry, slider, out);
+        showKnob(entry, slider, out);
       });
 
-      const group = el('label', 'knob');
+      const group = el('div', 'knob');
       group.append(el('span', 'pitch-name', entry.name), slider, out);
-      box.append(group);
+
+      if (entry.kill) {
+        const button = pressButton('Kill', entry.name + ' wegnehmen');
+        button.addEventListener('click', () => {
+          kill[entry.key] = !kill[entry.key];
+          button.setAttribute('aria-pressed', String(kill[entry.key]));
+          applyFx(false);
+          refresh();
+        });
+        refreshers.push(() => button.setAttribute('aria-pressed', String(kill[entry.key])));
+        group.append(button);
+      }
+
+      mixer.append(group);
       sliders.push([entry, slider, out]);
     });
 
-    const reset = el('button', 'skip', 'Reset');
-    reset.type = 'button';
-    reset.setAttribute('aria-label', 'EQ und Filter zurücksetzen');
-    reset.addEventListener('click', () => sliders.forEach(([entry, slider, out]) => {
-      slider.value = '0';
-      show(entry, slider, out);
-    }));
-    box.append(reset);
+    body.append(mixer);
 
-    return box;
+    const effects = el('div', 'effects');
+
+    function group(name) {
+      const box = el('div', 'effect');
+      box.append(el('span', 'pitch-name', name));
+      effects.append(box);
+      return box;
+    }
+
+    const loopBox = group('Loop');
+    const loopButtons = [1, 2, 4].map(bars => {
+      const button = pressButton(String(bars), 'Loop ' + bars + (bars === 1 ? ' Takt' : ' Takte'));
+      button.addEventListener('click', () => {
+        hold.loopBars = hold.loopBars === bars ? 0 : bars;
+        hold.version++;
+        loopButtons.forEach((other, index) => other.setAttribute('aria-pressed', String(hold.loopBars === [1, 2, 4][index])));
+      });
+      loopBox.append(button);
+      return button;
+    });
+
+    const rollBox = group('Roll');
+    [[1, '1/1'], [0.5, '1/2'], [0.25, '1/4']].forEach(([fraction, label]) => {
+      const button = pressButton(label, 'Roll ' + label + ' Beat, solange gedrückt');
+      const release = () => {
+        if (hold.roll === fraction) {
+          hold.roll = 0;
+          hold.version++;
+          button.setAttribute('aria-pressed', 'false');
+        }
+      };
+      const press = () => {
+        hold.roll = fraction;
+        hold.version++;
+        button.setAttribute('aria-pressed', 'true');
+      };
+
+      button.addEventListener('pointerdown', press);
+      ['pointerup', 'pointerleave', 'pointercancel', 'blur'].forEach(name => button.addEventListener(name, release));
+      button.addEventListener('keydown', event => {
+        if ((event.key === ' ' || event.key === 'Enter') && !event.repeat) {
+          event.preventDefault();
+          press();
+        }
+      });
+      button.addEventListener('keyup', event => {
+        if (event.key === ' ' || event.key === 'Enter') release();
+      });
+      rollBox.append(button);
+    });
+
+    const echoBox = group('Echo');
+    const echoButton = pressButton('Echo');
+    echoButton.addEventListener('click', () => {
+      fx.echo = !fx.echo;
+      echoButton.setAttribute('aria-pressed', String(fx.echo));
+      applyFx(false);
+      refresh();
+    });
+    echoBox.append(echoButton);
+
+    const resetButton = el('button', 'skip', 'Reset');
+    resetButton.type = 'button';
+    resetButton.setAttribute('aria-label', 'Pult zurücksetzen');
+    resetButton.addEventListener('click', () => {
+      sliders.forEach(([entry, slider, out]) => {
+        slider.value = '0';
+        out.textContent = knobText(entry.key, 0);
+        fx[entry.key] = 0;
+      });
+      kill.low = kill.mid = kill.high = false;
+      fx.echo = false;
+      echoButton.setAttribute('aria-pressed', 'false');
+      hold.loopBars = 0;
+      hold.roll = 0;
+      hold.version++;
+      loopButtons.forEach(button => button.setAttribute('aria-pressed', 'false'));
+      tempoSlider.value = '0';
+      applyFx(false);
+      applyTempo();
+    });
+    effects.append(resetButton);
+    body.append(effects);
+    desk.append(body);
+    refresh();
+
+    return desk;
   }
 
   function bpmText(bpm) {
@@ -174,6 +309,22 @@
     limiter.attack.value = 0.003;
     limiter.release.value = 0.1;
 
+    const delay = ctx.createDelay(2);
+    const feedback = ctx.createGain();
+    feedback.gain.value = 0.4;
+    const damp = ctx.createBiquadFilter();
+    damp.type = 'lowpass';
+    damp.frequency.value = 3200;
+    const wet = ctx.createGain();
+    wet.gain.value = 0;
+
+    master.connect(delay);
+    delay.connect(damp);
+    damp.connect(feedback);
+    feedback.connect(delay);
+    delay.connect(wet);
+    wet.connect(low);
+
     master.connect(low);
     low.connect(mid);
     mid.connect(high);
@@ -181,7 +332,7 @@
     sweep.connect(limiter);
     limiter.connect(ctx.destination);
 
-    fxNodes = { low, mid, high, sweep };
+    fxNodes = { low, mid, high, sweep, delay, wet };
     applyFx(true);
 
     noise = ctx.createBuffer(1, ctx.sampleRate, ctx.sampleRate);
@@ -197,6 +348,25 @@
     fxNodes = null;
   }
 
+  function applyEchoTime() {
+    if (!ctx || !fxNodes) return;
+    fxNodes.delay.delayTime.setTargetAtTime(Math.min(1.9, fx.beat * 0.75), ctx.currentTime, 0.05);
+  }
+
+  function holdRegion(latch, pointer, limit, stepsPerBar, stepsPerBeat) {
+    const length = hold.roll
+      ? Math.max(1, Math.round(stepsPerBeat * hold.roll))
+      : hold.loopBars * stepsPerBar;
+
+    if (!length) return null;
+
+    if (latch && latch.version === hold.version) return latch;
+
+    const start = Math.floor(Math.min(pointer, limit - 1) / length) * length;
+
+    return { version: hold.version, start, end: Math.min(start + length, limit) };
+  }
+
   function applyFx(instant) {
     if (!ctx || !fxNodes) return;
 
@@ -206,9 +376,11 @@
       else param.setTargetAtTime(value, now, 0.02);
     };
 
-    set(fxNodes.low.gain, fx.low);
-    set(fxNodes.mid.gain, fx.mid);
-    set(fxNodes.high.gain, fx.high);
+    set(fxNodes.low.gain, kill.low ? -40 : fx.low);
+    set(fxNodes.mid.gain, kill.mid ? -40 : fx.mid);
+    set(fxNodes.high.gain, kill.high ? -40 : fx.high);
+    set(fxNodes.wet.gain, fx.echo ? 0.45 : 0);
+    applyEchoTime();
 
     const amount = fx.filter;
     const sweep = fxNodes.sweep;
@@ -337,6 +509,7 @@
     let nextStep = 0;
     let ended = false;
     let marks = [];
+    let latch = null;
     let playing = false;
     let starting = false;
 
@@ -359,9 +532,11 @@
     tempo.append(bpmOut, document.createTextNode(' BPM'));
 
     const transport = el('div', 'transport');
-    transport.append(playButton, position, tempo, tempoControl(() => {
+    transport.append(playButton, position, tempo);
+
+    const desk = deskControl(() => {
       bpmOut.textContent = bpmText(project.bpm);
-    }));
+    });
 
     const byStep = Array.from({ length: project.steps }, () => []);
     tracks.forEach((track, index) => track.events.forEach(event => byStep[event.t] && byStep[event.t].push([index, event])));
@@ -509,7 +684,7 @@
     layer.append(playhead);
     arrangement.append(layer);
 
-    root.replaceChildren(transport, mixerControl(), arrangement);
+    root.replaceChildren(transport, desk, arrangement);
     applyMix();
 
     function formatBpm(value) {
@@ -616,6 +791,10 @@
       if (!ctx) return;
 
       while (!ended && nextTime - ctx.currentTime < LOOKAHEAD) {
+        latch = holdRegion(latch, nextStep, project.steps, project.stepsPerBar, project.stepsPerBeat);
+
+        if (latch && nextStep >= latch.end) nextStep = latch.start;
+
         if (nextStep >= project.steps) {
           if (!project.loop) {
             ended = true;
@@ -626,6 +805,7 @@
         }
 
         const dur = project.stepSeconds / rate;
+        fx.beat = dur * project.stepsPerBeat;
 
         byStep[nextStep].forEach(([index, event]) => {
           const voice = tracks[index].instrument === 'drums' ? drum : tone;
@@ -636,6 +816,8 @@
         nextTime += dur;
         nextStep++;
       }
+
+      applyEchoTime();
 
       if (ended && ctx.currentTime > nextTime) stop();
     }
@@ -652,6 +834,7 @@
       applyMix();
 
       marks = [];
+      latch = null;
       ended = false;
       nextStep = 0;
       nextTime = ctx.currentTime + 0.1;
@@ -715,6 +898,7 @@
     let nextRepeat = 0;
     let nextStep = 0;
     let ended = false;
+    let latch = null;
     let current = 0;
     let playing = false;
     let starting = false;
@@ -752,10 +936,12 @@
     tempo.append(bpmOut, document.createTextNode(' BPM'));
 
     const transport = el('div', 'transport');
-    transport.append(playButton, prevButton, nextButton, loopButton, position, tempo, tempoControl(() => {
+    transport.append(playButton, prevButton, nextButton, loopButton, position, tempo);
+
+    const desk = deskControl(() => {
       bpmOut.textContent = bpmText(parts[current].bpm);
-    }));
-    root.replaceChildren(transport, mixerControl());
+    });
+    root.replaceChildren(transport, desk);
 
     const layout = parts.map(part => {
       const runSteps = part.stop - part.start;
@@ -816,6 +1002,19 @@
       if (!ctx) return;
 
       while (!ended && nextTime - ctx.currentTime < LOOKAHEAD) {
+        if (latch && latch.part !== nextPart) latch = null;
+
+        if (nextPart < parts.length) {
+          const first = parts[nextPart];
+
+          latch = holdRegion(latch, nextStep, layout[nextPart].runSteps, first.stepsPerBar, first.stepsPerBeat);
+
+          if (latch) {
+            latch.part = nextPart;
+            if (nextStep >= latch.end) nextStep = latch.start;
+          }
+        }
+
         if (nextPart >= parts.length) {
           if (!looping) {
             ended = true;
@@ -828,6 +1027,7 @@
         const part = parts[nextPart];
         const info = layout[nextPart];
         const dur = part.stepSeconds / rate;
+        fx.beat = dur * part.stepsPerBeat;
 
         info.byStep[nextStep].forEach(([index, event]) => {
           const voice = part.tracks[index].instrument === 'drums' ? drum : tone;
@@ -849,6 +1049,8 @@
         }
       }
 
+      applyEchoTime();
+
       if (ended && ctx.currentTime > nextTime) stop();
     }
 
@@ -864,6 +1066,7 @@
 
       starting = false;
       marks = [];
+      latch = null;
       ended = false;
       nextPart = from;
       nextRepeat = 0;
