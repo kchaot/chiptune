@@ -155,7 +155,8 @@ main, .pagehead { max-width: 75rem; margin-inline: auto; padding-inline: clamp(1
 
 .aside { max-width: 40rem; margin: 0 0 1.75rem; }
 .aside .notes { color: var(--ink-soft); font-size: 0.9rem; line-height: 1.6; }
-.aside .notes h1, .aside .notes h2, .aside .notes h3 { font-size: 1rem; margin: 0 0 0.5rem; }
+.aside .notes h1, .aside .notes h2, .aside .notes h3 { margin: 1.6rem 0 0.5rem; font-size: 1rem; }
+.aside .notes > :first-child { margin-top: 0; }
 .aside .notes p, .aside .notes ul, .aside .notes ol { margin: 0 0 0.7rem; }
 .aside .notes > :last-child { margin-bottom: 0; }
 .profile { margin-bottom: 2rem; }
