@@ -4,23 +4,36 @@
   const root = document.getElementById('daw');
   const projectData = document.getElementById('project');
   const setData = document.getElementById('set');
+  const mixData = document.getElementById('mix');
 
-  if (!root || !(projectData || setData)) return;
+  if (!root || !(projectData || setData || mixData)) return;
 
   const WAVES = { square: 'square', triangle: 'triangle', saw: 'sawtooth', sine: 'sine' };
   const DRUM_ORDER = ['k', 'c', 's', 'o', 'h'];
   const LOOKAHEAD = 0.6;
+  const MIX_LOOKAHEAD = 0.25;
 
   const pulseCache = new Map();
   let ctx = null;
   let master = null;
   let noise = null;
-  let rate = 1;
 
-  const fx = { low: 0, mid: 0, high: 0, filter: 0, echo: false, beat: 0.5 };
-  const kill = { low: false, mid: false, high: false };
-  const hold = { loopBars: 0, roll: 0, version: 0 };
-  let fxNodes = null;
+  function makeState() {
+    return {
+      rate: 1,
+      nudge: 0, // kurzer Tempo-Schub (Pitch-Bend), nur in den Decks
+      fx: { low: 0, mid: 0, high: 0, filter: 0, echo: false, beat: 0.5 },
+      kill: { low: false, mid: false, high: false },
+      hold: { loopBars: 0, roll: 0, version: 0 },
+      nodes: null,
+    };
+  }
+
+  const S = makeState();
+
+  function speed(st) {
+    return st.rate * (1 + st.nudge);
+  }
 
   function el(tag, className, text) {
     const node = document.createElement(tag);
@@ -76,32 +89,36 @@
     return button;
   }
 
-  function deskControl(onTempo) {
-    const desk = el('details', 'desk');
-    const summary = el('summary');
+  function deskControl(st, onTempo, options = {}) {
+    const fixed = Boolean(options.fixed);
+    const desk = el(fixed ? 'div' : 'details', 'desk' + (fixed ? ' fixed' : ''));
     const state = el('span', 'desk-state');
-    summary.append(el('span', null, 'Pult'), state);
-    desk.append(summary);
 
-    try {
-      desk.open = localStorage.getItem('chiptune-desk') === 'open';
-    } catch (error) {
-      //
-    }
+    if (!fixed) {
+      const summary = el('summary');
+      summary.append(el('span', null, 'Pult'), state);
+      desk.append(summary);
 
-    desk.addEventListener('toggle', () => {
       try {
-        localStorage.setItem('chiptune-desk', desk.open ? 'open' : 'closed');
+        desk.open = localStorage.getItem('chiptune-desk') === 'open';
       } catch (error) {
         //
       }
-    });
+
+      desk.addEventListener('toggle', () => {
+        try {
+          localStorage.setItem('chiptune-desk', desk.open ? 'open' : 'closed');
+        } catch (error) {
+          //
+        }
+      });
+    }
 
     const body = el('div', 'desk-body');
     const refreshers = [];
 
     function refresh() {
-      const active = rate !== 1 || fx.low || fx.mid || fx.high || fx.filter || fx.echo || kill.low || kill.mid || kill.high;
+      const active = st.rate !== 1 || st.fx.low || st.fx.mid || st.fx.high || st.fx.filter || st.fx.echo || st.kill.low || st.kill.mid || st.kill.high;
       state.textContent = active ? 'aktiv' : '';
       refreshers.forEach(fn => fn());
     }
@@ -109,8 +126,9 @@
     const tempoRow = el('div', 'pitch');
     const tempoSlider = el('input');
     tempoSlider.type = 'range';
-    tempoSlider.min = '-16';
-    tempoSlider.max = '16';
+    const range = options.range || 16;
+    tempoSlider.min = String(-range);
+    tempoSlider.max = String(range);
     tempoSlider.step = '0.1';
     tempoSlider.value = '0';
     tempoSlider.setAttribute('aria-label', 'Tempo anpassen, in Prozent');
@@ -119,15 +137,15 @@
     tempoReset.type = 'button';
     tempoReset.setAttribute('aria-label', 'Tempo zurücksetzen');
 
-    function applyTempo() {
+    function applyTempo(user = true) {
       const value = Number(tempoSlider.value);
-      rate = 1 + value / 100;
+      st.rate = 1 + value / 100;
       tempoOut.textContent = signed(value, 1) + ' %';
-      onTempo();
+      onTempo(user);
       refresh();
     }
 
-    tempoSlider.addEventListener('input', applyTempo);
+    tempoSlider.addEventListener('input', () => applyTempo());
     tempoSlider.addEventListener('dblclick', () => {
       tempoSlider.value = '0';
       applyTempo();
@@ -145,8 +163,8 @@
     function showKnob(entry, slider, out) {
       const value = Number(slider.value);
       out.textContent = knobText(entry.key, value);
-      fx[entry.key] = entry.key === 'filter' ? value / 100 : value;
-      applyFx(false);
+      st.fx[entry.key] = entry.key === 'filter' ? value / 100 : value;
+      applyFx(st, false);
       refresh();
     }
 
@@ -172,12 +190,12 @@
       if (entry.kill) {
         const button = pressButton('Kill', entry.name + ' wegnehmen');
         button.addEventListener('click', () => {
-          kill[entry.key] = !kill[entry.key];
-          button.setAttribute('aria-pressed', String(kill[entry.key]));
-          applyFx(false);
+          st.kill[entry.key] = !st.kill[entry.key];
+          button.setAttribute('aria-pressed', String(st.kill[entry.key]));
+          applyFx(st, false);
           refresh();
         });
-        refreshers.push(() => button.setAttribute('aria-pressed', String(kill[entry.key])));
+        refreshers.push(() => button.setAttribute('aria-pressed', String(st.kill[entry.key])));
         group.append(button);
       }
 
@@ -200,9 +218,9 @@
     const loopButtons = [1, 2, 4].map(bars => {
       const button = pressButton(String(bars), 'Loop ' + bars + (bars === 1 ? ' Takt' : ' Takte'));
       button.addEventListener('click', () => {
-        hold.loopBars = hold.loopBars === bars ? 0 : bars;
-        hold.version++;
-        loopButtons.forEach((other, index) => other.setAttribute('aria-pressed', String(hold.loopBars === [1, 2, 4][index])));
+        st.hold.loopBars = st.hold.loopBars === bars ? 0 : bars;
+        st.hold.version++;
+        loopButtons.forEach((other, index) => other.setAttribute('aria-pressed', String(st.hold.loopBars === [1, 2, 4][index])));
       });
       loopBox.append(button);
       return button;
@@ -212,15 +230,15 @@
     [[1, '1/1'], [0.5, '1/2'], [0.25, '1/4']].forEach(([fraction, label]) => {
       const button = pressButton(label, 'Roll ' + label + ' Beat, solange gedrückt');
       const release = () => {
-        if (hold.roll === fraction) {
-          hold.roll = 0;
-          hold.version++;
+        if (st.hold.roll === fraction) {
+          st.hold.roll = 0;
+          st.hold.version++;
           button.setAttribute('aria-pressed', 'false');
         }
       };
       const press = () => {
-        hold.roll = fraction;
-        hold.version++;
+        st.hold.roll = fraction;
+        st.hold.version++;
         button.setAttribute('aria-pressed', 'true');
       };
 
@@ -241,9 +259,9 @@
     const echoBox = group('Echo');
     const echoButton = pressButton('Echo');
     echoButton.addEventListener('click', () => {
-      fx.echo = !fx.echo;
-      echoButton.setAttribute('aria-pressed', String(fx.echo));
-      applyFx(false);
+      st.fx.echo = !st.fx.echo;
+      echoButton.setAttribute('aria-pressed', String(st.fx.echo));
+      applyFx(st, false);
       refresh();
     });
     echoBox.append(echoButton);
@@ -255,17 +273,17 @@
       sliders.forEach(([entry, slider, out]) => {
         slider.value = '0';
         out.textContent = knobText(entry.key, 0);
-        fx[entry.key] = 0;
+        st.fx[entry.key] = 0;
       });
-      kill.low = kill.mid = kill.high = false;
-      fx.echo = false;
+      st.kill.low = st.kill.mid = st.kill.high = false;
+      st.fx.echo = false;
       echoButton.setAttribute('aria-pressed', 'false');
-      hold.loopBars = 0;
-      hold.roll = 0;
-      hold.version++;
+      st.hold.loopBars = 0;
+      st.hold.roll = 0;
+      st.hold.version++;
       loopButtons.forEach(button => button.setAttribute('aria-pressed', 'false'));
       tempoSlider.value = '0';
-      applyFx(false);
+      applyFx(st, false);
       applyTempo();
     });
     effects.append(resetButton);
@@ -273,20 +291,48 @@
     desk.append(body);
     refresh();
 
+    desk.setTempo = (percentValue, exact) => {
+      const clamped = Math.max(-range, Math.min(range, percentValue));
+      tempoSlider.value = String(Math.round(clamped * 10) / 10);
+      applyTempo(false);
+
+      if (exact) {
+        st.rate = 1 + clamped / 100;
+        onTempo(false);
+      }
+
+      return clamped;
+    };
+
     return desk;
   }
 
-  function bpmText(bpm) {
-    return String(Number((bpm * rate).toFixed(1)));
+  function bpmText(bpm, st = S) {
+    return String(Number((bpm * st.rate).toFixed(1)));
   }
 
-  if (setData) mountSet(JSON.parse(setData.textContent));
-  else mountProject(JSON.parse(projectData.textContent));
+  function makeLimiter() {
+    const limiter = ctx.createDynamicsCompressor();
+    limiter.threshold.value = -2;
+    limiter.knee.value = 3;
+    limiter.ratio.value = 20;
+    limiter.attack.value = 0.003;
+    limiter.release.value = 0.1;
 
-  function initAudio() {
-    ctx = new (window.AudioContext || window.webkitAudioContext)();
-    master = ctx.createGain();
-    master.gain.value = 0.8;
+    return limiter;
+  }
+
+  function makeNoise() {
+    noise = ctx.createBuffer(1, ctx.sampleRate, ctx.sampleRate);
+    const samples = noise.getChannelData(0);
+    for (let i = 0; i < samples.length; i++) samples[i] = Math.random() * 2 - 1;
+
+    pulseCache.clear();
+  }
+
+  function buildChannel(st, out) {
+    const input = ctx.createGain();
+    input.gain.value = 0.8;
 
     const low = ctx.createBiquadFilter();
     low.type = 'lowshelf';
@@ -302,12 +348,6 @@
     high.frequency.value = 3500;
 
     const sweep = ctx.createBiquadFilter();
-    const limiter = ctx.createDynamicsCompressor();
-    limiter.threshold.value = -2;
-    limiter.knee.value = 3;
-    limiter.ratio.value = 20;
-    limiter.attack.value = 0.003;
-    limiter.release.value = 0.1;
 
     const delay = ctx.createDelay(2);
     const feedback = ctx.createGain();
@@ -318,42 +358,47 @@
     const wet = ctx.createGain();
     wet.gain.value = 0;
 
-    master.connect(delay);
+    input.connect(delay);
     delay.connect(damp);
     damp.connect(feedback);
     feedback.connect(delay);
     delay.connect(wet);
     wet.connect(low);
 
-    master.connect(low);
+    input.connect(low);
     low.connect(mid);
     mid.connect(high);
     high.connect(sweep);
-    sweep.connect(limiter);
+    sweep.connect(out);
+
+    st.nodes = { low, mid, high, sweep, delay, wet };
+    applyFx(st, true);
+
+    return input;
+  }
+
+  function initAudio() {
+    ctx = new (window.AudioContext || window.webkitAudioContext)();
+    makeNoise();
+
+    const limiter = makeLimiter();
     limiter.connect(ctx.destination);
-
-    fxNodes = { low, mid, high, sweep, delay, wet };
-    applyFx(true);
-
-    noise = ctx.createBuffer(1, ctx.sampleRate, ctx.sampleRate);
-    const samples = noise.getChannelData(0);
-    for (let i = 0; i < samples.length; i++) samples[i] = Math.random() * 2 - 1;
-
-    pulseCache.clear();
+    master = buildChannel(S, limiter);
   }
 
   function closeAudio() {
     if (ctx) ctx.close();
     ctx = null;
-    fxNodes = null;
+    S.nodes = null;
   }
 
-  function applyEchoTime() {
-    if (!ctx || !fxNodes) return;
-    fxNodes.delay.delayTime.setTargetAtTime(Math.min(1.9, fx.beat * 0.75), ctx.currentTime, 0.05);
+  function applyEchoTime(st) {
+    if (!ctx || !st.nodes) return;
+    st.nodes.delay.delayTime.setTargetAtTime(Math.min(1.9, st.fx.beat * 0.75), ctx.currentTime, 0.05);
   }
 
-  function holdRegion(latch, pointer, limit, stepsPerBar, stepsPerBeat) {
+  function holdRegion(st, latch, pointer, limit, stepsPerBar, stepsPerBeat) {
+    const hold = st.hold;
     const length = hold.roll
       ? Math.max(1, Math.round(stepsPerBeat * hold.roll))
       : hold.loopBars * stepsPerBar;
@@ -367,8 +412,8 @@
     return { version: hold.version, start, end: Math.min(start + length, limit) };
   }
 
-  function applyFx(instant) {
-    if (!ctx || !fxNodes) return;
+  function applyFx(st, instant) {
+    if (!ctx || !st.nodes) return;
 
     const now = ctx.currentTime;
     const set = (param, value) => {
@@ -376,23 +421,23 @@
       else param.setTargetAtTime(value, now, 0.02);
     };
 
-    set(fxNodes.low.gain, kill.low ? -40 : fx.low);
-    set(fxNodes.mid.gain, kill.mid ? -40 : fx.mid);
-    set(fxNodes.high.gain, kill.high ? -40 : fx.high);
-    set(fxNodes.wet.gain, fx.echo ? 0.45 : 0);
-    applyEchoTime();
+    set(st.nodes.low.gain, st.kill.low ? -40 : st.fx.low);
+    set(st.nodes.mid.gain, st.kill.mid ? -40 : st.fx.mid);
+    set(st.nodes.high.gain, st.kill.high ? -40 : st.fx.high);
+    set(st.nodes.wet.gain, st.fx.echo ? 0.45 : 0);
+    applyEchoTime(st);
 
-    const amount = fx.filter;
-    const sweep = fxNodes.sweep;
+    const amount = st.fx.filter;
+    const sweep = st.nodes.sweep;
 
     sweep.type = amount > 0 ? 'highpass' : 'lowpass';
     set(sweep.frequency, amount > 0 ? 20 * Math.pow(250, amount) : 20000 * Math.pow(0.0125, -amount));
     set(sweep.Q, amount === 0 ? 0.7 : 2.5);
   }
 
-  function makeBus() {
+  function makeBus(target) {
     const bus = ctx.createGain();
-    bus.connect(master);
+    bus.connect(target);
     return bus;
   }
 
@@ -498,7 +543,8 @@
   }
 
 
-  function mountProject(project) {
+  function projectDeck(project, st, host) {
+    const mixing = Boolean(host.mix);
     const tracks = project.tracks;
     const bars = project.steps / project.stepsPerBar;
 
@@ -512,6 +558,8 @@
     let latch = null;
     let playing = false;
     let starting = false;
+    let resumeStep = 0;
+    let channel = null;
 
     const muted = tracks.map(() => false);
     const soloed = tracks.map(() => false);
@@ -527,16 +575,64 @@
     position.setAttribute('role', 'timer');
     position.append(document.createTextNode('Bar '), barOut, document.createTextNode(' Beat '), beatOut);
 
-    const bpmOut = el('b', null, bpmText(project.bpm));
+    const bpmOut = el('b', null, bpmText(project.bpm, st));
     const tempo = el('span', 'tempo');
     tempo.append(bpmOut, document.createTextNode(' BPM'));
 
     const transport = el('div', 'transport');
     transport.append(playButton, position, tempo);
 
-    const desk = deskControl(() => {
-      bpmOut.textContent = bpmText(project.bpm);
-    });
+    let leds = null;
+    let ledIndex = -1;
+    let beatIndex = -1;
+
+    if (mixing) {
+      const strip = el('div', 'leds');
+      strip.setAttribute('aria-hidden', 'true');
+      leds = Array.from({ length: 16 }, (_, index) => {
+        const node = el('i');
+        node.style.setProperty('--h', String(Math.round((index / 16) * 300)));
+        if (index % 4 === 0) node.classList.add('beat');
+        strip.append(node);
+        return node;
+      });
+      transport.append(strip);
+    }
+
+    function light(step) {
+      if (!leds) return;
+
+      const index = Math.floor(((step % project.stepsPerBar) / project.stepsPerBar) * 16);
+
+      if (index !== ledIndex) {
+        leds.forEach((node, i) => {
+          node.classList.toggle('on', i === index);
+          node.classList.toggle('tail', i === (index + 15) % 16 || i === (index + 14) % 16);
+        });
+        ledIndex = index;
+      }
+
+      const beat = Math.floor(step / project.stepsPerBeat);
+
+      if (beat !== beatIndex) {
+        beatIndex = beat;
+        if (playing && host.beat) host.beat(beat % Math.max(1, Math.round(project.stepsPerBar / project.stepsPerBeat)));
+      }
+    }
+
+    function lightsOff() {
+      if (!leds) return;
+
+      leds.forEach(node => node.classList.remove('on', 'tail'));
+      ledIndex = -1;
+      beatIndex = -1;
+      if (host.beat) host.beat(-1);
+    }
+
+    const desk = deskControl(st, user => {
+      bpmOut.textContent = bpmText(project.bpm, st);
+      if (user && host.tempoChanged) host.tempoChanged(api);
+    }, mixing ? { fixed: true, range: 20 } : {});
 
     const byStep = Array.from({ length: project.steps }, () => []);
     tracks.forEach((track, index) => track.events.forEach(event => byStep[event.t] && byStep[event.t].push([index, event])));
@@ -568,6 +664,17 @@
     const ruler = el('div', 'ruler');
     ruler.append(gridSvg());
     ruler.setAttribute('aria-hidden', 'true');
+
+    if (mixing) {
+      ruler.classList.add('seekable');
+      ruler.title = 'Klick springt zu diesem Takt';
+      ruler.addEventListener('click', event => {
+        const box = ruler.getBoundingClientRect();
+        const bar = Math.floor(((event.clientX - box.left) / box.width) * bars);
+        const within = playing ? currentStep() % project.stepsPerBar : 0;
+        seek(Math.max(0, Math.min(bar, Math.floor(bars) - 1)) * project.stepsPerBar + within);
+      });
+    }
 
     const narrow = typeof window.matchMedia === 'function' && window.matchMedia('(max-width: 44rem)').matches;
     const labelStep = narrow && bars > 8 ? 4 : 1;
@@ -607,7 +714,7 @@
     let currentGroup = null;
 
     tracks.forEach((track, index) => {
-      if (track.group && (!currentGroup || currentGroup.title !== track.group.title || currentGroup.href !== track.group.href)) {
+      if (track.group && !mixing && (!currentGroup || currentGroup.title !== track.group.title || currentGroup.href !== track.group.href)) {
         currentGroup = track.group;
         const header = el('div', 'group-head');
         const link = el('a', null, track.group.title);
@@ -629,7 +736,7 @@
       const label = el('div', 'label-box');
       let nameElement;
 
-      if (track.notes) {
+      if (track.notes && !mixing) {
         nameElement = el('button', 'name has-notes', track.name);
         nameElement.type = 'button';
         nameElement.title = 'Beschreibung anzeigen';
@@ -642,7 +749,7 @@
 
       const refs = track.refs || [];
 
-      if (refs.length > 0 && !track.group) {
+      if (refs.length > 0 && !track.group && !mixing) {
         const titles = [...new Set(refs.map(ref => ref.title))];
         const sources = el('span', 'ref');
         const link = el('a', null, '-> ' + (titles.length === 1 ? titles[0] : titles.length + ' Quellen'));
@@ -684,7 +791,6 @@
     layer.append(playhead);
     arrangement.append(layer);
 
-    root.replaceChildren(transport, desk, arrangement);
     applyMix();
 
     function formatBpm(value) {
@@ -756,15 +862,35 @@
       });
     }
 
-    function renderButton() {
-      playButton.textContent = playing ? 'Stop' : 'Play';
-      playButton.classList.toggle('on', playing);
-      playhead.hidden = !playing;
+    function showStep(step) {
+      light(step);
+      playhead.style.left = percent(step / project.steps);
+      barOut.textContent = String(Math.floor(step / project.stepsPerBar) + 1);
+      beatOut.textContent = String(Math.floor((step % project.stepsPerBar) / project.stepsPerBeat) + 1);
+    }
 
-      if (!playing) {
+    function renderButton() {
+      playButton.textContent = playing ? (mixing ? 'Pause' : 'Stop') : 'Play';
+      playButton.classList.toggle('on', playing);
+      playhead.hidden = !playing && !(mixing && resumeStep > 0);
+
+      if (!playing && !(mixing && resumeStep > 0)) {
         barOut.textContent = '1';
         beatOut.textContent = '1';
       }
+    }
+
+    function currentStep() {
+      if (!ctx || marks.length === 0) return resumeStep;
+
+      const now = ctx.currentTime;
+      let mark = marks[0];
+
+      for (const candidate of marks) {
+        if (candidate.time <= now) mark = candidate;
+      }
+
+      return Math.max(0, Math.min(mark.step + Math.max(0, now - mark.time) / mark.dur, project.steps - 1e-6));
     }
 
     function frame() {
@@ -777,11 +903,7 @@
       const mark = marks[0];
 
       if (mark && now >= mark.time) {
-        const step = Math.min(mark.step + (now - mark.time) / mark.dur, project.steps - 1e-6);
-
-        playhead.style.left = percent(step / project.steps);
-        barOut.textContent = String(Math.floor(step / project.stepsPerBar) + 1);
-        beatOut.textContent = String(Math.floor((step % project.stepsPerBar) / project.stepsPerBeat) + 1);
+        showStep(Math.min(mark.step + (now - mark.time) / mark.dur, project.steps - 1e-6));
       }
 
       frameId = requestAnimationFrame(frame);
@@ -790,8 +912,8 @@
     function tick() {
       if (!ctx) return;
 
-      while (!ended && nextTime - ctx.currentTime < LOOKAHEAD) {
-        latch = holdRegion(latch, nextStep, project.steps, project.stepsPerBar, project.stepsPerBeat);
+      while (!ended && nextTime - ctx.currentTime < (mixing ? MIX_LOOKAHEAD : LOOKAHEAD)) {
+        latch = holdRegion(st, latch, nextStep, project.steps, project.stepsPerBar, project.stepsPerBeat);
 
         if (latch && nextStep >= latch.end) nextStep = latch.start;
 
@@ -804,8 +926,8 @@
           nextStep = 0;
         }
 
-        const dur = project.stepSeconds / rate;
-        fx.beat = dur * project.stepsPerBeat;
+        const dur = project.stepSeconds / speed(st);
+        st.fx.beat = dur * project.stepsPerBeat;
 
         byStep[nextStep].forEach(([index, event]) => {
           const voice = tracks[index].instrument === 'drums' ? drum : tone;
@@ -817,18 +939,18 @@
         nextStep++;
       }
 
-      applyEchoTime();
+      applyEchoTime(st);
 
-      if (ended && ctx.currentTime > nextTime) stop();
+      if (ended && ctx.currentTime > nextTime) stop(false);
     }
 
-    async function play() {
+    async function play(when) {
       if (playing || starting) return;
       starting = true;
 
-      initAudio();
-      buses = tracks.map(makeBus);
-      await ctx.resume();
+      channel = await host.open();
+      const target = channel;
+      buses = tracks.map(() => makeBus(target));
 
       starting = false;
       applyMix();
@@ -836,53 +958,1322 @@
       marks = [];
       latch = null;
       ended = false;
-      nextStep = 0;
-      nextTime = ctx.currentTime + 0.1;
+      nextStep = mixing ? Math.floor(resumeStep) : 0;
+      nextTime = typeof when === 'number' && when > ctx.currentTime ? when : ctx.currentTime + 0.1;
       tick();
 
-      timer = setInterval(tick, 100);
+      timer = setInterval(tick, mixing ? 40 : 100);
       playing = true;
       renderButton();
+      if (host.changed) host.changed();
       frameId = requestAnimationFrame(frame);
+
+      if (mixing && api.auto && typeof when !== 'number' && host.autoStart) host.autoStart(api);
     }
 
-    function stop() {
+    function stop(keep) {
+      if (mixing) resumeStep = keep ? currentStep() : 0;
+
       clearInterval(timer);
       cancelAnimationFrame(frameId);
 
-      closeAudio();
+      if (mixing) {
+        buses.forEach(bus => bus.disconnect());
+      } else {
+        closeAudio();
+      }
+
       buses = [];
       marks = [];
       playing = false;
       renderButton();
+      if (host.changed) host.changed();
+
+      if (mixing) {
+        lightsOff();
+        showStep(resumeStep);
+        lightsOff();
+      }
     }
 
     function toggleTransport() {
-      if (playing) stop();
+      if (playing) stop(true);
       else play();
     }
 
     playButton.addEventListener('click', toggleTransport);
 
-    document.addEventListener('keydown', event => {
-      if (event.ctrlKey || event.metaKey || event.altKey) return;
+    function rewire() {
+      buses.forEach(bus => bus.disconnect());
+      buses = tracks.map(() => makeBus(channel));
+      applyMix();
+      marks = [];
+      latch = null;
+      ended = false;
+    }
 
-      const onBody = event.target === document.body;
+    function seek(step) {
+      const target = Math.max(0, Math.min(Math.floor(step), project.steps - 1));
 
-      if (!onBody && !(event.target instanceof HTMLButtonElement)) return;
-
-      if (event.code === 'Space' && onBody) {
-        event.preventDefault();
-        toggleTransport();
+      if (!playing) {
+        resumeStep = target;
+        renderButton();
+        showStep(target);
         return;
       }
 
-      const number = Number(event.key);
+      rewire();
+      nextStep = target;
+      nextTime = ctx.currentTime + 0.03;
+      tick();
+    }
 
-      if (Number.isInteger(number) && number >= 1 && number <= tracks.length) {
-        toggle(muted, number - 1);
+    function seekBars(delta) {
+      seek(currentStep() + delta * project.stepsPerBar);
+    }
+
+    function positionAt(time) {
+      if (!playing || !ctx || marks.length === 0) return null;
+
+      let mark = marks[0];
+
+      for (const candidate of marks) {
+        if (candidate.time <= time) mark = candidate;
+        else break;
+      }
+
+      return mark.step + (time - mark.time) / mark.dur;
+    }
+
+    function align(other) {
+      if (!playing || !ctx) return false;
+
+      const t0 = ctx.currentTime + 0.06;
+      const theirs = other.positionAt(t0);
+      const mine = positionAt(t0);
+
+      if (theirs === null || mine === null) return false;
+
+      const theirBar = other.project.stepsPerBar;
+      const bar = project.stepsPerBar;
+      const phase = (((theirs % theirBar) + theirBar) % theirBar) / theirBar;
+      const base = Math.floor(mine / bar);
+      let best = null;
+
+      [base - 1, base, base + 1].forEach(index => {
+        const candidate = (index + phase) * bar;
+
+        if (candidate < 0 || candidate >= project.steps - 1) return;
+        if (best === null || Math.abs(candidate - mine) < Math.abs(best - mine)) best = candidate;
+      });
+
+      if (best === null) return false;
+
+      rewire();
+      const first = Math.ceil(best);
+      nextStep = first;
+      nextTime = t0 + (first - best) * (project.stepSeconds / speed(st));
+      tick();
+
+      return true;
+    }
+
+    const api = { transport, desk, arrangement, bpmOut, project, st, toggleTransport, stop, play, seek, seekBars, positionAt, align, auto: false };
+
+    if (mixing) {
+      const controls = el('div', 'deck-controls');
+      const button = (label, aria, onClick) => {
+        const node = el('button', 'skip', label);
+        node.type = 'button';
+        node.setAttribute('aria-label', aria);
+        if (onClick) node.addEventListener('click', onClick);
+        return node;
+      };
+      const row = (...nodes) => {
+        const box = el('div', 'deck-row');
+        box.append(...nodes);
+        return box;
+      };
+
+      const stepsPerBeat = project.stepsPerBeat;
+      const cues = { main: 0, hot: [null, null, null, null] };
+      const storeKey = host.key ? 'chiptune-cues:' + host.key : '';
+
+      try {
+        const saved = storeKey ? JSON.parse(localStorage.getItem(storeKey) || 'null') : null;
+
+        if (saved && Number.isFinite(saved.main) && Array.isArray(saved.hot)) {
+          cues.main = Math.max(0, Math.min(saved.main, project.steps - 1));
+          cues.hot = [0, 1, 2, 3].map(index => (Number.isFinite(saved.hot[index]) && saved.hot[index] < project.steps ? saved.hot[index] : null));
+        }
+      } catch (error) {
+        //
+      }
+
+      function saveCues() {
+        try {
+          if (storeKey) localStorage.setItem(storeKey, JSON.stringify(cues));
+        } catch (error) {
+          //
+        }
+      }
+
+      const marksLayer = [];
+
+      function snap() {
+        const step = Math.round(currentStep() / stepsPerBeat) * stepsPerBeat;
+
+        return Math.max(0, Math.min(step, project.steps - 1));
+      }
+
+      function where(step) {
+        return 'Bar ' + (Math.floor(step / project.stepsPerBar) + 1) + ' Beat ' + (Math.floor((step % project.stepsPerBar) / stepsPerBeat) + 1);
+      }
+
+      const hotButtons = [0, 1, 2, 3].map(index => {
+        const node = button(String(index + 1), 'Hot-Cue ' + (index + 1), () => {
+          if (cues.hot[index] === null) cues.hot[index] = snap();
+          else seek(cues.hot[index]);
+          saveCues();
+          drawCues();
+        });
+        node.classList.add('hot');
+        node.style.setProperty('--h', String([0, 110, 200, 290][index]));
+        return node;
+      });
+
+      function drawCues() {
+        marksLayer.splice(0).forEach(node => node.remove());
+
+        const place = (step, className, label, hue) => {
+          const node = el('i', 'cue-mark ' + className, label);
+          node.style.left = percent(step / project.steps);
+          if (hue !== undefined) node.style.setProperty('--h', String(hue));
+          ruler.append(node);
+          marksLayer.push(node);
+        };
+
+        if (cues.main > 0) place(cues.main, 'main', '▾');
+        cues.hot.forEach((step, index) => {
+          if (step !== null) place(step, 'hot', String(index + 1), [0, 110, 200, 290][index]);
+        });
+
+        hotButtons.forEach((node, index) => {
+          const set = cues.hot[index] !== null;
+          node.setAttribute('aria-pressed', String(set));
+          node.title = set ? 'Springt zu ' + where(cues.hot[index]) + ' (Löschen: Cues löschen)' : 'Setzt einen Cue an der aktuellen Position';
+        });
+      }
+
+      const cueButton = button('Cue', 'Zum Cue-Punkt springen', () => seek(cues.main));
+      const setCue = button('Cue setzen', 'Cue-Punkt an der aktuellen Position setzen', () => {
+        cues.main = snap();
+        saveCues();
+        drawCues();
+      });
+      const clearCues = button('×', 'Alle Cue-Punkte dieses Songs löschen', () => {
+        cues.main = 0;
+        cues.hot = [null, null, null, null];
+        saveCues();
+        drawCues();
+      });
+      clearCues.title = 'Cues löschen';
+
+      const bar = (label, delta, aria) => button(label, aria, () => seekBars(delta));
+
+      const nudge = (label, direction, aria) => {
+        const node = button(label, aria);
+        const show = () => {
+          bpmOut.textContent = String(Number((project.bpm * speed(st)).toFixed(1)));
+        };
+        const press = () => {
+          st.nudge = direction * 0.08;
+          node.setAttribute('aria-pressed', 'true');
+          show();
+        };
+        const release = () => {
+          st.nudge = 0;
+          node.setAttribute('aria-pressed', 'false');
+          show();
+        };
+        node.addEventListener('pointerdown', press);
+        ['pointerup', 'pointerleave', 'pointercancel', 'blur'].forEach(name => node.addEventListener(name, release));
+        node.addEventListener('keydown', event => {
+          if ((event.key === ' ' || event.key === 'Enter') && !event.repeat) {
+            event.preventDefault();
+            press();
+          }
+        });
+        node.addEventListener('keyup', event => {
+          if (event.key === ' ' || event.key === 'Enter') release();
+        });
+        return node;
+      };
+
+      const sync = button('Sync', 'Tempo einmal an das andere Deck angleichen', () => host.sync(api, false));
+      const auto = button('Auto', 'Auto-Sync: Tempo folgen und im Takt des anderen Decks bleiben', () => {
+        api.auto = !api.auto;
+        auto.setAttribute('aria-pressed', String(api.auto));
+
+        if (api.auto) host.autoStart(api);
+      });
+      auto.setAttribute('aria-pressed', 'false');
+      auto.title = 'Tempo folgt dem anderen Deck, der Start landet im selben Takt';
+
+      controls.append(
+        row(cueButton, setCue, ...hotButtons, clearCues),
+        row(bar('‹ Takt', -1, 'Einen Takt zurück'), bar('Takt ›', 1, 'Einen Takt vor'), nudge('−', -1, 'Nudge langsamer, solange gedrückt'), nudge('+', 1, 'Nudge schneller, solange gedrückt'), sync, auto),
+      );
+
+      drawCues();
+      api.controls = controls;
+      api.bpm = () => project.bpm * st.rate;
+      api.playing = () => playing;
+    } else {
+      document.addEventListener('keydown', event => {
+        if (event.ctrlKey || event.metaKey || event.altKey) return;
+
+        const onBody = event.target === document.body;
+
+        if (!onBody && !(event.target instanceof HTMLButtonElement)) return;
+
+        if (event.code === 'Space' && onBody) {
+          event.preventDefault();
+          toggleTransport();
+          return;
+        }
+
+        const number = Number(event.key);
+
+        if (Number.isInteger(number) && number >= 1 && number <= tracks.length) {
+          toggle(muted, number - 1);
+        }
+      });
+    }
+
+    return api;
+  }
+
+  function mountProject(project) {
+    const host = {
+      mix: false,
+      open: async () => {
+        initAudio();
+        await ctx.resume();
+        return master;
+      },
+    };
+    const deck = projectDeck(project, S, host);
+
+    root.replaceChildren(deck.transport, deck.desk, deck.arrangement);
+  }
+
+  const PADS = [
+    { id: 'lp', name: 'Tiefpass', key: '1', code: 'Digit1', kind: 'hold' },
+    { id: 'hp', name: 'Hochpass', key: '2', code: 'Digit2', kind: 'hold' },
+    { id: 'hall', name: 'Hall', key: '3', code: 'Digit3', kind: 'hold' },
+    { id: 'dub', name: 'Dub-Echo', key: '4', code: 'Digit4', kind: 'hold' },
+    { id: 'gate8', name: 'Gate 1/8', key: 'Q', code: 'KeyQ', kind: 'hold' },
+    { id: 'gate16', name: 'Gate 1/16', key: 'W', code: 'KeyW', kind: 'hold' },
+    { id: 'crush', name: 'Chip-Crush', key: 'E', code: 'KeyE', kind: 'hold' },
+    { id: 'flange', name: 'Flanger', key: 'R', code: 'KeyR', kind: 'hold' },
+    { id: 'phone', name: 'Telefon', key: 'A', code: 'KeyA', kind: 'hold' },
+    { id: 'bass', name: 'Nur Bass', key: 'S', code: 'KeyS', kind: 'hold' },
+    { id: 'wobble', name: 'Seekrank', key: 'D', code: 'KeyD', kind: 'hold' },
+    { id: 'break', name: 'Break', key: 'F', code: 'KeyF', kind: 'hold' },
+    { id: 'laser', name: 'Laser', key: 'Y', code: 'KeyZ', kind: 'shot' },
+    { id: 'riser', name: 'Riser', key: 'X', code: 'KeyX', kind: 'hold' },
+    { id: 'boom', name: 'Boom', key: 'C', code: 'KeyC', kind: 'shot' },
+    { id: 'horn', name: 'Horn', key: 'V', code: 'KeyV', kind: 'shot' },
+  ];
+
+  function makeImpulse(seconds, decay) {
+    const length = Math.floor(ctx.sampleRate * seconds);
+    const buffer = ctx.createBuffer(2, length, ctx.sampleRate);
+
+    for (let channelIndex = 0; channelIndex < 2; channelIndex++) {
+      const data = buffer.getChannelData(channelIndex);
+      for (let i = 0; i < length; i++) data[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / length, decay);
+    }
+
+    return buffer;
+  }
+
+  function buildMachine(input, output, beat) {
+    const smooth = 0.02;
+    const switches = {};
+    let node = input;
+
+    function swap(id, build) {
+      const entry = ctx.createGain();
+      const sum = ctx.createGain();
+      const dry = ctx.createGain();
+      const wet = ctx.createGain();
+      wet.gain.value = 0;
+      node.connect(entry);
+      entry.connect(dry);
+      dry.connect(sum);
+      build(entry).connect(wet);
+      wet.connect(sum);
+      node = sum;
+      switches[id] = on => {
+        dry.gain.setTargetAtTime(on ? 0 : 1, ctx.currentTime, smooth);
+        wet.gain.setTargetAtTime(on ? 1 : 0, ctx.currentTime, smooth);
+      };
+    }
+
+    function send(id, build, level) {
+      const sum = ctx.createGain();
+      const gate = ctx.createGain();
+      gate.gain.value = 0;
+      node.connect(sum);
+      node.connect(gate);
+      build(gate).connect(sum);
+      node = sum;
+      switches[id] = on => gate.gain.setTargetAtTime(on ? level : 0, ctx.currentTime, smooth);
+    }
+
+    function sweep(id, type, neutral, target, seconds) {
+      const filter = ctx.createBiquadFilter();
+      filter.type = type;
+      filter.frequency.value = neutral;
+      filter.Q.value = 3;
+      node.connect(filter);
+      node = filter;
+      switches[id] = on => {
+        filter.frequency.cancelScheduledValues(ctx.currentTime);
+        filter.frequency.setTargetAtTime(on ? target : neutral, ctx.currentTime, on ? seconds : 0.05);
+      };
+    }
+
+    sweep('lp', 'lowpass', 20000, 250, 0.45);
+    sweep('hp', 'highpass', 20, 3000, 0.45);
+
+    send('hall', inp => {
+      const convolver = ctx.createConvolver();
+      convolver.buffer = makeImpulse(2.2, 2.5);
+      inp.connect(convolver);
+      return convolver;
+    }, 0.9);
+
+    send('dub', inp => {
+      const delay = ctx.createDelay(2);
+      delay.delayTime.value = 0.35;
+      const feedback = ctx.createGain();
+      feedback.gain.value = 0.68;
+      const damp = ctx.createBiquadFilter();
+      damp.type = 'lowpass';
+      damp.frequency.value = 2200;
+      inp.connect(delay);
+      delay.connect(damp);
+      damp.connect(feedback);
+      feedback.connect(delay);
+      // Die Echo-Zeit folgt dem Tempo (punktierte Achtel)
+      setInterval(() => {
+        if (ctx && ctx.state === 'running') delay.delayTime.setTargetAtTime(Math.min(1.9, beat() * 0.75), ctx.currentTime, 0.1);
+      }, 250);
+      return damp;
+    }, 0.8);
+
+    function gate(id, perBeat) {
+      const level = ctx.createGain();
+      level.gain.value = 1;
+      const lfo = ctx.createOscillator();
+      lfo.type = 'square';
+      lfo.frequency.value = 2;
+      const depth = ctx.createGain();
+      depth.gain.value = 0;
+      lfo.connect(depth);
+      depth.connect(level.gain);
+      lfo.start();
+      node.connect(level);
+      node = level;
+      switches[id] = on => {
+        lfo.frequency.setValueAtTime(perBeat / beat(), ctx.currentTime);
+        level.gain.setTargetAtTime(on ? 0.5 : 1, ctx.currentTime, smooth);
+        depth.gain.setTargetAtTime(on ? 0.5 : 0, ctx.currentTime, smooth);
+      };
+    }
+
+    gate('gate8', 1);
+    gate('gate16', 2);
+
+    swap('crush', inp => {
+      const steps = 5;
+      const curve = new Float32Array(2048);
+      for (let i = 0; i < curve.length; i++) {
+        const x = (i / (curve.length - 1)) * 2 - 1;
+        curve[i] = Math.round(x * steps) / steps;
+      }
+      const shaper = ctx.createWaveShaper();
+      shaper.curve = curve;
+      inp.connect(shaper);
+      return shaper;
+    });
+
+    send('flange', inp => {
+      const delay = ctx.createDelay(0.05);
+      delay.delayTime.value = 0.004;
+      const lfo = ctx.createOscillator();
+      lfo.frequency.value = 0.35;
+      const depth = ctx.createGain();
+      depth.gain.value = 0.003;
+      const feedback = ctx.createGain();
+      feedback.gain.value = 0.6;
+      lfo.connect(depth);
+      depth.connect(delay.delayTime);
+      lfo.start();
+      inp.connect(delay);
+      delay.connect(feedback);
+      feedback.connect(delay);
+      return delay;
+    }, 1);
+
+    swap('phone', inp => {
+      const high = ctx.createBiquadFilter();
+      high.type = 'highpass';
+      high.frequency.value = 500;
+      const low = ctx.createBiquadFilter();
+      low.type = 'lowpass';
+      low.frequency.value = 2800;
+      const boost = ctx.createGain();
+      boost.gain.value = 1.6;
+      inp.connect(high);
+      high.connect(low);
+      low.connect(boost);
+      return boost;
+    });
+
+    swap('bass', inp => {
+      const low = ctx.createBiquadFilter();
+      low.type = 'lowpass';
+      low.frequency.value = 170;
+      low.Q.value = 0.7;
+      inp.connect(low);
+      return low;
+    });
+
+    swap('wobble', inp => {
+      const delay = ctx.createDelay(0.1);
+      delay.delayTime.value = 0.012;
+      const lfo = ctx.createOscillator();
+      lfo.frequency.value = 0.9;
+      const depth = ctx.createGain();
+      depth.gain.value = 0.006;
+      lfo.connect(depth);
+      depth.connect(delay.delayTime);
+      lfo.start();
+      inp.connect(delay);
+      return delay;
+    });
+
+    const cut = ctx.createGain();
+    node.connect(cut);
+    node = cut;
+    switches.break = on => cut.gain.setTargetAtTime(on ? 0 : 1, ctx.currentTime, 0.01);
+
+    node.connect(output);
+
+    let riser = null;
+
+    switches.riser = on => {
+      if (on && !riser) {
+        const source = ctx.createBufferSource();
+        source.buffer = noise;
+        source.loop = true;
+        const band = ctx.createBiquadFilter();
+        band.type = 'bandpass';
+        band.Q.value = 2.5;
+        band.frequency.setValueAtTime(250, ctx.currentTime);
+        band.frequency.exponentialRampToValueAtTime(9000, ctx.currentTime + 4);
+        const level = ctx.createGain();
+        level.gain.setValueAtTime(0, ctx.currentTime);
+        level.gain.linearRampToValueAtTime(0.5, ctx.currentTime + 4);
+        source.connect(band);
+        band.connect(level);
+        level.connect(output);
+        source.start();
+        riser = { source, level };
+      } else if (!on && riser) {
+        const { source, level } = riser;
+        riser = null;
+        level.gain.cancelScheduledValues(ctx.currentTime);
+        level.gain.setTargetAtTime(0, ctx.currentTime, 0.05);
+        source.stop(ctx.currentTime + 0.4);
+      }
+    };
+
+    const shots = {
+      laser() {
+        const now = ctx.currentTime;
+        const osc = ctx.createOscillator();
+        const level = ctx.createGain();
+        osc.type = 'square';
+        osc.frequency.setValueAtTime(2400, now);
+        osc.frequency.exponentialRampToValueAtTime(90, now + 0.28);
+        level.gain.setValueAtTime(0.28, now);
+        level.gain.exponentialRampToValueAtTime(0.001, now + 0.3);
+        osc.connect(level);
+        level.connect(output);
+        osc.start(now);
+        osc.stop(now + 0.32);
+      },
+      boom() {
+        const now = ctx.currentTime;
+        const osc = ctx.createOscillator();
+        const level = ctx.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(110, now);
+        osc.frequency.exponentialRampToValueAtTime(28, now + 0.9);
+        level.gain.setValueAtTime(1.1, now);
+        level.gain.exponentialRampToValueAtTime(0.001, now + 1.1);
+        osc.connect(level);
+        level.connect(output);
+        osc.start(now);
+        osc.stop(now + 1.15);
+
+        const crash = ctx.createBufferSource();
+        crash.buffer = noise;
+        const low = ctx.createBiquadFilter();
+        low.type = 'lowpass';
+        low.frequency.setValueAtTime(5000, now);
+        low.frequency.exponentialRampToValueAtTime(200, now + 0.8);
+        const burst = ctx.createGain();
+        burst.gain.setValueAtTime(0.5, now);
+        burst.gain.exponentialRampToValueAtTime(0.001, now + 0.8);
+        crash.connect(low);
+        low.connect(burst);
+        burst.connect(output);
+        crash.start(now);
+        crash.stop(now + 0.85);
+      },
+      horn() {
+        const now = ctx.currentTime;
+        const level = ctx.createGain();
+        level.gain.setValueAtTime(0, now);
+        level.gain.linearRampToValueAtTime(0.22, now + 0.02);
+        level.gain.setValueAtTime(0.22, now + 0.55);
+        level.gain.linearRampToValueAtTime(0, now + 0.75);
+        level.connect(output);
+
+        [440, 554.37, 659.25].forEach(frequency => {
+          const osc = ctx.createOscillator();
+          osc.type = 'sawtooth';
+          osc.frequency.setValueAtTime(frequency, now);
+          osc.frequency.linearRampToValueAtTime(frequency * 0.97, now + 0.75);
+          osc.connect(level);
+          osc.start(now);
+          osc.stop(now + 0.78);
+        });
+      },
+    };
+
+    return {
+      set(id, on) {
+        if (switches[id]) switches[id](on);
+      },
+      shot(id) {
+        if (shots[id]) shots[id]();
+      },
+    };
+  }
+
+  function mountMix(data) {
+    const catalog = data.catalog;
+    const names = ['A', 'B'];
+    const states = [makeState(), makeState()];
+    const decks = [null, null];
+    const levels = [1, 1]; // Lautstärke je Deck
+    let masterLevel = 0.9;
+    let volumes = null;
+    let faders = null;
+    let channels = null;
+    let masterGain = null;
+    let machine = null;
+    let position = 50; // 0 = nur Deck A, 100 = nur Deck B
+    let analysers = null;
+
+    const SEGMENTS = 12;
+    const meters = [0, 1].map(index => {
+      const column = el('div', 'vu');
+      column.setAttribute('aria-hidden', 'true');
+      column.title = 'Pegel Deck ' + names[index];
+      const segments = Array.from({ length: SEGMENTS }, () => {
+        const node = el('i');
+        column.append(node);
+        return node;
+      });
+      return { column, segments, held: 0, lit: -1 };
+    });
+    const samples = new Float32Array(512);
+
+    function drawMeters() {
+      if (!analysers) return;
+
+      analysers.forEach((analyser, index) => {
+        analyser.getFloatTimeDomainData(samples);
+
+        let sum = 0;
+        for (let i = 0; i < samples.length; i++) sum += samples[i] * samples[i];
+
+        const level = Math.max(0, Math.min(1, (20 * Math.log10(Math.sqrt(sum / samples.length) + 1e-6) + 42) / 42));
+        const meter = meters[index];
+        meter.held = Math.max(level, meter.held - 0.03);
+        const lit = Math.round(meter.held * SEGMENTS);
+
+        if (lit !== meter.lit) {
+          meter.segments.forEach((node, i) => node.classList.toggle('on', i < lit));
+          meter.lit = lit;
+        }
+      });
+
+      requestAnimationFrame(drawMeters);
+    }
+
+    function gains() {
+      const angle = (position / 100) * Math.PI / 2;
+
+      return [Math.cos(angle), Math.sin(angle)];
+    }
+
+    function ramp(param, value, instant) {
+      if (instant) param.value = value;
+      else param.setTargetAtTime(value, ctx.currentTime, 0.015);
+    }
+
+    function applyFader(instant) {
+      if (!ctx || !faders) return;
+
+      const values = gains();
+
+      faders.forEach((node, index) => ramp(node.gain, values[index], instant));
+    }
+
+    function applyLevels(instant) {
+      if (!ctx || !volumes) return;
+
+      volumes.forEach((node, index) => ramp(node.gain, levels[index], instant));
+      ramp(masterGain.gain, masterLevel, instant);
+    }
+
+    function beatSeconds() {
+      const playing = decks.find(deck => deck && deck.playing());
+
+      return playing ? playing.st.fx.beat : 0.47;
+    }
+
+    async function open(index) {
+      if (!ctx) {
+        ctx = new (window.AudioContext || window.webkitAudioContext)();
+        makeNoise();
+
+        const limiter = makeLimiter();
+        limiter.connect(ctx.destination);
+        masterGain = ctx.createGain();
+        masterGain.connect(limiter);
+
+        const bus = ctx.createGain();
+        machine = buildMachine(bus, masterGain, beatSeconds);
+
+        volumes = states.map(() => ctx.createGain());
+        faders = states.map(() => {
+          const node = ctx.createGain();
+          node.connect(bus);
+          return node;
+        });
+        volumes.forEach((node, i) => node.connect(faders[i]));
+        channels = states.map((st, i) => buildChannel(st, volumes[i]));
+        analysers = faders.map(node => {
+          const analyser = ctx.createAnalyser();
+          analyser.fftSize = 512;
+          node.connect(analyser);
+          return analyser;
+        });
+        applyFader(true);
+        requestAnimationFrame(drawMeters);
+        applyLevels(true);
+      }
+
+      await ctx.resume();
+
+      return channels[index];
+    }
+
+    function sync(own, exact = true) {
+      const other = decks.find(deck => deck && deck !== own);
+
+      if (!other || !own.project) return null;
+
+      let best = null;
+
+      [1, 2, 0.5].forEach(factor => {
+        const percentValue = ((other.bpm() * factor) / own.project.bpm - 1) * 100;
+        if (best === null || Math.abs(percentValue) < Math.abs(best)) best = percentValue;
+      });
+
+      const applied = own.desk.setTempo(best, exact);
+      status.textContent = Math.abs(applied - best) > 0.05 ? 'Das Tempo reicht nur bis \u00b120 %, ganz erreicht es Deck ' + names[decks.indexOf(own)] + ' nicht.' : '';
+
+      return other;
+    }
+
+    function autoStart(own) {
+      const other = sync(own, true);
+
+      if (other && own.playing() && other.playing()) own.align(other);
+    }
+
+    let realign = 0;
+
+    function tempoChanged(leader) {
+      decks.forEach(deck => deck && deck !== leader && deck.auto && sync(deck, true));
+
+      clearTimeout(realign);
+      realign = setTimeout(() => {
+        decks.forEach(deck => {
+          if (deck && deck !== leader && deck.auto && deck.playing() && leader.playing()) deck.align(leader);
+        });
+      }, 500);
+    }
+
+    const toolButton = (label, aria, onClick) => {
+      const button = el('button', 'skip tool', label);
+      button.type = 'button';
+      button.title = aria;
+      button.setAttribute('aria-label', aria);
+      button.addEventListener('click', onClick);
+      return button;
+    };
+
+    const playAll = toolButton('\u25b6\ufe0e', 'Beide Decks spielen', async () => {
+      const loaded = decks.filter(Boolean);
+
+      if (loaded.length === 0) return;
+
+      if (loaded.some(deck => deck.playing())) {
+        loaded.forEach(deck => deck.playing() && deck.toggleTransport());
+        return;
+      }
+
+      await open(0);
+      const when = ctx.currentTime + 0.15;
+      loaded.forEach(deck => deck.play(when));
+    });
+    playAll.setAttribute('aria-pressed', 'false');
+
+    function refreshTogether() {
+      const any = decks.some(deck => deck && deck.playing());
+      playAll.textContent = any ? '\u23f8\ufe0e' : '\u25b6\ufe0e';
+      playAll.title = any ? 'Beide Decks pausieren' : 'Beide Decks spielen';
+      playAll.setAttribute('aria-label', playAll.title);
+      playAll.setAttribute('aria-pressed', String(any));
+    }
+
+    const lightButton = toolButton('', '', () => {
+      lightIndex = (lightIndex + 1) % LIGHTS.length;
+      applyLight();
+
+      try {
+        localStorage.setItem('chiptune-light', LIGHTS[lightIndex][0]);
+      } catch (error) {
+        //
       }
     });
+
+    function applyLight() {
+      const [id, label, title] = LIGHTS[lightIndex];
+      wrapper.setAttribute('data-light', id);
+      lightButton.textContent = label;
+      lightButton.title = title + ' (Klick wechselt)';
+      lightButton.setAttribute('aria-label', lightButton.title);
+    }
+
+    const rewindAll = toolButton('\u23ee\ufe0e', 'Beide Decks an den Anfang', () => decks.forEach(deck => deck && deck.seek(0)));
+
+    const copyTempo = (from, to) => toolButton(names[from] + '\u2192' + names[to], 'Tempo von Deck ' + names[from] + ' auf Deck ' + names[to] + ' übertragen', () => {
+      if (decks[from] && decks[to]) sync(decks[to], true);
+    });
+
+    const wrapper = el('div', 'decks');
+
+    const LIGHTS = [['ambi', 'Ambi', 'Rahmenlicht: bunt (Ambilight)'], ['warm', 'Warm', 'Rahmenlicht: warmweiß'], ['off', 'Aus', 'Rahmenlicht: aus']];
+    let lightIndex = 0;
+
+    try {
+      const saved = LIGHTS.findIndex(entry => entry[0] === localStorage.getItem('chiptune-light'));
+      if (saved >= 0) lightIndex = saved;
+    } catch (error) {
+      //
+    }
+
+    applyLight();
+
+    const status = el('p', 'mix-status');
+    status.setAttribute('role', 'status');
+
+    const idleProject = { title: '', bpm: 120, stepsPerBeat: 4, stepsPerBar: 16, stepSeconds: 0.125, loop: false, steps: 128, tracks: [] };
+
+    const loaders = [];
+    const loadedIds = ['', ''];
+    const overlay = el('div', 'picker-overlay');
+    overlay.hidden = true;
+    const picker = el('div', 'picker');
+    picker.setAttribute('role', 'dialog');
+    picker.setAttribute('aria-modal', 'true');
+    picker.setAttribute('aria-label', 'Song wählen');
+    overlay.append(picker);
+    let pickerOpener = null;
+    const pickerTitle = el('b', 'picker-title');
+    const pickerClose = el('button', null, '\u00d7');
+    pickerClose.type = 'button';
+    pickerClose.setAttribute('aria-label', 'Schließen');
+    const pickerHead = el('div', 'picker-head');
+    pickerHead.append(pickerTitle, pickerClose);
+    const filters = el('nav', 'picker-filters');
+    filters.setAttribute('aria-label', 'Quellen und Alben');
+    const search = el('input');
+    search.type = 'search';
+    search.placeholder = 'Suchen';
+    search.setAttribute('aria-label', 'Songs suchen');
+    const list = el('ul', 'picker-list');
+    const pickerMain = el('div', 'picker-main');
+    pickerMain.append(search, list);
+    const pickerBody = el('div', 'picker-body');
+    pickerBody.append(filters, pickerMain);
+    picker.append(pickerHead, pickerBody);
+
+    let pickerTarget = 0;
+    let filter = { type: 'all', id: '' };
+
+    const sources = [...new Map(catalog.map(entry => [entry.sourceId, entry.source])).entries()].sort((a, b) => a[1].localeCompare(b[1], 'de'));
+    const albumsList = [...new Map(catalog.filter(entry => entry.albumId).map(entry => [entry.albumId, entry.album + ' (' + entry.source + ')'])).entries()].sort((a, b) => a[1].localeCompare(b[1], 'de'));
+
+    function closePicker() {
+      overlay.hidden = true;
+      if (pickerOpener) pickerOpener.focus();
+    }
+
+    function inFilter(entry) {
+      if (filter.type === 'source') return entry.sourceId === filter.id;
+      if (filter.type === 'album') return entry.albumId === filter.id;
+      if (filter.type === 'single') return entry.albumId === '';
+
+      return true;
+    }
+
+    function renderFilters() {
+      filters.replaceChildren();
+
+      const add = (label, type, id) => {
+        const count = catalog.filter(entry => (type === 'all' ? true : type === 'source' ? entry.sourceId === id : type === 'album' ? entry.albumId === id : entry.albumId === '')).length;
+        const button = el('button', 'picker-filter');
+        button.type = 'button';
+        button.append(el('span', null, label), el('b', null, String(count)));
+        button.setAttribute('aria-pressed', String(filter.type === type && filter.id === id));
+        button.addEventListener('click', () => {
+          filter = { type, id };
+          renderFilters();
+          renderList();
+        });
+        filters.append(button);
+      };
+
+      add('Alles', 'all', '');
+
+      if (sources.length > 1) {
+        filters.append(el('span', 'picker-group', 'Quellen'));
+        sources.forEach(([id, title]) => add(title, 'source', id));
+      }
+
+      if (albumsList.length > 0) {
+        filters.append(el('span', 'picker-group', 'Alben'));
+        albumsList.forEach(([id, title]) => add(title, 'album', id));
+        add('Einzelne Songs', 'single', '');
+      }
+    }
+
+    function visibleSongs() {
+      const query = search.value.trim().toLowerCase();
+
+      return catalog
+        .filter(inFilter)
+        .filter(entry => query === '' || [entry.title, entry.artist, entry.album, entry.source, ...entry.tags].join(' ').toLowerCase().includes(query))
+        .sort((a, b) => a.source.localeCompare(b.source, 'de') || (a.albumId === '' ? 1 : 0) - (b.albumId === '' ? 1 : 0) || a.album.localeCompare(b.album, 'de') || a.title.localeCompare(b.title, 'de', { numeric: true }));
+    }
+
+    function chooseSong(entry) {
+      closePicker();
+      if (loaders[pickerTarget]) loaders[pickerTarget](entry);
+    }
+
+    function renderList() {
+      const songs = visibleSongs();
+      list.replaceChildren();
+
+      if (songs.length === 0) {
+        list.append(el('li', 'picker-empty', 'Nichts gefunden.'));
+        return;
+      }
+
+      songs.forEach(entry => {
+        const item = el('li');
+        const button = el('button', 'picker-item');
+        button.type = 'button';
+        const bpm = Number(Number(entry.bpm).toFixed(1));
+        const meta = [entry.album || entry.source, entry.artist, bpm + ' BPM', Number(entry.bars) + ' Bars'].filter(Boolean).join(' | ');
+        button.append(el('b', null, entry.title), el('small', null, meta));
+        if (loadedIds.includes(entry.id)) button.setAttribute('aria-current', 'true');
+        button.addEventListener('click', () => chooseSong(entry));
+        item.append(button);
+        list.append(item);
+      });
+    }
+
+    function openPicker(index) {
+      pickerTarget = index;
+      pickerTitle.textContent = 'Deck ' + names[index] + ': Song wählen';
+      search.value = '';
+      renderFilters();
+      renderList();
+
+      pickerOpener = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+      overlay.hidden = false;
+
+      search.focus();
+    }
+
+    search.addEventListener('input', renderList);
+    search.addEventListener('keydown', event => {
+      if (event.key === 'Enter') {
+        event.preventDefault();
+        const first = visibleSongs()[0];
+        if (first) chooseSong(first);
+      }
+    });
+    pickerClose.addEventListener('click', closePicker);
+    overlay.addEventListener('click', event => {
+      if (event.target === overlay) closePicker();
+    });
+    document.addEventListener('keydown', event => {
+      if (event.key === 'Escape' && !overlay.hidden) {
+        event.preventDefault();
+        closePicker();
+      }
+    });
+
+    function hostFor(index, box) {
+      return {
+        mix: true,
+        open: () => open(index),
+        sync,
+        autoStart,
+        tempoChanged,
+        changed: refreshTogether,
+        beat: n => (n < 0 ? box().removeAttribute('data-pulse') : box().setAttribute('data-pulse', String(n))),
+      };
+    }
+
+    function fill(body, index, deck, idle) {
+      const frame = el('div', 'arrangement-box');
+      frame.append(deck.arrangement);
+
+      if (idle) frame.append(el('p', 'deck-hint', 'Song wählen'));
+
+      body.classList.toggle('idle', idle);
+      body.inert = idle;
+      body.replaceChildren(deck.transport, deck.controls, deck.desk, frame);
+    }
+
+    function slot(index) {
+      const box = el('section', 'deck');
+      box.setAttribute('aria-label', 'Deck ' + names[index]);
+
+      const head = el('div', 'deck-head');
+      const songButton = el('button', 'deck-song', 'Song wählen');
+      songButton.type = 'button';
+      songButton.setAttribute('aria-label', 'Song für Deck ' + names[index] + ' wählen');
+      songButton.addEventListener('click', () => openPicker(index));
+
+      const volume = el('label', 'deck-volume');
+      const slider = el('input');
+      slider.type = 'range';
+      slider.min = '0';
+      slider.max = '100';
+      slider.step = '1';
+      slider.value = '100';
+      slider.setAttribute('aria-label', 'Lautstärke Deck ' + names[index]);
+      const volumeOut = el('b', null, '100 %');
+      slider.addEventListener('input', () => {
+        levels[index] = Number(slider.value) / 100;
+        volumeOut.textContent = slider.value + ' %';
+        applyLevels(false);
+      });
+      slider.addEventListener('dblclick', () => {
+        slider.value = '100';
+        slider.dispatchEvent(new Event('input'));
+      });
+      volume.append(el('span', null, 'Vol'), slider, volumeOut);
+
+      const eject = el('button', 'skip eject', '\u23cf');
+      eject.type = 'button';
+      eject.disabled = true;
+      eject.title = 'Song auswerfen';
+      eject.setAttribute('aria-label', 'Song aus Deck ' + names[index] + ' auswerfen');
+      eject.addEventListener('click', () => {
+        if (decks[index]) decks[index].stop(false);
+
+        decks[index] = null;
+        const st = states[index];
+        const nodes = st.nodes;
+        Object.assign(st, makeState());
+        st.nodes = nodes;
+        applyFx(st, true);
+        songButton.textContent = 'Song wählen';
+        songButton.title = '';
+        loadedIds[index] = '';
+        eject.disabled = true;
+        fill(body, index, projectDeck(idleProject, states[index], hostFor(index, () => box)), true);
+        status.textContent = '';
+        refreshTogether();
+      });
+
+      head.append(el('b', 'deck-name', 'Deck ' + names[index]), songButton, eject, volume);
+
+      const body = el('div', 'deck-body');
+      fill(body, index, projectDeck(idleProject, states[index], hostFor(index, () => box)), true);
+      box.append(head, body);
+
+      loaders[index] = async entry => {
+        status.textContent = '';
+
+        try {
+          const response = await fetch(entry.data);
+
+          if (!response.ok) throw new Error(String(response.status));
+
+          const project = await response.json();
+
+          if (decks[index]) decks[index].stop(false);
+
+          const st = states[index];
+          const nodes = st.nodes;
+          Object.assign(st, makeState());
+          st.nodes = nodes;
+          applyFx(st, true);
+
+          const deck = projectDeck(project, st, { ...hostFor(index, () => box), key: entry.id });
+          decks[index] = deck;
+          eject.disabled = false;
+          loadedIds[index] = entry.id;
+          songButton.textContent = entry.title;
+          songButton.title = entry.title + (entry.album ? ' | ' + entry.album : '') + ' | ' + entry.source;
+          fill(body, index, deck, false);
+          refreshTogether();
+        } catch (error) {
+          console.error(error);
+          status.textContent = 'Der Song „' + entry.title + '“ konnte nicht geladen werden.';
+        }
+      };
+
+      return box;
+    }
+
+    wrapper.append(slot(0), slot(1));
+
+    const machineBox = el('section', 'machine');
+    machineBox.setAttribute('aria-label', 'Master und Effekte');
+
+    const machineHead = el('div', 'machine-head');
+    const fold = el('button', 'machine-fold');
+    fold.type = 'button';
+    fold.append(el('span', 'machine-arrow'), el('b', 'machine-name', 'Effekt-Maschine'));
+    const masterLabel = el('label', 'master');
+    const masterSlider = el('input');
+    masterSlider.type = 'range';
+    masterSlider.min = '0';
+    masterSlider.max = '120';
+    masterSlider.step = '1';
+    masterSlider.value = String(Math.round(masterLevel * 100));
+    masterSlider.setAttribute('aria-label', 'Master-Lautstärke');
+    const masterOut = el('b', null, masterSlider.value + ' %');
+    masterSlider.addEventListener('input', () => {
+      masterLevel = Number(masterSlider.value) / 100;
+      masterOut.textContent = masterSlider.value + ' %';
+      applyLevels(false);
+    });
+    masterLabel.append(el('span', null, 'Master'), masterSlider, masterOut);
+
+    const latch = pressButton('Halten', 'Pads rasten ein, statt nur beim Drücken zu wirken');
+    latch.classList.add('latch');
+    let latched = false;
+    latch.addEventListener('click', () => {
+      latched = !latched;
+      latch.setAttribute('aria-pressed', String(latched));
+    });
+
+    machineHead.append(fold, masterLabel, latch);
+
+    const grid = el('div', 'pads');
+    const active = new Set();
+    const buttons = new Map();
+
+    async function setPad(pad, on) {
+      if (!ctx) await open(0);
+      if (!machine) return;
+
+      if (pad.kind === 'shot') {
+        if (on) machine.shot(pad.id);
+        return;
+      }
+
+      if (on) active.add(pad.id);
+      else active.delete(pad.id);
+
+      machine.set(pad.id, on);
+      buttons.get(pad.id).setAttribute('aria-pressed', String(on));
+    }
+
+    PADS.forEach((pad, index) => {
+      const button = el('button', 'pad');
+      button.type = 'button';
+      button.style.setProperty('--h', String(Math.round((index / PADS.length) * 340)));
+      button.setAttribute('aria-pressed', 'false');
+      button.setAttribute('aria-label', pad.name + ' (Taste ' + pad.key + ')');
+      button.append(el('span', 'pad-name', pad.name), el('span', 'pad-key', pad.key));
+
+      const press = () => {
+        if (latched && pad.kind === 'hold') setPad(pad, !active.has(pad.id));
+        else setPad(pad, true);
+      };
+      const release = () => {
+        if (!latched && pad.kind === 'hold' && active.has(pad.id)) setPad(pad, false);
+        button.classList.remove('hit');
+      };
+
+      button.addEventListener('pointerdown', event => {
+        event.preventDefault();
+        button.classList.add('hit');
+        press();
+      });
+      ['pointerup', 'pointerleave', 'pointercancel'].forEach(name => button.addEventListener(name, release));
+      button.addEventListener('keydown', event => {
+        if ((event.key === ' ' || event.key === 'Enter') && !event.repeat) {
+          event.preventDefault();
+          press();
+        }
+      });
+      button.addEventListener('keyup', event => {
+        if (event.key === ' ' || event.key === 'Enter') release();
+      });
+      button.addEventListener('blur', release);
+
+      buttons.set(pad.id, button);
+      grid.append(button);
+    });
+
+    function typing(target) {
+      return target instanceof Element && (target.closest('input, textarea, select') !== null || overlay.contains(target));
+    }
+
+    document.addEventListener('keydown', event => {
+      if (event.ctrlKey || event.metaKey || event.altKey || event.repeat) return;
+
+      if (typing(event.target)) return;
+
+      const pad = PADS.find(item => item.code === event.code);
+
+      if (!pad) return;
+
+      event.preventDefault();
+      buttons.get(pad.id).classList.add('hit');
+      if (latched && pad.kind === 'hold') setPad(pad, !active.has(pad.id));
+      else setPad(pad, true);
+    });
+
+    document.addEventListener('keyup', event => {
+      const pad = PADS.find(item => item.code === event.code);
+
+      if (!pad) return;
+
+      buttons.get(pad.id).classList.remove('hit');
+
+      if (!latched && pad.kind === 'hold' && active.has(pad.id)) setPad(pad, false);
+    });
+
+    machineBox.append(machineHead, grid);
+
+    function openMachine(open) {
+      grid.hidden = !open;
+      latch.hidden = !open;
+      machineBox.classList.toggle('closed', !open);
+      fold.setAttribute('aria-expanded', String(open));
+      fold.title = open ? 'Effekt-Maschine einklappen' : 'Effekt-Maschine ausklappen';
+
+      try {
+        localStorage.setItem('chiptune-machine', open ? 'open' : 'closed');
+      } catch (error) {
+        //
+      }
+    }
+
+    let machineOpen = true;
+
+    try {
+      machineOpen = localStorage.getItem('chiptune-machine') !== 'closed';
+    } catch (error) {
+      // offen lassen
+    }
+
+    openMachine(machineOpen);
+    fold.addEventListener('click', () => openMachine(grid.hidden));
+
+    const fader = el('div', 'crossfader');
+    const faderBox = el('div', 'fader-box');
+    const slider = el('input');
+    slider.type = 'range';
+    slider.min = '0';
+    slider.max = '100';
+    slider.step = '1';
+    slider.value = '50';
+    slider.setAttribute('aria-label', 'Crossfader, links Deck A, rechts Deck B');
+
+    function moveTo(value) {
+      position = value;
+      slider.value = String(value);
+      applyFader(false);
+    }
+
+    slider.addEventListener('input', () => moveTo(Number(slider.value)));
+    slider.addEventListener('dblclick', () => moveTo(50));
+
+    const quick = (label, value, aria) => {
+      const button = el('button', 'skip', label);
+      button.type = 'button';
+      button.setAttribute('aria-label', aria);
+      button.addEventListener('click', () => moveTo(value));
+      return button;
+    };
+
+    const track = el('div', 'fader-track');
+    track.append(slider);
+    const faderBody = el('div', 'fader-body');
+    faderBody.append(meters[0].column, track, meters[1].column);
+
+    const group = el('div', 'fader-tools');
+    group.append(playAll, rewindAll, copyTempo(0, 1), copyTempo(1, 0), lightButton);
+
+    faderBox.append(
+      quick('A', 0, 'Crossfader ganz zu Deck A'),
+      faderBody,
+      quick('B', 100, 'Crossfader ganz zu Deck B'),
+      quick('Mitte', 50, 'Crossfader in die Mitte'),
+      group,
+    );
+    fader.append(faderBox);
+
+    wrapper.replaceChildren(wrapper.children[0], fader, wrapper.children[1]);
+
+    root.replaceChildren(wrapper, status, machineBox, overlay);
   }
 
   function mountSet(set) {
@@ -938,7 +2329,7 @@
     const transport = el('div', 'transport');
     transport.append(playButton, prevButton, nextButton, loopButton, position, tempo);
 
-    const desk = deskControl(() => {
+    const desk = deskControl(S, () => {
       bpmOut.textContent = bpmText(parts[current].bpm);
     });
     root.replaceChildren(transport, desk);
@@ -1007,7 +2398,7 @@
         if (nextPart < parts.length) {
           const first = parts[nextPart];
 
-          latch = holdRegion(latch, nextStep, layout[nextPart].runSteps, first.stepsPerBar, first.stepsPerBeat);
+          latch = holdRegion(S, latch, nextStep, layout[nextPart].runSteps, first.stepsPerBar, first.stepsPerBeat);
 
           if (latch) {
             latch.part = nextPart;
@@ -1026,8 +2417,8 @@
 
         const part = parts[nextPart];
         const info = layout[nextPart];
-        const dur = part.stepSeconds / rate;
-        fx.beat = dur * part.stepsPerBeat;
+        const dur = part.stepSeconds / speed(S);
+        S.fx.beat = dur * part.stepsPerBeat;
 
         info.byStep[nextStep].forEach(([index, event]) => {
           const voice = part.tracks[index].instrument === 'drums' ? drum : tone;
@@ -1049,7 +2440,7 @@
         }
       }
 
-      applyEchoTime();
+      applyEchoTime(S);
 
       if (ended && ctx.currentTime > nextTime) stop();
     }
@@ -1060,7 +2451,7 @@
 
       initAudio();
       layout.forEach((info, index) => {
-        info.buses = parts[index].tracks.map(makeBus);
+        info.buses = parts[index].tracks.map(() => makeBus(master));
       });
       await ctx.resume();
 
@@ -1127,4 +2518,8 @@
 
     renderState();
   }
+
+  if (mixData) mountMix(JSON.parse(mixData.textContent));
+  else if (setData) mountSet(JSON.parse(setData.textContent));
+  else mountProject(JSON.parse(projectData.textContent));
 })();

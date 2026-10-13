@@ -117,6 +117,38 @@ final class Builder
             Filesystem::write("{$directory}/source.md", (string) file_get_contents($entry['source']));
         }
 
+        $catalog = [];
+        $albumTitles = [];
+
+        foreach ($albumEntries as $albumEntry) {
+            $albumTitles[$albumEntry['prefix'] . '/' . $albumEntry['slug']] = (string) $albumEntry['project']['title'];
+        }
+
+        foreach ($entries as $entry) {
+            if ($entry['kind'] !== 'project') {
+                continue;
+            }
+
+            $id = $entry['prefix'] . '--' . str_replace('/', '--', $entry['slug']);
+            Filesystem::write("{$this->public}/+mixer/data/{$id}.json", json_encode($renderer->projectPayload($entry['project']), Renderer::JSON_FLAGS));
+            $catalog[] = [
+                'id' => $id,
+                'title' => $entry['project']['title'],
+                'artist' => (string) $entry['project']['artist'],
+                'bpm' => $entry['project']['bpm'],
+                'bars' => $entry['project']['bars'],
+                'source' => (string) ($authors[$entry['prefix']]['title'] ?? $entry['prefix']),
+                'sourceId' => (string) $entry['prefix'],
+                'album' => $entry['album'] === null ? '' : ($albumTitles[$entry['prefix'] . '/' . $entry['album']] ?? (string) $entry['album']),
+                'albumId' => $entry['album'] === null ? '' : $entry['prefix'] . '/' . $entry['album'],
+                'tags' => array_values(array_map('strval', (array) ($entry['project']['tags'] ?? []))),
+                'href' => $site['base_path'] . "{$entry['prefix']}/{$entry['slug']}/",
+                'data' => "data/{$id}.json",
+            ];
+        }
+
+        Filesystem::write($this->public . '/+mixer/index.html', $renderer->mix($catalog));
+
         Filesystem::write($this->public . '/robots.txt', $site['noindex'] ? "User-agent: *\nDisallow: /\n" : "User-agent: *\nAllow: /\n");
         Filesystem::write($this->public . '/' . self::MARKER, "Von build.php erzeugt. Das Deployment ersetzt den Inhalt dieses Ordners.\n");
 
