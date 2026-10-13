@@ -239,6 +239,9 @@ main, .pagehead { max-width: 75rem; margin-inline: auto; padding-inline: clamp(1
 
 .position, .tempo { color: var(--ink-soft); font-size: 1.1rem; font-variant-numeric: tabular-nums; }
 .position { min-width: 15ch; }
+.pitch { display: flex; align-items: center; gap: 0.6rem; color: var(--ink-soft); font-size: 0.95rem; }
+.pitch input[type="range"] { width: 9rem; accent-color: var(--green); }
+.pitch b { min-width: 7ch; color: var(--cream); font-variant-numeric: tabular-nums; text-align: right; }
 .loop { min-height: 3rem; padding: 0 1rem; border: 1px solid var(--line); border-radius: 4px; background: var(--panel-solid); color: var(--ink-soft); font-size: 0.95rem; font-weight: 800; cursor: pointer; }
 .loop[aria-pressed="true"] { border-color: var(--green); color: var(--green); }
 .position b, .tempo b { color: var(--cream); font-weight: 800; }

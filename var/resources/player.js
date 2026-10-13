@@ -11,11 +11,11 @@
   const DRUM_ORDER = ['k', 'c', 's', 'o', 'h'];
   const LOOKAHEAD = 0.6;
 
-  // Audio-Zustand, gemeinsam für Project und Set
   const pulseCache = new Map();
   let ctx = null;
   let master = null;
   let noise = null;
+  let rate = 1;
 
   function el(tag, className, text) {
     const node = document.createElement(tag);
@@ -41,6 +41,43 @@
   function instrumentLabel(track) {
     if (track.instrument === 'pulse') return 'pulse ' + Math.round(track.pw * 100) + '%';
     return track.instrument;
+  }
+
+  function tempoControl(onChange) {
+    const slider = el('input');
+    slider.type = 'range';
+    slider.min = '-16';
+    slider.max = '16';
+    slider.step = '0.1';
+    slider.value = '0';
+    slider.setAttribute('aria-label', 'Tempo anpassen, in Prozent');
+
+    const out = el('b', null, '±0.0 %');
+    const reset = el('button', 'skip', '1:1');
+    reset.type = 'button';
+    reset.setAttribute('aria-label', 'Tempo zurücksetzen');
+
+    function apply() {
+      const value = Number(slider.value);
+      rate = 1 + value / 100;
+      out.textContent = (value > 0 ? '+' : value < 0 ? '\u2212' : '\u00b1') + Math.abs(value).toFixed(1) + ' %';
+      onChange();
+    }
+
+    slider.addEventListener('input', apply);
+    reset.addEventListener('click', () => {
+      slider.value = '0';
+      apply();
+    });
+
+    const box = el('div', 'pitch');
+    box.append(el('span', 'pitch-name', 'Tempo'), slider, out, reset);
+
+    return box;
+  }
+
+  function bpmText(bpm) {
+    return String(Number((bpm * rate).toFixed(1)));
   }
 
   if (setData) mountSet(JSON.parse(setData.textContent));
@@ -120,7 +157,6 @@
     const gain = ctx.createGain();
     gain.gain.setValueAtTime(0.0001, when);
 
-    // Mehrere kurze Anschläge hintereinander ergeben den Clap.
     bursts.forEach((offset, i) => {
       const last = i === bursts.length - 1;
       gain.gain.setValueAtTime(volume, when + offset);
@@ -175,14 +211,15 @@
 
   function mountProject(project) {
     const tracks = project.tracks;
-    const passSeconds = project.steps * project.stepSeconds;
     const bars = project.steps / project.stepsPerBar;
 
     let buses = [];
     let timer = null;
     let frameId = 0;
-    let startTime = 0;
-    let nextStart = 0;
+    let nextTime = 0;
+    let nextStep = 0;
+    let ended = false;
+    let marks = [];
     let playing = false;
     let starting = false;
 
@@ -200,11 +237,17 @@
     position.setAttribute('role', 'timer');
     position.append(document.createTextNode('Bar '), barOut, document.createTextNode(' Beat '), beatOut);
 
+    const bpmOut = el('b', null, bpmText(project.bpm));
     const tempo = el('span', 'tempo');
-    tempo.append(el('b', null, String(Number(project.bpm.toFixed(1)))), document.createTextNode(' BPM'));
+    tempo.append(bpmOut, document.createTextNode(' BPM'));
 
     const transport = el('div', 'transport');
-    transport.append(playButton, position, tempo);
+    transport.append(playButton, position, tempo, tempoControl(() => {
+      bpmOut.textContent = bpmText(project.bpm);
+    }));
+
+    const byStep = Array.from({ length: project.steps }, () => []);
+    tracks.forEach((track, index) => track.events.forEach(event => byStep[event.t] && byStep[event.t].push([index, event])));
 
     const arrangement = el('div', 'arrangement');
     arrangement.style.setProperty('--bars', String(bars));
@@ -233,7 +276,7 @@
     const ruler = el('div', 'ruler');
     ruler.append(gridSvg());
     ruler.setAttribute('aria-hidden', 'true');
-    // Auf schmalen Bildschirmen bekommt bei vielen Bars nur jeder vierte eine Nummer.
+
     const narrow = typeof window.matchMedia === 'function' && window.matchMedia('(max-width: 44rem)').matches;
     const labelStep = narrow && bars > 8 ? 4 : 1;
 
@@ -435,15 +478,16 @@
     function frame() {
       if (!playing || !ctx) return;
 
-      const elapsed = ctx.currentTime - startTime;
+      const now = ctx.currentTime;
 
-      if (elapsed >= 0) {
-        const progress = project.loop
-          ? (elapsed % passSeconds) / passSeconds
-          : Math.min(elapsed / passSeconds, 1);
-        const step = Math.min(progress * project.steps, project.steps - 1e-6);
+      while (marks.length > 1 && marks[1].time <= now) marks.shift();
 
-        playhead.style.left = percent(progress);
+      const mark = marks[0];
+
+      if (mark && now >= mark.time) {
+        const step = Math.min(mark.step + (now - mark.time) / mark.dur, project.steps - 1e-6);
+
+        playhead.style.left = percent(step / project.steps);
         barOut.textContent = String(Math.floor(step / project.stepsPerBar) + 1);
         beatOut.textContent = String(Math.floor((step % project.stepsPerBar) / project.stepsPerBeat) + 1);
       }
@@ -451,26 +495,32 @@
       frameId = requestAnimationFrame(frame);
     }
 
-
-    function schedulePass(start) {
-      tracks.forEach((track, index) => {
-        const play = track.instrument === 'drums' ? drum : tone;
-        track.events.forEach(event => play(track, buses[index], event, start + event.t * project.stepSeconds, project.stepSeconds));
-      });
-    }
-
     function tick() {
       if (!ctx) return;
 
-      if (!project.loop) {
-        if (ctx.currentTime > nextStart) stop();
-        return;
+      while (!ended && nextTime - ctx.currentTime < LOOKAHEAD) {
+        if (nextStep >= project.steps) {
+          if (!project.loop) {
+            ended = true;
+            break;
+          }
+
+          nextStep = 0;
+        }
+
+        const dur = project.stepSeconds / rate;
+
+        byStep[nextStep].forEach(([index, event]) => {
+          const voice = tracks[index].instrument === 'drums' ? drum : tone;
+          voice(tracks[index], buses[index], event, nextTime, dur);
+        });
+
+        marks.push({ time: nextTime, dur, step: nextStep });
+        nextTime += dur;
+        nextStep++;
       }
 
-      while (nextStart - ctx.currentTime < LOOKAHEAD) {
-        schedulePass(nextStart);
-        nextStart += passSeconds;
-      }
+      if (ended && ctx.currentTime > nextTime) stop();
     }
 
     async function play() {
@@ -484,10 +534,11 @@
       starting = false;
       applyMix();
 
-      startTime = ctx.currentTime + 0.1;
-      nextStart = startTime;
-      schedulePass(nextStart);
-      nextStart += passSeconds;
+      marks = [];
+      ended = false;
+      nextStep = 0;
+      nextTime = ctx.currentTime + 0.1;
+      tick();
 
       timer = setInterval(tick, 100);
       playing = true;
@@ -501,6 +552,7 @@
 
       closeAudio();
       buses = [];
+      marks = [];
       playing = false;
       renderButton();
     }
@@ -538,11 +590,14 @@
     const cards = parts.map((_, index) => document.getElementById('part-' + (index + 1)));
     const bars = cards.map(card => (card ? card.querySelector('.part-progress') : null));
 
-    let runs = [];
+    let marks = [];
     let timer = null;
     let frameId = 0;
     let nextTime = 0;
-    let nextIndex = 0;
+    let nextPart = 0;
+    let nextRepeat = 0;
+    let nextStep = 0;
+    let ended = false;
     let current = 0;
     let playing = false;
     let starting = false;
@@ -575,13 +630,29 @@
     const barOut = el('b', null, '1');
     position.append(document.createTextNode((set.album ? 'Song ' : 'Part ')), partOut, document.createTextNode('/' + parts.length + ' Bar '), barOut);
 
-    const bpmOut = el('b', null, String(Number(parts[0].bpm.toFixed(1))));
+    const bpmOut = el('b', null, bpmText(parts[0].bpm));
     const tempo = el('span', 'tempo');
     tempo.append(bpmOut, document.createTextNode(' BPM'));
 
     const transport = el('div', 'transport');
-    transport.append(playButton, prevButton, nextButton, loopButton, position, tempo);
+    transport.append(playButton, prevButton, nextButton, loopButton, position, tempo, tempoControl(() => {
+      bpmOut.textContent = bpmText(parts[current].bpm);
+    }));
     root.replaceChildren(transport);
+
+    // Ereignisse jedes Parts nach Step sortiert (nur der gewählte Ausschnitt), Busse entstehen beim Start.
+    const layout = parts.map(part => {
+      const runSteps = part.stop - part.start;
+      const byStep = Array.from({ length: runSteps }, () => []);
+
+      part.tracks.forEach((track, index) => track.events.forEach(event => {
+        if (event.t >= part.start && event.t < part.stop) {
+          byStep[event.t - part.start].push([index, Object.assign({}, event, { len: Math.min(event.len, part.stop - event.t) })]);
+        }
+      }));
+
+      return { runSteps, byStep, buses: [] };
+    });
 
     function renderState() {
       playButton.textContent = playing ? 'Stop' : 'Play';
@@ -590,7 +661,7 @@
       if (!playing) {
         partOut.textContent = '1';
         barOut.textContent = String(parts[0].startBar);
-        bpmOut.textContent = String(Number(parts[0].bpm.toFixed(1)));
+        bpmOut.textContent = bpmText(parts[0].bpm);
         cards.forEach(card => card && card.classList.remove('active'));
         bars.forEach(bar => bar && (bar.style.width = '0%'));
       }
@@ -601,67 +672,68 @@
 
       const now = ctx.currentTime;
 
-      runs = runs.filter(run => run.end > now - 1);
-      const run = runs.find(candidate => now >= candidate.start && now < candidate.end);
+      while (marks.length > 1 && marks[1].time <= now) marks.shift();
 
-      if (run) {
-        const part = parts[run.index];
-        const elapsed = now - run.start;
-        const within = (elapsed % run.runSeconds) / part.stepSeconds;
+      const mark = marks[0];
 
-        current = run.index;
-        partOut.textContent = String(run.index + 1);
+      if (mark && now >= mark.time) {
+        const part = parts[mark.part];
+        const info = layout[mark.part];
+        const pos = mark.step + (now - mark.time) / mark.dur;
+        const within = pos % info.runSteps;
+
+        current = mark.part;
+        partOut.textContent = String(mark.part + 1);
         barOut.textContent = String(part.startBar + Math.floor(within / part.stepsPerBar));
-        bpmOut.textContent = String(Number(part.bpm.toFixed(1)));
+        bpmOut.textContent = bpmText(part.bpm);
 
         cards.forEach((card, index) => {
-          if (card) card.classList.toggle('active', index === run.index);
-          if (bars[index]) bars[index].style.width = index === run.index ? percent(elapsed / (run.end - run.start)) : '0%';
+          if (card) card.classList.toggle('active', index === mark.part);
+          if (bars[index]) bars[index].style.width = index === mark.part ? percent(Math.min(pos / (info.runSteps * part.repeat), 1)) : '0%';
         });
       }
 
       frameId = requestAnimationFrame(frame);
     }
 
-    function scheduleRun(index, start) {
-      const part = parts[index];
-      const runSeconds = (part.stop - part.start) * part.stepSeconds;
-
-      for (let repeat = 0; repeat < part.repeat; repeat++) {
-        const base = start + repeat * runSeconds;
-
-        part.tracks.forEach(track => {
-          const bus = makeBus();
-          const play = track.instrument === 'drums' ? drum : tone;
-
-          track.events.forEach(event => {
-            if (event.t < part.start || event.t >= part.stop) return;
-
-            const clipped = Object.assign({}, event, { len: Math.min(event.len, part.stop - event.t) });
-            play(track, bus, clipped, base + (event.t - part.start) * part.stepSeconds, part.stepSeconds);
-          });
-        });
-      }
-
-      runs.push({ index, start, end: start + runSeconds * part.repeat, runSeconds });
-
-      return runSeconds * part.repeat;
-    }
-
     function tick() {
       if (!ctx) return;
 
-      while (nextTime - ctx.currentTime < LOOKAHEAD) {
-        if (nextIndex >= parts.length) {
-          if (!looping) break;
-          nextIndex = 0;
+      while (!ended && nextTime - ctx.currentTime < LOOKAHEAD) {
+        if (nextPart >= parts.length) {
+          if (!looping) {
+            ended = true;
+            break;
+          }
+
+          nextPart = 0;
         }
 
-        nextTime += scheduleRun(nextIndex, nextTime);
-        nextIndex++;
+        const part = parts[nextPart];
+        const info = layout[nextPart];
+        const dur = part.stepSeconds / rate;
+
+        info.byStep[nextStep].forEach(([index, event]) => {
+          const voice = part.tracks[index].instrument === 'drums' ? drum : tone;
+          voice(part.tracks[index], info.buses[index], event, nextTime, dur);
+        });
+
+        marks.push({ time: nextTime, dur, part: nextPart, step: nextStep + nextRepeat * info.runSteps });
+        nextTime += dur;
+        nextStep++;
+
+        if (nextStep >= info.runSteps) {
+          nextStep = 0;
+          nextRepeat++;
+
+          if (nextRepeat >= part.repeat) {
+            nextRepeat = 0;
+            nextPart++;
+          }
+        }
       }
 
-      if (!looping && nextIndex >= parts.length && ctx.currentTime > nextTime) stop();
+      if (ended && ctx.currentTime > nextTime) stop();
     }
 
     async function play(from = 0) {
@@ -669,11 +741,17 @@
       starting = true;
 
       initAudio();
+      layout.forEach((info, index) => {
+        info.buses = parts[index].tracks.map(makeBus);
+      });
       await ctx.resume();
 
       starting = false;
-      runs = [];
-      nextIndex = from;
+      marks = [];
+      ended = false;
+      nextPart = from;
+      nextRepeat = 0;
+      nextStep = 0;
       nextTime = ctx.currentTime + 0.1;
       tick();
 
@@ -687,7 +765,7 @@
       clearInterval(timer);
       cancelAnimationFrame(frameId);
       closeAudio();
-      runs = [];
+      marks = [];
       playing = false;
       renderState();
     }
