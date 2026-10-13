@@ -17,6 +17,9 @@
   let noise = null;
   let rate = 1;
 
+  const fx = { low: 0, mid: 0, high: 0, filter: 0 };
+  let fxNodes = null;
+
   function el(tag, className, text) {
     const node = document.createElement(tag);
     if (className) node.className = className;
@@ -76,6 +79,68 @@
     return box;
   }
 
+  const MIXER = [
+    { key: 'low', name: 'Tief', min: -12, max: 12, step: 0.5 },
+    { key: 'mid', name: 'Mitte', min: -12, max: 12, step: 0.5 },
+    { key: 'high', name: 'Hoch', min: -12, max: 12, step: 0.5 },
+    { key: 'filter', name: 'Filter', min: -100, max: 100, step: 1 },
+  ];
+
+  function mixerText(key, value) {
+    if (key === 'filter') {
+      if (value === 0) return 'aus';
+      return (value < 0 ? 'Tiefpass ' : 'Hochpass ') + Math.abs(value) + ' %';
+    }
+
+    return (value > 0 ? '+' : value < 0 ? '\u2212' : '\u00b1') + Math.abs(value).toFixed(1) + ' dB';
+  }
+
+  // EQ und DJ-Filter für den ganzen Mix. Doppelklick auf einen Regler setzt ihn zurück.
+  function mixerControl() {
+    const box = el('div', 'mixer');
+    const sliders = [];
+
+    function show(entry, slider, out) {
+      const value = Number(slider.value);
+      out.textContent = mixerText(entry.key, value);
+      fx[entry.key] = entry.key === 'filter' ? value / 100 : value;
+      applyFx(false);
+    }
+
+    MIXER.forEach(entry => {
+      const slider = el('input');
+      slider.type = 'range';
+      slider.min = String(entry.min);
+      slider.max = String(entry.max);
+      slider.step = String(entry.step);
+      slider.value = '0';
+      slider.setAttribute('aria-label', entry.name + (entry.key === 'filter' ? ' (links Tiefpass, rechts Hochpass)' : ' in dB'));
+
+      const out = el('b', null, mixerText(entry.key, 0));
+      slider.addEventListener('input', () => show(entry, slider, out));
+      slider.addEventListener('dblclick', () => {
+        slider.value = '0';
+        show(entry, slider, out);
+      });
+
+      const group = el('label', 'knob');
+      group.append(el('span', 'pitch-name', entry.name), slider, out);
+      box.append(group);
+      sliders.push([entry, slider, out]);
+    });
+
+    const reset = el('button', 'skip', 'Reset');
+    reset.type = 'button';
+    reset.setAttribute('aria-label', 'EQ und Filter zurücksetzen');
+    reset.addEventListener('click', () => sliders.forEach(([entry, slider, out]) => {
+      slider.value = '0';
+      show(entry, slider, out);
+    }));
+    box.append(reset);
+
+    return box;
+  }
+
   function bpmText(bpm) {
     return String(Number((bpm * rate).toFixed(1)));
   }
@@ -87,7 +152,37 @@
     ctx = new (window.AudioContext || window.webkitAudioContext)();
     master = ctx.createGain();
     master.gain.value = 0.8;
-    master.connect(ctx.destination);
+
+    const low = ctx.createBiquadFilter();
+    low.type = 'lowshelf';
+    low.frequency.value = 200;
+
+    const mid = ctx.createBiquadFilter();
+    mid.type = 'peaking';
+    mid.frequency.value = 1000;
+    mid.Q.value = 0.9;
+
+    const high = ctx.createBiquadFilter();
+    high.type = 'highshelf';
+    high.frequency.value = 3500;
+
+    const sweep = ctx.createBiquadFilter();
+    const limiter = ctx.createDynamicsCompressor();
+    limiter.threshold.value = -2;
+    limiter.knee.value = 3;
+    limiter.ratio.value = 20;
+    limiter.attack.value = 0.003;
+    limiter.release.value = 0.1;
+
+    master.connect(low);
+    low.connect(mid);
+    mid.connect(high);
+    high.connect(sweep);
+    sweep.connect(limiter);
+    limiter.connect(ctx.destination);
+
+    fxNodes = { low, mid, high, sweep };
+    applyFx(true);
 
     noise = ctx.createBuffer(1, ctx.sampleRate, ctx.sampleRate);
     const samples = noise.getChannelData(0);
@@ -99,6 +194,28 @@
   function closeAudio() {
     if (ctx) ctx.close();
     ctx = null;
+    fxNodes = null;
+  }
+
+  function applyFx(instant) {
+    if (!ctx || !fxNodes) return;
+
+    const now = ctx.currentTime;
+    const set = (param, value) => {
+      if (instant) param.value = value;
+      else param.setTargetAtTime(value, now, 0.02);
+    };
+
+    set(fxNodes.low.gain, fx.low);
+    set(fxNodes.mid.gain, fx.mid);
+    set(fxNodes.high.gain, fx.high);
+
+    const amount = fx.filter;
+    const sweep = fxNodes.sweep;
+
+    sweep.type = amount > 0 ? 'highpass' : 'lowpass';
+    set(sweep.frequency, amount > 0 ? 20 * Math.pow(250, amount) : 20000 * Math.pow(0.0125, -amount));
+    set(sweep.Q, amount === 0 ? 0.7 : 2.5);
   }
 
   function makeBus() {
@@ -392,7 +509,7 @@
     layer.append(playhead);
     arrangement.append(layer);
 
-    root.replaceChildren(transport, arrangement);
+    root.replaceChildren(transport, mixerControl(), arrangement);
     applyMix();
 
     function formatBpm(value) {
@@ -638,9 +755,8 @@
     transport.append(playButton, prevButton, nextButton, loopButton, position, tempo, tempoControl(() => {
       bpmOut.textContent = bpmText(parts[current].bpm);
     }));
-    root.replaceChildren(transport);
+    root.replaceChildren(transport, mixerControl());
 
-    // Ereignisse jedes Parts nach Step sortiert (nur der gewählte Ausschnitt), Busse entstehen beim Start.
     const layout = parts.map(part => {
       const runSteps = part.stop - part.start;
       const byStep = Array.from({ length: runSteps }, () => []);
