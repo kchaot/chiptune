@@ -159,10 +159,10 @@ final class Builder
             $html = (new HtmlSanitizer())->clean($parsed->html);
         }
 
-        $unknown = array_diff(array_keys($meta), ['title', 'artist', 'tags', 'tracks']);
+        $unknown = array_diff(array_keys($meta), ['title', 'artist', 'tags', 'tracks', 'loop']);
 
         if ($unknown !== []) {
-            throw new BuildError('_album.md: unbekannter Schlüssel „' . implode('“, „', array_map('strval', $unknown)) . '“ (erlaubt: title, artist, tags, tracks).');
+            throw new BuildError('_album.md: unbekannter Schlüssel „' . implode('“, „', array_map('strval', $unknown)) . '“ (erlaubt: title, artist, tags, tracks, loop).');
         }
 
         $available = [];
@@ -198,7 +198,7 @@ final class Builder
             throw new BuildError('Das Album enthält kein Project, das sich abspielen lässt.');
         }
 
-        $head = ['format' => 1, 'kind' => 'set', 'loop' => false, 'title' => $meta['title'] ?? ucfirst(str_replace('-', ' ', $album['slug']))];
+        $head = ['format' => 1, 'kind' => 'set', 'loop' => $meta['loop'] ?? false, 'title' => $meta['title'] ?? ucfirst(str_replace('-', ' ', $album['slug']))];
 
         foreach (['artist', 'tags'] as $key) {
             if (isset($meta[$key])) {

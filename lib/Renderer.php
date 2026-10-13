@@ -89,12 +89,12 @@ HTML;
             $name = $this->e((string) ($author['author'] ?? ''));
             $url = (string) ($author['url'] ?? '');
             $link = $url === '' ? '' : '<a href="' . $this->e($url) . '" rel="noopener noreferrer">' . $this->e(preg_replace('~^https?://~', '', $url)) . '</a>';
-            $lead = $name !== '' && $link !== '' ? "{$name} · {$link}" : $name . $link;
+            $lead = $name !== '' && $link !== '' ? "{$name} | {$link}" : $name . $link;
             $title = $author['title'] . ' – ' . $this->site['title'];
             $tagline = $author['tagline'] ?? '';
             $label = $tagline === '' ? '' : '<p class="tagline">' . $this->e($tagline) . '</p>';
             $profile = $author['html'] ?? '';
-            $sections = $profile === '' ? '' : "\n    <section class=\"profile panel\"><div class=\"panel-inner\"><div class=\"notes\">{$profile}</div></div></section>";
+            $sections = $profile === '' ? '' : "\n    <section class=\"profile aside\"><div class=\"notes\">{$profile}</div></section>";
             $command = 'ls .';
         }
 
@@ -283,7 +283,7 @@ HTML;
             );
         }
 
-        return '<section class="layers"><h2 class="label">Layer</h2><ol>' . $items . "\n    </ol></section>";
+        return '<section class="layers"><h2 class="sub">Layer</h2><ol>' . $items . "\n    </ol></section>";
     }
 
     /** @param array{prefix: string, slug: string, project: array<string, mixed>} $entry */
@@ -294,7 +294,7 @@ HTML;
         $artist = $this->artistLine($project['artist'], $entry['prefix'], 'p');
         $tags = implode('', array_map(fn (string $tag): string => '<li>' . $this->e($tag) . '</li>', $project['tags']));
         $tags = $tags === '' ? '' : '<ul class="tags">' . $tags . '</ul>';
-        $notes = $project['notesHtml'] === '' ? '' : '<section class="project-notes panel"><div class="panel-inner"><div class="notes">' . $project['notesHtml'] . '</div></div></section>';
+        $notes = $project['notesHtml'] === '' ? '' : '<section class="aside wide"><div class="notes">' . $project['notesHtml'] . '</div></section>';
         $head = $this->head($entry['prefix'] . ($entry['album'] !== null ? '/' . $entry['album'] : ''), 'play ' . basename($entry['slug']));
         $credits = $this->credits($project['credits'] ?? []);
         $albumNav = $this->albumNav($entry['nav'] ?? null, $entry['prefix']);
@@ -412,7 +412,7 @@ HTML, withScript: true);
 
         return '<nav class="album-nav" aria-label="Album">'
             . $link($nav['prev'], 'prev', '←')
-            . '<a class="where" href="' . $this->url($prefix . '/' . $nav['album']['slug'] . '/') . '">' . $this->e($nav['album']['title']) . ' · ' . $nav['number'] . ' von ' . $nav['total'] . '</a>'
+            . '<a class="where" href="' . $this->url($prefix . '/' . $nav['album']['slug'] . '/') . '">' . $this->e($nav['album']['title']) . ' | ' . $nav['number'] . ' von ' . $nav['total'] . '</a>'
             . $link($nav['next'], 'next', '→')
             . '</nav>';
     }
@@ -437,12 +437,12 @@ HTML, withScript: true);
     public function set(array $entry): string
     {
         $set = $entry['project'];
+        $isAlbum = $entry['kind'] === 'album';
         $title = $this->e($set['title']);
         $artist = $this->artistLine($set['artist'], $entry['prefix'], 'p');
         $tags = implode('', array_map(fn (string $tag): string => '<li>' . $this->e($tag) . '</li>', $set['tags']));
         $tags = $tags === '' ? '' : '<ul class="tags">' . $tags . '</ul>';
-        $notes = $set['notesHtml'] === '' ? '' : '<section class="project-notes panel"><div class="panel-inner"><div class="notes">' . $set['notesHtml'] . '</div></div></section>';
-        $isAlbum = $entry['kind'] === 'album';
+        $notes = $set['notesHtml'] === '' ? '' : ('<section class="aside' . ($isAlbum ? '' : ' wide') . '"><div class="notes">' . $set['notesHtml'] . '</div></section>');
         $head = $isAlbum ? $this->head($entry['prefix'], 'ls ' . $entry['slug']) : $this->head($entry['prefix'], 'play ' . basename($entry['slug']));
         $badge = $isAlbum ? 'Album' : 'Set';
         $source = $isAlbum ? '' : '<p class="source"><a href="source.md">Quelltext dieses Sets</a></p>';
@@ -540,13 +540,13 @@ HTML, withScript: true);
                 "\n      <details class=\"track-note t%d\" id=\"track-%d\"><summary><span class=\"name\">%s</span> <span class=\"instrument\">%s</span></summary><div class=\"notes inner\">%s</div></details>",
                 $index % 8,
                 $index + 1,
-                $this->e(isset($track['group']) ? $track['group']['title'] . ' · ' . $track['name'] : $track['name']),
+                $this->e(isset($track['group']) ? $track['group']['title'] . ' | ' . $track['name'] : $track['name']),
                 $this->e($track['instrument']),
                 $track['notesHtml'],
             );
         }
 
-        return $html === '' ? '' : '<section class="track-notes"><h2 class="label">Tracks</h2>' . $html . "\n    </section>";
+        return $html === '' ? '' : '<section class="track-notes"><h2 class="sub">Zusätzliche Spurinformationen</h2>' . $html . "\n    </section>";
     }
 
     public function notFound(): string
