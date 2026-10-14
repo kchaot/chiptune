@@ -149,6 +149,7 @@ final class ProjectParser
             'tracks' => $tracks,
             'warnings' => $warnings,
             'notesHtml' => $this->sanitizer->clean($head->html ?? ''),
+            'media' => $this->media($meta),
             'remix' => $remix,
             'credits' => array_values($credits),
         ] + $extra;
@@ -742,6 +743,39 @@ final class ProjectParser
             'group' => $this->text($meta, 'group', 40),
             'tags' => $this->tags($meta['tags'] ?? []),
         ];
+    }
+
+    /**
+     * @param array<string, mixed> $meta
+     * @return array{hq?: string, studio?: string, release?: string, hqOffset?: float}
+     */
+    private function media(array $meta): array
+    {
+        $media = [];
+
+        foreach (['hq', 'studio', 'release'] as $key) {
+            if (! isset($meta[$key])) {
+                continue;
+            }
+
+            $url = $meta[$key];
+
+            if (! is_string($url) || strlen($url) > 300 || preg_match('~^https://(?=[a-z0-9.-]{3,100}(?::\d{1,5})?(?:/|$))[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)+(?::\d{1,5})?(?:/[^\s<>"\'\\\\\x00-\x1F\x7F]*)?$~', $url) !== 1) {
+                throw new BuildError("Project: „{$key}“ muss eine https-Adresse mit Kleinbuchstaben im Hostnamen sein (höchstens 300 Zeichen, ohne Leerzeichen).");
+            }
+
+            $media[$key] = $url;
+        }
+
+        if (isset($meta['hq-offset'])) {
+            if (! isset($media['hq'])) {
+                throw new BuildError('Project: „hq-offset“ gehört zu „hq“.');
+            }
+
+            $media['hqOffset'] = $this->number($meta, 'hq-offset', 0, -10, 10);
+        }
+
+        return $media;
     }
 
     /** @param array<string, mixed> $meta */

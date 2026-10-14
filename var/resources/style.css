@@ -214,6 +214,17 @@ main, .pagehead { max-width: 75rem; margin-inline: auto; padding-inline: clamp(1
 .heading .tags { margin-top: 0.6rem; }
 
 .daw { margin-bottom: 1rem; }
+.daw .studio { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem 0.9rem; margin: 0.9rem 0 0; padding: 0.6rem 0.8rem; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); font: 0.78rem var(--mono); }
+.daw .studio-label { color: var(--dim); text-transform: uppercase; letter-spacing: 0.08em; font-size: 0.68rem; }
+.daw .versions { display: inline-flex; border: 1px solid var(--line); border-radius: 6px; overflow: hidden; }
+.daw .version { padding: 0.25rem 0.8rem; border: 0; border-right: 1px solid var(--line); background: var(--panel-raised); color: var(--ink-soft); font: inherit; cursor: pointer; }
+.daw .version:last-child { border-right: 0; }
+.daw .version[aria-pressed="true"] { background: var(--violet); color: var(--cream); }
+.daw .version:focus-visible { outline: 2px solid var(--cyan); outline-offset: -2px; }
+.daw .studio-note { flex: 1 1 14rem; color: var(--ink-soft); }
+.daw .release { margin-left: auto; color: var(--green); text-decoration: none; border-bottom: 1px dashed currentColor; }
+.daw .release::after { content: " \2197"; }
+.daw noscript .media-links { margin: 0.6rem 0 0; padding-left: 1.2rem; }
 .daw .midi { margin: 0.6rem 0 0; text-align: right; }
 .daw .midi-link { padding: 0.1rem 0.4rem; border: 0; background: none; color: var(--dim); font: 0.7rem var(--mono); cursor: pointer; }
 .daw .midi-link:hover, .daw .midi-link:focus-visible { color: var(--ink-soft); text-decoration: underline; }

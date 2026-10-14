@@ -348,6 +348,7 @@ HTML;
             'stepSeconds' => $project['stepSeconds'],
             'loop' => $project['loop'],
             'steps' => $project['steps'],
+            'media' => (object) ($project['media'] ?? []),
             'tracks' => array_map(function (array $track): array {
                 $notes = $track['notesHtml'] !== '';
                 unset($track['notesHtml']);
@@ -409,6 +410,7 @@ HTML, true, false);
         $trackNotes = $this->trackNotes($project['tracks']);
         $layersPanel = $this->layersPanel($project);
         $badge = $this->projectBadge($project);
+        $mediaLinks = $this->mediaLinks($project['media'] ?? []);
 
         return $this->page($project['title'] . ' – ' . $this->site['title'], 'project-page', <<<HTML
   <script type="application/json" id="project">{$payload}</script>
@@ -423,6 +425,7 @@ HTML, true, false);
       <noscript>
         {$thumbnail}
         <p>Zum Abspielen braucht diese Seite JavaScript.</p>
+        {$mediaLinks}
       </noscript>
     </div>
     {$albumNav}
@@ -433,6 +436,23 @@ HTML, true, false);
     <p class="source"><a href="source.md">Quelltext dieses Projects</a></p>
   </main>
 HTML, withScript: true);
+    }
+
+    /**
+     * @param array<string, mixed> $media
+     */
+    private function mediaLinks(array $media): string
+    {
+        $labels = ['hq' => 'HQ-Version (Audio)', 'studio' => 'Studio-Version (Audio)', 'release' => 'Veröffentlichung'];
+        $items = '';
+
+        foreach ($labels as $key => $label) {
+            if (isset($media[$key])) {
+                $items .= '<li><a href="' . $this->e((string) $media[$key]) . '" rel="noopener noreferrer">' . $label . '</a></li>';
+            }
+        }
+
+        return $items === '' ? '' : '<ul class="media-links">' . $items . '</ul>';
     }
 
     /**
