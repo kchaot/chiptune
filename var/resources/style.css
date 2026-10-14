@@ -743,3 +743,15 @@ body:has(.page:target) .home { display: none; }
 .picker-item small { opacity: 0.65; font-size: 0.78rem; }
 .picker-empty { padding: 1rem; opacity: 0.65; }
 @media (max-width: 40rem) { .picker-body { flex-direction: column; } .picker-filters { flex: 0 0 auto; max-height: 9rem; border-right: 0; border-bottom: 1px solid var(--line); } }
+
+.group { margin: 1.5rem 0 0; }
+.group summary { display: flex; align-items: baseline; gap: 0.8rem; padding: 0.4rem 0; border-bottom: 1px solid var(--line); cursor: pointer; list-style: none; }
+.group summary::-webkit-details-marker { display: none; }
+.group summary::before { content: "\25BE"; color: var(--cyan); }
+.group:not([open]) summary::before { content: "\25B8"; }
+.group-name { color: var(--cream); font-size: 1.15rem; font-weight: 800; }
+.group-count { color: var(--ink-soft); font-size: 0.85rem; }
+.group > .projects { margin-top: 1rem; padding-bottom: 0; }
+.group:last-child { margin-bottom: 4rem; }
+main > .projects:not(:last-child) { padding-bottom: 0; }
+.group-rest { margin: 2rem 0 0; color: var(--ink-soft); font-size: 1.15rem; font-weight: 800; }
