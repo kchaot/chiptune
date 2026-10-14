@@ -1320,6 +1320,123 @@
     return api;
   }
 
+  const MIDI_PROGRAMS = { square: 80, pulse: 80, saw: 81, triangle: 73, sine: 79 };
+  const MIDI_DRUMS = { k: 36, s: 38, c: 39, h: 42, o: 46 };
+  const MIDI_TICKS = 480;
+
+  function midiNote(frequency) {
+    return Math.max(0, Math.min(127, Math.round(69 + 12 * Math.log2(frequency / 440))));
+  }
+
+  function varLength(value) {
+    const bytes = [value & 0x7f];
+
+    for (let rest = value >>> 7; rest > 0; rest >>>= 7) bytes.unshift((rest & 0x7f) | 0x80);
+
+    return bytes;
+  }
+
+  function midiText(type, text) {
+    const bytes = Array.from(new TextEncoder().encode(text)).slice(0, 200);
+
+    return [0xff, type, ...varLength(bytes.length), ...bytes];
+  }
+
+  function midiChunk(name, body) {
+    const size = body.length;
+
+    return [
+      ...Array.from(name, letter => letter.charCodeAt(0)),
+      (size >>> 24) & 255, (size >>> 16) & 255, (size >>> 8) & 255, size & 255,
+      ...body,
+    ];
+  }
+
+  function midiFile(project) {
+    const perStep = MIDI_TICKS / project.stepsPerBeat;
+    const microseconds = Math.round(60000000 / project.bpm);
+    const total = Math.round(project.steps * perStep);
+
+    const head = [
+      ...varLength(0), ...midiText(0x03, project.title),
+      ...varLength(0), ...midiText(0x01, `Quelle: ${location.origin}${location.pathname}`),
+      ...varLength(0), 0xff, 0x51, 3, (microseconds >> 16) & 255, (microseconds >> 8) & 255, microseconds & 255,
+      ...varLength(0), 0xff, 0x58, 4, 4, 2, 24, 8,
+      ...varLength(total), 0xff, 0x2f, 0,
+    ];
+    const chunks = [midiChunk('MTrk', head)];
+    let melodic = 0;
+
+    for (const track of project.tracks) {
+      const drums = track.instrument === 'drums';
+      let channel = 9;
+
+      if (!drums) {
+        channel = melodic % 15;
+        if (channel >= 9) channel += 1;
+        melodic += 1;
+      }
+
+      const velocity = Math.max(1, Math.min(127, Math.round(60 + (track.volume / 0.34) * 50)));
+      const messages = [];
+
+      for (const event of track.events) {
+        const note = drums ? MIDI_DRUMS[event.d] : midiNote(event.f);
+
+        if (note === undefined) continue;
+
+        const start = Math.round(event.t * perStep);
+        const length = drums ? Math.round(perStep) : Math.max(1, Math.round(event.len * track.gate * perStep));
+
+        messages.push({ tick: start, order: 1, bytes: [0x90 | channel, note, velocity] });
+        messages.push({ tick: start + length, order: 0, bytes: [0x80 | channel, note, 0] });
+      }
+
+      messages.sort((a, b) => a.tick - b.tick || a.order - b.order);
+
+      const body = [...varLength(0), ...midiText(0x03, track.name)];
+
+      if (!drums) body.push(...varLength(0), 0xc0 | channel, MIDI_PROGRAMS[track.instrument] ?? 80);
+
+      let last = 0;
+
+      for (const message of messages) {
+        body.push(...varLength(message.tick - last), ...message.bytes);
+        last = message.tick;
+      }
+
+      body.push(...varLength(Math.max(0, total - last)), 0xff, 0x2f, 0);
+      chunks.push(midiChunk('MTrk', body));
+    }
+
+    const header = midiChunk('MThd', [0, 1, (chunks.length >> 8) & 255, chunks.length & 255, MIDI_TICKS >> 8, MIDI_TICKS & 255]);
+
+    return new Uint8Array([...header, ...chunks.flat()]);
+  }
+
+  function midiLink(project) {
+    const button = el('button', 'midi-link', 'MIDI');
+    button.type = 'button';
+    button.title = 'Song als MIDI-Datei speichern (Noten und Schlagzeug, ohne Klang)';
+    button.addEventListener('click', () => {
+      const name = (project.title || 'song').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'song';
+      const url = URL.createObjectURL(new Blob([midiFile(project)], { type: 'audio/midi' }));
+      const link = document.createElement('a');
+
+      link.href = url;
+      link.download = `${name}.mid`;
+      document.body.append(link);
+      link.click();
+      link.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    });
+
+    const line = el('p', 'midi');
+    line.append(button);
+
+    return line;
+  }
+
   function mountProject(project) {
     const host = {
       mix: false,
@@ -1331,7 +1448,7 @@
     };
     const deck = projectDeck(project, S, host);
 
-    root.replaceChildren(deck.transport, deck.desk, deck.arrangement);
+    root.replaceChildren(deck.transport, deck.desk, deck.arrangement, midiLink(project));
   }
 
   const PADS = [
