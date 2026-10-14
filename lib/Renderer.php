@@ -28,54 +28,6 @@ final class Renderer
      */
     public function library(array $entries, ?string $prefix = null): string
     {
-        $items = '';
-
-        foreach ($entries as $entry) {
-            $project = $entry['project'];
-            $href = $this->url($entry['prefix'] . '/' . $entry['slug'] . '/');
-            $title = $this->e($project['title']);
-            $artist = $this->artistLine($project['artist'], $entry['prefix'], 'span');
-            $author = $prefix !== null
-                ? ''
-                : '<span class="author">von <a href="' . $this->url($entry['prefix'] . '/') . '">' . $this->e($this->authorTitle($entry['prefix'])) . '</a></span>';
-            $tags = implode('', array_map(fn (string $tag): string => '<li>' . $this->e($tag) . '</li>', $project['tags']));
-            $tags = $tags === '' ? '' : '<ul class="tags">' . $tags . '</ul>';
-            if (in_array($entry['kind'] ?? 'project', ['set', 'album'], true)) {
-                $isAlbum = $entry['kind'] === 'album';
-                $parts = count($project['parts']);
-                $length = $this->duration($project['duration']);
-                $noun = $isAlbum ? ($parts === 1 ? 'Song' : 'Songs') : ($parts === 1 ? 'Part' : 'Parts');
-                $facts = "<span><b>{$parts}</b> {$noun}</span> <span><b>{$length}</b> Länge</span>";
-                $thumbnail = $this->setThumbnail($project);
-                $badge = '<span class="badge">' . ($isAlbum ? 'Album' : 'Set') . '</span> ';
-            } else {
-                $bpm = $this->number($project['bpm']);
-                $bars = $this->number($project['bars']);
-                $tracks = count($project['tracks']);
-                $length = $this->duration($project['steps'] * $project['stepSeconds']);
-                $facts = "<span><b>{$bpm}</b> BPM</span> <span><b>{$bars}</b> Bars</span> <span><b>{$tracks}</b> Tracks</span> <span><b>{$length}</b> Länge</span>";
-                $thumbnail = $this->thumbnail($project);
-                $badge = $this->projectBadge($project);
-            }
-
-            $items .= <<<HTML
-
-      <li class="project">
-        <div class="title">
-          <h2>{$badge}<a href="{$href}">{$title}</a></h2>
-          {$artist}{$author}
-        </div>
-        {$thumbnail}
-        <p class="facts">{$facts}</p>
-        {$tags}
-      </li>
-HTML;
-        }
-
-        $list = $items === ''
-            ? '<p class="empty">Noch keine Projekte.<br> Lege eine Markdown-Datei in einer Quelle (etc/sources.json) an und baue die Seite neu.</p>'
-            : '<ul class="projects">' . $items . "\n    </ul>";
-
         if ($prefix === null) {
             $list = $this->authorList($entries);
             $heading = $this->e($this->site['title']);
@@ -85,6 +37,7 @@ HTML;
             $label = '';
             $command = 'ls .';
         } else {
+            $list = $this->libraryList($entries, $prefix);
             $author = $this->authors[$prefix] ?? ['title' => $prefix, 'url' => ''];
             $heading = $this->e($author['title']);
             $name = $this->e((string) ($author['author'] ?? ''));
@@ -114,6 +67,91 @@ HTML;
   </main>
   </div>{$views}
 HTML);
+    }
+
+    /**
+     * @param array<string, mixed> $entry
+     */
+    private function libraryItem(array $entry, ?string $prefix): string
+    {
+        $project = $entry['project'];
+        $href = $this->url($entry['prefix'] . '/' . $entry['slug'] . '/');
+        $title = $this->e($project['title']);
+        $artist = $this->artistLine($project['artist'], $entry['prefix'], 'span');
+        $author = $prefix !== null
+            ? ''
+            : '<span class="author">von <a href="' . $this->url($entry['prefix'] . '/') . '">' . $this->e($this->authorTitle($entry['prefix'])) . '</a></span>';
+        $tags = implode('', array_map(fn (string $tag): string => '<li>' . $this->e($tag) . '</li>', $project['tags']));
+        $tags = $tags === '' ? '' : '<ul class="tags">' . $tags . '</ul>';
+        if (in_array($entry['kind'] ?? 'project', ['set', 'album'], true)) {
+            $isAlbum = $entry['kind'] === 'album';
+            $parts = count($project['parts']);
+            $length = $this->duration($project['duration']);
+            $noun = $isAlbum ? ($parts === 1 ? 'Song' : 'Songs') : ($parts === 1 ? 'Part' : 'Parts');
+            $facts = "<span><b>{$parts}</b> {$noun}</span> <span><b>{$length}</b> Länge</span>";
+            $thumbnail = $this->setThumbnail($project);
+            $badge = '<span class="badge">' . ($isAlbum ? 'Album' : 'Set') . '</span> ';
+        } else {
+            $bpm = $this->number($project['bpm']);
+            $bars = $this->number($project['bars']);
+            $tracks = count($project['tracks']);
+            $length = $this->duration($project['steps'] * $project['stepSeconds']);
+            $facts = "<span><b>{$bpm}</b> BPM</span> <span><b>{$bars}</b> Bars</span> <span><b>{$tracks}</b> Tracks</span> <span><b>{$length}</b> Länge</span>";
+            $thumbnail = $this->thumbnail($project);
+            $badge = $this->projectBadge($project);
+        }
+
+        return <<<HTML
+
+      <li class="project">
+        <div class="title">
+          <h2>{$badge}<a href="{$href}">{$title}</a></h2>
+          {$artist}{$author}
+        </div>
+        {$thumbnail}
+        <p class="facts">{$facts}</p>
+        {$tags}
+      </li>
+HTML;
+
+    }
+
+    /**
+     * @param list<array<string, mixed>> $entries
+     */
+    private function libraryList(array $entries, ?string $prefix): string
+    {
+        if ($entries === []) {
+            return '<p class="empty">Noch keine Projekte.<br> Lege eine Markdown-Datei in einer Quelle (etc/sources.json) an und baue die Seite neu.</p>';
+        }
+
+        $albums = [];
+        $groups = [];
+        $singles = [];
+
+        foreach ($entries as $entry) {
+            $group = (string) ($entry['project']['group'] ?? '');
+
+            if (($entry['kind'] ?? 'project') === 'album') {
+                $albums[] = $entry;
+            } elseif ($group !== '') {
+                $groups[mb_strtolower($group)][] = $entry;
+            } else {
+                $singles[] = $entry;
+            }
+        }
+
+        $items = fn (array $list): string => '<ul class="projects">' . implode('', array_map(fn (array $entry): string => $this->libraryItem($entry, $prefix), $list)) . "\n    </ul>";
+        $html = $albums === [] ? '' : $items($albums);
+
+        foreach ($groups as $members) {
+            $name = $this->e((string) $members[0]['project']['group']);
+            $count = count($members);
+            $noun = $count === 1 ? 'Song' : 'Songs';
+            $html .= "\n    <details class=\"group\" open>\n      <summary><span class=\"group-name\">{$name}</span> <span class=\"group-count\">{$count} {$noun}</span></summary>\n    " . $items($members) . "\n    </details>";
+        }
+
+        return $html . ($singles === [] ? '' : ($groups === [] ? '' : "\n    <h2 class=\"group-rest\">Weitere Songs</h2>") . $items($singles));
     }
 
     /**

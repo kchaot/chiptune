@@ -48,6 +48,10 @@ final class Builder
                 fwrite(STDERR, "Warnung in {$label}: {$warning}\n");
             }
 
+            if ($file['album'] !== null && ($loaded['data']['group'] ?? '') !== '') {
+                fwrite(STDERR, "Warnung in {$label}: „group“ gilt nur für Songs ohne Album und wird ignoriert.\n");
+            }
+
             $entries[] = [
                 'prefix' => $file['prefix'],
                 'slug' => $file['slug'],
@@ -141,6 +145,8 @@ final class Builder
                 'sourceId' => (string) $entry['prefix'],
                 'album' => $entry['album'] === null ? '' : ($albumTitles[$entry['prefix'] . '/' . $entry['album']] ?? (string) $entry['album']),
                 'albumId' => $entry['album'] === null ? '' : $entry['prefix'] . '/' . $entry['album'],
+                'group' => $entry['album'] === null ? (string) ($entry['project']['group'] ?? '') : '',
+                'groupId' => $entry['album'] === null && ($entry['project']['group'] ?? '') !== '' ? $entry['prefix'] . '/' . mb_strtolower((string) $entry['project']['group']) : '',
                 'tags' => array_values(array_map('strval', (array) ($entry['project']['tags'] ?? []))),
                 'href' => $site['base_path'] . "{$entry['prefix']}/{$entry['slug']}/",
                 'data' => "data/{$id}.json",

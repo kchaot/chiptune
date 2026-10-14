@@ -1905,6 +1905,7 @@
     let filter = { type: 'all', id: '' };
 
     const sources = [...new Map(catalog.map(entry => [entry.sourceId, entry.source])).entries()].sort((a, b) => a[1].localeCompare(b[1], 'de'));
+    const groupsList = [...new Map(catalog.filter(entry => entry.groupId).map(entry => [entry.groupId, entry.group + ' (' + entry.source + ')'])).entries()].sort((a, b) => a[1].localeCompare(b[1], 'de'));
     const albumsList = [...new Map(catalog.filter(entry => entry.albumId).map(entry => [entry.albumId, entry.album + ' (' + entry.source + ')'])).entries()].sort((a, b) => a[1].localeCompare(b[1], 'de'));
 
     function closePicker() {
@@ -1915,7 +1916,8 @@
     function inFilter(entry) {
       if (filter.type === 'source') return entry.sourceId === filter.id;
       if (filter.type === 'album') return entry.albumId === filter.id;
-      if (filter.type === 'single') return entry.albumId === '';
+      if (filter.type === 'group') return entry.groupId === filter.id;
+      if (filter.type === 'single') return entry.albumId === '' && !entry.groupId;
 
       return true;
     }
@@ -1924,7 +1926,7 @@
       filters.replaceChildren();
 
       const add = (label, type, id) => {
-        const count = catalog.filter(entry => (type === 'all' ? true : type === 'source' ? entry.sourceId === id : type === 'album' ? entry.albumId === id : entry.albumId === '')).length;
+        const count = catalog.filter(entry => (type === 'all' ? true : type === 'source' ? entry.sourceId === id : type === 'album' ? entry.albumId === id : type === 'group' ? entry.groupId === id : entry.albumId === '' && !entry.groupId)).length;
         const button = el('button', 'picker-filter');
         button.type = 'button';
         button.append(el('span', null, label), el('b', null, String(count)));
@@ -1944,9 +1946,18 @@
         sources.forEach(([id, title]) => add(title, 'source', id));
       }
 
+      if (groupsList.length > 0) {
+        filters.append(el('span', 'picker-group', 'Gruppen'));
+        groupsList.forEach(([id, title]) => add(title, 'group', id));
+      }
+
       if (albumsList.length > 0) {
         filters.append(el('span', 'picker-group', 'Alben'));
         albumsList.forEach(([id, title]) => add(title, 'album', id));
+      }
+
+      if ((albumsList.length > 0 || groupsList.length > 0) && catalog.some(entry => entry.albumId === '' && !entry.groupId)) {
+        if (albumsList.length === 0) filters.append(el('span', 'picker-group', 'Sonstige'));
         add('Einzelne Songs', 'single', '');
       }
     }
@@ -1956,8 +1967,8 @@
 
       return catalog
         .filter(inFilter)
-        .filter(entry => query === '' || [entry.title, entry.artist, entry.album, entry.source, ...entry.tags].join(' ').toLowerCase().includes(query))
-        .sort((a, b) => a.source.localeCompare(b.source, 'de') || (a.albumId === '' ? 1 : 0) - (b.albumId === '' ? 1 : 0) || a.album.localeCompare(b.album, 'de') || a.title.localeCompare(b.title, 'de', { numeric: true }));
+        .filter(entry => query === '' || [entry.title, entry.artist, entry.album, entry.group, entry.source, ...entry.tags].join(' ').toLowerCase().includes(query))
+        .sort((a, b) => a.source.localeCompare(b.source, 'de') || (a.albumId === '' ? 1 : 0) - (b.albumId === '' ? 1 : 0) || a.album.localeCompare(b.album, 'de') || (a.group === '' ? 1 : 0) - (b.group === '' ? 1 : 0) || a.group.localeCompare(b.group, 'de') || a.title.localeCompare(b.title, 'de', { numeric: true }));
     }
 
     function chooseSong(entry) {
@@ -1979,7 +1990,7 @@
         const button = el('button', 'picker-item');
         button.type = 'button';
         const bpm = Number(Number(entry.bpm).toFixed(1));
-        const meta = [entry.album || entry.source, entry.artist, bpm + ' BPM', Number(entry.bars) + ' Bars'].filter(Boolean).join(' | ');
+        const meta = [entry.album || entry.group || entry.source, entry.artist, bpm + ' BPM', Number(entry.bars) + ' Bars'].filter(Boolean).join(' | ');
         button.append(el('b', null, entry.title), el('small', null, meta));
         if (loadedIds.includes(entry.id)) button.setAttribute('aria-current', 'true');
         button.addEventListener('click', () => chooseSong(entry));

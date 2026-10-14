@@ -732,13 +732,14 @@ final class ProjectParser
 
     /**
      * @param array<string, mixed> $meta
-     * @return array{title: string, artist: string, tags: list<string>}
+     * @return array{title: string, artist: string, group: string, tags: list<string>}
      */
     public function describe(array $meta, string $fallbackTitle): array
     {
         return [
             'title' => $this->text($meta, 'title', 80, $fallbackTitle) ?: $fallbackTitle,
             'artist' => $this->text($meta, 'artist', 60),
+            'group' => $this->text($meta, 'group', 40),
             'tags' => $this->tags($meta['tags'] ?? []),
         ];
     }
