@@ -51,3 +51,8 @@ jobs:
                  --title "Aktueller Build" --notes "Wird bei jedem Build ersetzt. Der Server holt sich dieses Paket mit bin/pull.sh."
           gh release upload build public.tar.gz --clobber
           gh release upload build public.tar.gz.sha256 --clobber
+
+      - name: Tag "build" auf den aktuellen Stand setzen
+        run: |
+          git tag -f build "$GITHUB_SHA"
+          git push -f origin refs/tags/build
