@@ -772,4 +772,5 @@ body:has(.page:target) .home { display: none; }
 .group > .projects { margin-top: 1rem; padding-bottom: 0; }
 .group:last-child { margin-bottom: 4rem; }
 main > .projects:not(:last-child) { padding-bottom: 0; }
+main > .projects + .projects { margin-top: 1.5rem; }
 .group-rest { margin: 2rem 0 0; color: var(--ink-soft); font-size: 1.15rem; font-weight: 800; }
