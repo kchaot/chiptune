@@ -1278,6 +1278,12 @@
       });
       auto.setAttribute('aria-pressed', 'false');
       auto.title = 'Tempo folgt dem anderen Deck, der Start landet im selben Takt';
+      api.setAuto = value => {
+        api.auto = Boolean(value);
+        auto.setAttribute('aria-pressed', String(api.auto));
+
+        if (api.auto) host.autoStart(api);
+      };
 
       controls.append(
         row(cueButton, setCue, ...hotButtons, clearCues),
@@ -1287,6 +1293,7 @@
       drawCues();
       api.controls = controls;
       api.bpm = () => project.bpm * st.rate;
+      api.barSeconds = () => (project.stepsPerBar * project.stepSeconds) / speed(st);
       api.playing = () => playing;
     } else {
       document.addEventListener('keydown', event => {
@@ -2330,7 +2337,39 @@
     faderBody.append(meters[0].column, track, meters[1].column);
 
     const group = el('div', 'fader-tools');
-    group.append(playAll, rewindAll, copyTempo(0, 1), copyTempo(1, 0), lightButton);
+    const session = { name: '', start: 0 };
+
+    function mixHash() {
+      const query = new URLSearchParams();
+
+      if (loadedIds[0]) query.set('a', loadedIds[0]);
+      if (loadedIds[1]) query.set('b', loadedIds[1]);
+      if (session.start > 0) query.set('start', String(session.start));
+      query.set('auto', decks[1] && decks[1].auto ? '1' : '0');
+      query.set('fader', String(Math.round(position)));
+
+      return query.toString();
+    }
+
+    const linkButton = toolButton('Link', 'Mixer-Zustand als Link kopieren: Songs, Auto und Crossfader', async () => {
+      const hash = mixHash();
+      const url = location.origin + location.pathname + '#' + hash;
+
+      try {
+        history.replaceState(null, '', '#' + hash);
+      } catch (error) {
+        //
+      }
+
+      try {
+        await navigator.clipboard.writeText(url);
+        status.textContent = 'Link kopiert.';
+      } catch (error) {
+        status.textContent = url;
+      }
+    });
+
+    group.append(playAll, rewindAll, copyTempo(0, 1), copyTempo(1, 0), lightButton, linkButton);
 
     faderBox.append(
       quick('A', 0, 'Crossfader ganz zu Deck A'),
@@ -2344,6 +2383,59 @@
     wrapper.replaceChildren(wrapper.children[0], fader, wrapper.children[1]);
 
     root.replaceChildren(wrapper, status, machineBox, overlay);
+
+    async function startSession() {
+      const first = decks[0];
+      const second = decks[1];
+
+      if (!first) return;
+
+      await open(0);
+      decks.forEach(deck => deck && deck.playing() && deck.stop(false));
+      first.seek(0);
+      if (second) second.seek(0);
+      if (second && second.auto) sync(second, true);
+
+      const begin = ctx.currentTime + 0.4;
+      first.play(begin);
+      if (second) second.play(begin + (Math.max(1, session.start) - 1) * first.barSeconds());
+    }
+
+    function showSessionBar() {
+      const bar = el('div', 'session-bar');
+      const play = el('button', 'play', 'Session starten');
+      play.type = 'button';
+      play.addEventListener('click', startSession);
+      const note = session.start > 1 ? 'Deck B steigt auf Takt ' + session.start + ' von Deck A ein.' : 'Beide Decks starten zusammen.';
+      bar.append(el('b', null, session.name || 'Session'), el('span', null, note), play);
+      root.prepend(bar);
+    }
+
+    async function openFromLink() {
+      const params = new URLSearchParams(location.hash.slice(1));
+      const byId = id => catalog.find(entry => entry.id === id);
+      const first = byId(params.get('a'));
+      const second = byId(params.get('b'));
+
+      if (!first && !second) return;
+
+      if (first) await loaders[0](first);
+      if (second) await loaders[1](second);
+
+      const fader = Number(params.get('fader'));
+      if (params.has('fader') && fader >= 0 && fader <= 100) moveTo(Math.round(fader));
+      if (decks[1] && params.get('auto') === '1') decks[1].setAuto(true);
+
+      const start = parseInt(params.get('start') || '', 10);
+
+      if (decks[0] && start >= 1) {
+        session.start = start;
+        session.name = (params.get('name') || '').slice(0, 80);
+        showSessionBar();
+      }
+    }
+
+    openFromLink();
   }
 
   function mountSet(set) {

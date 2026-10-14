@@ -1,0 +1,107 @@
+<?php
+
+declare(strict_types=1);
+
+namespace Chiptune;
+
+use Tempest\Markdown\Markdown;
+
+/**
+ * Eine Session hält den Startzustand des Mixers fest: zwei Songs, der Takt von Deck A,
+ * auf dem Deck B einsteigt, Auto-Sync und die Stellung des Crossfaders.
+ */
+final class SessionParser
+{
+    public const FORMAT = 1;
+    public const MAX_BYTES = 16384;
+
+    public function __construct(
+        private readonly ProjectParser $projects,
+        private readonly Markdown $markdown = new Markdown(null),
+        private readonly HtmlSanitizer $sanitizer = new HtmlSanitizer(),
+    ) {}
+
+    /**
+     * @param \Closure(string): array{prefix: string, slug: string, project: array<string, mixed>} $resolve
+     * @return array<string, mixed>
+     */
+    public function parse(string $source, string $fallbackTitle, \Closure $resolve): array
+    {
+        if (strlen($source) > self::MAX_BYTES) {
+            throw new BuildError(sprintf('Die Datei ist größer als %d KB.', self::MAX_BYTES / 1024));
+        }
+
+        $parsed = $this->markdown->parse($source);
+        $meta = $parsed->frontmatter;
+
+        if (($meta['format'] ?? self::FORMAT) !== self::FORMAT) {
+            throw new BuildError('Nicht unterstütztes format: ' . json_encode($meta['format']) . '. Unterstützt wird format: ' . self::FORMAT . '.');
+        }
+
+        $unknown = array_diff(array_keys($meta), ['kind', 'format', 'title', 'artist', 'group', 'tags', 'a', 'b', 'start', 'auto', 'fader']);
+
+        if ($unknown !== []) {
+            throw new BuildError('Session: unbekannter Schlüssel „' . implode('“, „', array_map('strval', $unknown)) . '“ (erlaubt: title, artist, tags, a, b, start, auto, fader).');
+        }
+
+        $decks = [];
+
+        foreach (['a' => 'Deck A', 'b' => 'Deck B'] as $key => $label) {
+            $ref = $meta[$key] ?? null;
+
+            if (! is_string($ref) || preg_match('/^([a-z0-9][a-z0-9-]*)\/([a-z0-9][a-z0-9-]*(?:\/[a-z0-9][a-z0-9-]*)?)$/', trim($ref)) !== 1) {
+                throw new BuildError("Session: „{$key}“ ({$label}) muss ein Song in der Form prefix/slug sein.");
+            }
+
+            $resolved = $resolve(trim($ref));
+            $project = $resolved['project'];
+            $decks[$key] = [
+                'ref' => trim($ref),
+                'prefix' => $resolved['prefix'],
+                'slug' => $resolved['slug'],
+                'title' => $project['title'],
+                'bpm' => $project['bpm'],
+                'bars' => $project['bars'],
+                'stepsPerBar' => $project['stepsPerBar'],
+            ];
+        }
+
+        $start = $meta['start'] ?? 1;
+
+        if (! is_int($start) || $start < 1 || $start > $decks['a']['bars']) {
+            throw new BuildError("Session: „start“ ist der Takt von Deck A, auf dem Deck B einsteigt, eine ganze Zahl von 1 bis {$decks['a']['bars']}.");
+        }
+
+        $auto = filter_var($meta['auto'] ?? true, FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE);
+
+        if ($auto === null) {
+            throw new BuildError('Session: „auto“ muss true oder false sein.');
+        }
+
+        $fader = $meta['fader'] ?? 50;
+
+        if (! is_int($fader) || $fader < 0 || $fader > 100) {
+            throw new BuildError('Session: „fader“ muss eine ganze Zahl von 0 (nur Deck A) bis 100 (nur Deck B) sein.');
+        }
+
+        $credits = [];
+
+        foreach ($decks as $deck) {
+            $credits[$deck['ref']] = ['prefix' => $deck['prefix'], 'slug' => $deck['slug'], 'title' => $deck['title']];
+        }
+
+        return [
+            'kind' => 'session',
+            'format' => self::FORMAT,
+            ...$this->projects->describe($meta, $fallbackTitle),
+            'a' => $decks['a'],
+            'b' => $decks['b'],
+            'start' => $start,
+            'auto' => $auto,
+            'fader' => $fader,
+            'warnings' => [],
+            'notesHtml' => $this->sanitizer->clean($parsed->html),
+            'credits' => array_values($credits),
+        ];
+    }
+}
