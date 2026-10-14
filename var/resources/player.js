@@ -1056,11 +1056,30 @@
     }
 
     function toggleTransport() {
+      if (api.override && api.override()) return;
+
       if (playing) stop(true);
       else play();
     }
 
     playButton.addEventListener('click', toggleTransport);
+
+    function follow(step) {
+      if (step === null) {
+        playhead.hidden = true;
+        barOut.textContent = '1';
+        beatOut.textContent = '1';
+        return;
+      }
+
+      playhead.hidden = false;
+      showStep(step);
+    }
+
+    function external(on) {
+      playButton.textContent = on ? 'Stop' : 'Play';
+      playButton.classList.toggle('on', on);
+    }
 
     function rewire() {
       buses.forEach(bus => bus.disconnect());
@@ -1137,7 +1156,7 @@
       return true;
     }
 
-    const api = { transport, desk, arrangement, bpmOut, project, st, toggleTransport, stop, play, seek, seekBars, positionAt, align, auto: false };
+    const api = { transport, desk, arrangement, bpmOut, project, st, toggleTransport, stop, play, seek, seekBars, positionAt, align, currentStep, follow, external, isPlaying: () => playing, auto: false };
 
     if (mixing) {
       const controls = el('div', 'deck-controls');
@@ -1437,6 +1456,185 @@
     return line;
   }
 
+  function studioPanel(deck, project) {
+    const media = project.media || {};
+    const secure = value => {
+      try {
+        return typeof value === 'string' && new URL(value).protocol === 'https:' ? value : null;
+      } catch (error) {
+        return null;
+      }
+    };
+    const hqUrl = secure(media.hq);
+    const studioUrl = secure(media.studio);
+    const releaseUrl = secure(media.release);
+
+    if (!hqUrl && !studioUrl && !releaseUrl) return null;
+
+    const versions = [{ id: 'chip', label: 'Chiptune', note: 'Die Version aus dem Raster, vom Player erzeugt.' }];
+
+    if (hqUrl) {
+      versions.push({ id: 'hq', label: 'HQ', url: hqUrl, sync: true, offset: Number(media.hqOffset) || 0, note: 'Dieselben Noten, in der DAW gerendert. Der Abspielkopf läuft mit.' });
+    }
+
+    if (studioUrl) {
+      versions.push({ id: 'studio', label: 'Studio', url: studioUrl, sync: false, note: 'Freie Produktion. Läuft nicht im Raster mit.' });
+    }
+
+    const box = el('div', 'studio');
+    const note = el('span', 'studio-note', versions[0].note);
+    note.setAttribute('aria-live', 'polite');
+    const buttons = new Map();
+    const audios = new Map();
+    let current = 'chip';
+    let frameId = 0;
+    let active = false;
+
+    const stepOf = (version, audio) => (audio.currentTime - version.offset) / project.stepSeconds;
+
+    function audioFor(version) {
+      let audio = audios.get(version.id);
+
+      if (!audio) {
+        audio = new Audio();
+        audio.preload = 'none';
+        audio.src = version.url;
+        audio.addEventListener('ended', () => {
+          stopAudio();
+        });
+        audio.addEventListener('error', () => {
+          stopAudio();
+          note.textContent = 'Die Audiodatei lässt sich nicht laden.';
+        });
+        audios.set(version.id, audio);
+      }
+
+      return audio;
+    }
+
+    function stopAudio() {
+      active = false;
+      cancelAnimationFrame(frameId);
+      audios.forEach(audio => audio.pause());
+      deck.follow(null);
+      deck.external(false);
+    }
+
+    function follow(version, audio) {
+      cancelAnimationFrame(frameId);
+
+      const loop = () => {
+        if (audio.paused) return;
+
+        if (version.sync) {
+          const step = stepOf(version, audio);
+          deck.follow(step >= 0 && step < project.steps ? step : null);
+        }
+
+        frameId = requestAnimationFrame(loop);
+      };
+
+      frameId = requestAnimationFrame(loop);
+    }
+
+    function startAudio(version, step) {
+      const audio = audioFor(version);
+
+      if (version.sync && step !== null) audio.currentTime = Math.max(0, version.offset + step * project.stepSeconds);
+      else audio.currentTime = 0;
+
+      note.textContent = version.note;
+      active = true;
+      deck.external(true);
+      audio.play().then(() => {
+        if (active) follow(version, audio);
+      }).catch(() => {
+        if (!active) return;
+
+        stopAudio();
+        note.textContent = 'Die Audiodatei lässt sich nicht abspielen.';
+      });
+    }
+
+    function position() {
+      if (current === 'chip') return deck.isPlaying() ? deck.currentStep() : null;
+
+      const version = versions.find(item => item.id === current);
+      const audio = audios.get(current);
+
+      if (!version.sync || !audio || audio.paused) return null;
+
+      const step = stepOf(version, audio);
+
+      return step >= 0 && step < project.steps ? step : null;
+    }
+
+    function playing() {
+      if (current === 'chip') return deck.isPlaying();
+
+      return active;
+    }
+
+    async function choose(id) {
+      if (id === current) return;
+
+      const was = playing();
+      const step = position();
+
+      if (deck.isPlaying()) deck.stop(false);
+      stopAudio();
+      deck.external(false);
+      current = id;
+      buttons.forEach((button, key) => button.setAttribute('aria-pressed', String(key === id)));
+      note.textContent = versions.find(item => item.id === id).note;
+
+      if (!was) return;
+
+      if (id === 'chip') {
+        await deck.play();
+        if (step !== null) deck.seek(Math.min(step, project.steps - 1));
+      } else {
+        startAudio(versions.find(item => item.id === id), step);
+      }
+    }
+
+    deck.override = () => {
+      if (current === 'chip') return false;
+
+      if (active) stopAudio();
+      else startAudio(versions.find(item => item.id === current), null);
+
+      return true;
+    };
+
+    if (versions.length > 1) {
+      const group = el('div', 'versions');
+      group.setAttribute('role', 'group');
+      group.setAttribute('aria-label', 'Version wählen');
+
+      for (const version of versions) {
+        const button = el('button', 'version', version.label);
+        button.type = 'button';
+        button.setAttribute('aria-pressed', String(version.id === current));
+        button.addEventListener('click', () => choose(version.id));
+        buttons.set(version.id, button);
+        group.append(button);
+      }
+
+      box.append(el('span', 'studio-label', 'Version'), group, note);
+    }
+
+    if (releaseUrl) {
+      const link = el('a', 'release', 'Veröffentlichung');
+      link.href = releaseUrl;
+      link.rel = 'noopener noreferrer';
+      link.target = '_blank';
+      box.append(link);
+    }
+
+    return box;
+  }
+
   function mountProject(project) {
     const host = {
       mix: false,
@@ -1448,7 +1646,7 @@
     };
     const deck = projectDeck(project, S, host);
 
-    root.replaceChildren(deck.transport, deck.desk, deck.arrangement, midiLink(project));
+    root.replaceChildren(deck.transport, deck.desk, deck.arrangement, ...[studioPanel(deck, project), midiLink(project)].filter(Boolean));
   }
 
   const PADS = [

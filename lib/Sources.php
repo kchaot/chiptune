@@ -18,9 +18,10 @@ final class Sources
     /**
      * @param array<string, mixed> $config
      * @return array{
-     *     files: list<array{source: string, prefix: string, slug: string, album: string|null, file: string, strict: bool}>,
+     *     files: list<array{source: string, prefix: string, slug: string, album: string|null, file: string, strict: bool, media: list<string>}>,
      *     albums: array<string, array{source: string, prefix: string, slug: string, file: string|null, strict: bool, items: list<string>}>,
-     *     authors: array<string, array{title: string, url: string, profile: string|null}>
+     *     authors: array<string, array{title: string, url: string, profile: string|null}>,
+     *     media: list<string>
      * }
      */
     public function collect(array $config, bool $fetch = true): array
@@ -35,6 +36,7 @@ final class Sources
         $albums = [];
         $authors = [];
         $seenNames = [];
+        $mediaHosts = [];
 
         foreach ($sources as $index => $source) {
             $label = 'sources.json, Eintrag ' . ($index + 1);
@@ -82,6 +84,9 @@ final class Sources
                 throw new BuildError("{$label}: „strict“ muss true oder false sein.");
             }
 
+            $media = $this->mediaHosts($source['media'] ?? [], $label);
+            $mediaHosts = [...$mediaHosts, ...$media];
+
             if (isset($authors[$prefix])) {
                 if ($title !== null && $title !== $authors[$prefix]['title']) {
                     throw new BuildError("{$label}: Der Prefix „{$prefix}“ wird schon mit dem Titel „{$authors[$prefix]['title']}“ verwendet.");
@@ -117,7 +122,7 @@ final class Sources
                     throw new BuildError("„{$key}“ kommt in den Quellen „{$projects[$key]['source']}“ und „{$name}“ vor.");
                 }
 
-                $projects[$key] = ['source' => $name, 'prefix' => $prefix, 'slug' => (string) $slug, 'album' => null, 'file' => $file, 'strict' => $strict];
+                $projects[$key] = ['source' => $name, 'prefix' => $prefix, 'slug' => (string) $slug, 'album' => null, 'file' => $file, 'strict' => $strict, 'media' => $media];
             }
 
             foreach ($found['albums'] as $album => $info) {
@@ -133,7 +138,7 @@ final class Sources
                         throw new BuildError("„{$key}“ kommt in den Quellen „{$projects[$key]['source']}“ und „{$name}“ vor.");
                     }
 
-                    $projects[$key] = ['source' => $name, 'prefix' => $prefix, 'slug' => "{$album}/{$slug}", 'album' => $album, 'file' => $file, 'strict' => $strict];
+                    $projects[$key] = ['source' => $name, 'prefix' => $prefix, 'slug' => "{$album}/{$slug}", 'album' => $album, 'file' => $file, 'strict' => $strict, 'media' => $media];
                     $albums[$albumKey]['items'][] = (string) $slug;
                 }
             }
@@ -148,7 +153,27 @@ final class Sources
         ksort($projects);
         ksort($albums);
 
-        return ['files' => array_values($projects), 'albums' => $albums, 'authors' => $authors];
+        return ['files' => array_values($projects), 'albums' => $albums, 'authors' => $authors, 'media' => array_values(array_unique($mediaHosts))];
+    }
+
+    /** @return list<string> */
+    private function mediaHosts(mixed $hosts, string $label): array
+    {
+        if (! is_array($hosts) || ! array_is_list($hosts) || count($hosts) > 8) {
+            throw new BuildError("{$label}: „media“ muss eine Liste mit höchstens 8 Hostnamen sein.");
+        }
+
+        $result = [];
+
+        foreach ($hosts as $host) {
+            if (! is_string($host) || preg_match('/^(?=.{3,100}$)[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)+$/', $host) !== 1) {
+                throw new BuildError("{$label}: „media“ enthält einen ungültigen Hostnamen (nur Kleinbuchstaben, ohne https:// und ohne Pfad).");
+            }
+
+            $result[] = $host;
+        }
+
+        return $result;
     }
 
     /** @param array<string, mixed> $source */

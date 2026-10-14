@@ -48,6 +48,10 @@ final class Builder
                 fwrite(STDERR, "Warnung in {$label}: {$warning}\n");
             }
 
+            if ($loaded['kind'] === 'project' && ($loaded['data']['media'] ?? []) !== []) {
+                $loaded['data']['media'] = $this->checkedMedia($loaded['data']['media'], $file['media'], $file['strict'], $label, $errors);
+            }
+
             if ($file['album'] !== null && ($loaded['data']['group'] ?? '') !== '') {
                 fwrite(STDERR, "Warnung in {$label}: „group“ gilt nur für Songs ohne Album und wird ignoriert.\n");
             }
@@ -166,9 +170,10 @@ final class Builder
 
         if (is_file($htaccess)) {
             $origin = $site['assets_origin'] === '' ? '' : ' ' . $site['assets_origin'];
+            $mediaSrc = $collected['media'] === [] ? '' : " media-src 'self' " . implode(' ', array_map(fn (string $host): string => "https://{$host}", $collected['media'])) . ';';
             Filesystem::write($this->public . '/.htaccess', str_replace(
-                ['__ASSET_ORIGIN__', '__BASE_PATH__'],
-                [$origin, $site['base_path']],
+                ['__ASSET_ORIGIN__', '__BASE_PATH__', '__MEDIA_SRC__'],
+                [$origin, $site['base_path'], $mediaSrc],
                 (string) file_get_contents($htaccess),
             ));
         }
@@ -372,6 +377,43 @@ final class Builder
             'assets_base' => $base,
             'assets_origin' => $external ? $match[1] : '',
         ];
+    }
+
+    /**
+     * @param array<string, mixed> $media
+     * @param list<string> $allowed
+     * @param list<string> $errors
+     * @return array<string, mixed>
+     */
+    private function checkedMedia(array $media, array $allowed, bool $strict, string $label, array &$errors): array
+    {
+        foreach (['hq', 'studio', 'release'] as $key) {
+            if (! isset($media[$key])) {
+                continue;
+            }
+
+            $host = (string) parse_url((string) $media[$key], PHP_URL_HOST);
+
+            if (in_array($host, $allowed, true)) {
+                continue;
+            }
+
+            $message = "„{$key}“ verweist auf „{$host}“. Der Host ist für diese Quelle nicht unter „media“ in sources.json freigegeben.";
+
+            if ($strict) {
+                $errors[] = "{$label}: {$message}";
+            } else {
+                fwrite(STDERR, "Warnung in {$label}: {$message} Der Link wird ignoriert.\n");
+            }
+
+            unset($media[$key]);
+        }
+
+        if (! isset($media['hq'])) {
+            unset($media['hqOffset']);
+        }
+
+        return $media;
     }
 
     /**
