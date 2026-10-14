@@ -443,7 +443,7 @@ HTML, withScript: true);
      */
     private function mediaLinks(array $media): string
     {
-        $labels = ['hq' => 'HQ-Version (Audio)', 'studio' => 'Studio-Version (Audio)', 'release' => 'Veröffentlichung'];
+        $labels = ['hq' => 'HQ-Version (Audio)', 'release' => 'Veröffentlichung'];
         $items = '';
 
         foreach ($labels as $key => $label) {
