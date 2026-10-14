@@ -2,6 +2,7 @@
 title: Kasinopunk
 artist: KChaot
 bpm: 190
+hq: "https://kchaot.de/chiptune/kasinopunk.mp3"
 ---
 Alles auf Rot: 8-Bit-Punk mit Spielautomaten-Klingeln.
 

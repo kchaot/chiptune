@@ -2,6 +2,7 @@
 title: Kein Plan
 artist: KChaot
 bpm: 180
+hq: "https://kchaot.de/chiptune/kein-plan.mp3"
 ---
 Das ist 8-Bit-Punk. ;-)
 
