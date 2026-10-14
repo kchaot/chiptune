@@ -251,6 +251,7 @@ main, .pagehead { max-width: 75rem; margin-inline: auto; padding-inline: clamp(1
 .pitch input[type="range"] { width: 12rem; accent-color: var(--green); }
 .pitch b { min-width: 7ch; color: var(--cream); font-variant-numeric: tabular-nums; text-align: right; }
 .pitch-name { min-width: 5ch; }
+.desk:not(.fixed) .pitch-name { min-width: 6ch; }
 .mixer { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.6rem 1.5rem; }
 .knob { display: flex; align-items: center; gap: 0.6rem; min-width: 0; }
 .knob input[type="range"] { flex: 1; min-width: 3.5rem; accent-color: var(--cyan); }
