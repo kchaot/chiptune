@@ -103,6 +103,7 @@ HTML);
             $facts = "<span><b>{$bpm}</b> BPM</span> <span><b>{$bars}</b> Bars</span> <span><b>{$tracks}</b> Tracks</span> <span><b>{$length}</b> Länge</span>";
             $thumbnail = $this->thumbnail($project);
             $badge = $this->projectBadge($project);
+            $facts .= $this->mediaMarks($project);
         }
 
         return <<<HTML
@@ -176,7 +177,19 @@ HTML;
             $albums = count(array_filter($own, fn (array $entry): bool => $entry['kind'] === 'album'));
             $sessions = count(array_filter($own, fn (array $entry): bool => $entry['kind'] === 'session'));
             $projects = count($own) - $sets - $albums - $sessions;
-            $facts = '<span><b>' . $projects . '</b> ' . ($projects === 1 ? 'Project' : 'Projects') . '</span>';
+            $withHq = count(array_filter($own, fn (array $entry): bool => $entry['kind'] === 'project' && isset($entry['project']['media']['hq'])));
+            $withRelease = count(array_filter($own, fn (array $entry): bool => $entry['kind'] === 'project' && isset($entry['project']['media']['release'])));
+            $extras = [];
+
+            if ($withHq > 0) {
+                $extras[] = '<b>' . $withHq . '</b> HQ';
+            }
+
+            if ($withRelease > 0) {
+                $extras[] = '<b>' . $withRelease . '</b> VÖ';
+            }
+
+            $facts = '<span><b>' . $projects . '</b> ' . ($projects === 1 ? 'Project' : 'Projects') . ($extras === [] ? '' : ' (' . implode(', ', $extras) . ')') . '</span>';
 
             if ($albums > 0) {
                 $facts .= ' <span><b>' . $albums . '</b> ' . ($albums === 1 ? 'Album' : 'Alben') . '</span>';
@@ -348,7 +361,7 @@ HTML;
             'stepSeconds' => $project['stepSeconds'],
             'loop' => $project['loop'],
             'steps' => $project['steps'],
-            'media' => (object) ($project['media'] ?? []),
+            'media' => (object) (($project['media'] ?? []) + (isset($project['media']['release']) ? ['releaseLabel' => $this->releaseLabel((string) $project['media']['release'])] : [])),
             'tracks' => array_map(function (array $track): array {
                 $notes = $track['notesHtml'] !== '';
                 unset($track['notesHtml']);
@@ -438,18 +451,59 @@ HTML, true, false);
 HTML, withScript: true);
     }
 
+    private function releaseLabel(string $url): string
+    {
+        $host = (string) parse_url($url, PHP_URL_HOST);
+        $services = [
+            'soundcloud.com' => 'SoundCloud',
+            'bandcamp.com' => 'Bandcamp',
+            'spotify.com' => 'Spotify',
+            'spotify.link' => 'Spotify',
+            'youtube.com' => 'YouTube',
+            'youtu.be' => 'YouTube',
+        ];
+
+        foreach ($services as $domain => $name) {
+            if ($host === $domain || str_ends_with($host, '.' . $domain)) {
+                return $name;
+            }
+        }
+
+        return 'Veröffentlichung';
+    }
+
+    /**
+     * @param array<string, mixed> $project
+     */
+    private function mediaMarks(array $project): string
+    {
+        $media = $project['media'] ?? [];
+        $marks = '';
+
+        if (isset($media['hq'])) {
+            $marks .= ' <span class="mark" title="Mit HQ-Version: in einer DAW gerendert, läuft im Takt des Rasters">HQ</span>';
+        }
+
+        if (isset($media['release'])) {
+            $marks .= ' <span class="mark" title="Mit Veröffentlichung (' . $this->e($this->releaseLabel((string) $media['release'])) . ')">VÖ</span>';
+        }
+
+        return $marks;
+    }
+
     /**
      * @param array<string, mixed> $media
      */
     private function mediaLinks(array $media): string
     {
-        $labels = ['hq' => 'HQ-Version (Audio)', 'release' => 'Veröffentlichung'];
         $items = '';
 
-        foreach ($labels as $key => $label) {
-            if (isset($media[$key])) {
-                $items .= '<li><a href="' . $this->e((string) $media[$key]) . '" rel="noopener noreferrer">' . $label . '</a></li>';
-            }
+        if (isset($media['hq'])) {
+            $items .= '<li><a href="' . $this->e((string) $media['hq']) . '" rel="noopener noreferrer">HQ-Version (Audio)</a></li>';
+        }
+
+        if (isset($media['release'])) {
+            $items .= '<li><a href="' . $this->e((string) $media['release']) . '" rel="noopener noreferrer">' . $this->e($this->releaseLabel((string) $media['release'])) . '</a></li>';
         }
 
         return $items === '' ? '' : '<ul class="media-links">' . $items . '</ul>';
