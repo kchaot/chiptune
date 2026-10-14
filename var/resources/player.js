@@ -25,11 +25,33 @@
       fx: { low: 0, mid: 0, high: 0, filter: 0, echo: false, beat: 0.5 },
       kill: { low: false, mid: false, high: false },
       hold: { loopBars: 0, roll: 0, version: 0 },
+      volume: 1,
       nodes: null,
     };
   }
 
   const S = makeState();
+
+  try {
+    const saved = Number(localStorage.getItem('chiptune-volume'));
+    if (localStorage.getItem('chiptune-volume') !== null && saved >= 0 && saved <= 1) S.volume = saved;
+  } catch (error) {
+    //
+  }
+
+  let songGain = null;
+
+  function setSongVolume(value) {
+    S.volume = value;
+
+    if (ctx && songGain) songGain.gain.setTargetAtTime(value, ctx.currentTime, 0.02);
+
+    try {
+      localStorage.setItem('chiptune-volume', String(value));
+    } catch (error) {
+      //
+    }
+  }
 
   function speed(st) {
     return st.rate * (1 + st.nudge);
@@ -118,7 +140,7 @@
     const refreshers = [];
 
     function refresh() {
-      const active = st.rate !== 1 || st.fx.low || st.fx.mid || st.fx.high || st.fx.filter || st.fx.echo || st.kill.low || st.kill.mid || st.kill.high;
+      const active = st.volume !== 1 || st.rate !== 1 || st.fx.low || st.fx.mid || st.fx.high || st.fx.filter || st.fx.echo || st.kill.low || st.kill.mid || st.kill.high;
       state.textContent = active ? 'aktiv' : '';
       refreshers.forEach(fn => fn());
     }
@@ -156,6 +178,39 @@
     });
     tempoRow.append(el('span', 'pitch-name', 'Tempo'), tempoSlider, tempoOut, tempoReset);
     body.append(tempoRow);
+
+    if (options.onVolume) {
+      const volumeRow = el('div', 'pitch');
+      const volumeSlider = el('input');
+      volumeSlider.type = 'range';
+      volumeSlider.min = '0';
+      volumeSlider.max = '100';
+      volumeSlider.step = '1';
+      volumeSlider.value = String(Math.round(st.volume * 100));
+      volumeSlider.setAttribute('aria-label', 'Lautstärke, in Prozent');
+      const volumeOut = el('b', null, volumeSlider.value + ' %');
+      const volumeReset = el('button', 'skip', '100');
+      volumeReset.type = 'button';
+      volumeReset.setAttribute('aria-label', 'Lautstärke auf 100 Prozent');
+
+      const applyVolume = () => {
+        volumeOut.textContent = volumeSlider.value + ' %';
+        options.onVolume(Number(volumeSlider.value) / 100);
+        refresh();
+      };
+
+      volumeSlider.addEventListener('input', applyVolume);
+      volumeSlider.addEventListener('dblclick', () => {
+        volumeSlider.value = '100';
+        applyVolume();
+      });
+      volumeReset.addEventListener('click', () => {
+        volumeSlider.value = '100';
+        applyVolume();
+      });
+      volumeRow.append(el('span', 'pitch-name', 'Volume'), volumeSlider, volumeOut, volumeReset);
+      body.append(volumeRow);
+    }
 
     const mixer = el('div', 'mixer');
     const sliders = [];
@@ -383,12 +438,16 @@
 
     const limiter = makeLimiter();
     limiter.connect(ctx.destination);
-    master = buildChannel(S, limiter);
+    songGain = ctx.createGain();
+    songGain.gain.value = S.volume;
+    songGain.connect(limiter);
+    master = buildChannel(S, songGain);
   }
 
   function closeAudio() {
     if (ctx) ctx.close();
     ctx = null;
+    songGain = null;
     S.nodes = null;
   }
 
@@ -632,7 +691,7 @@
     const desk = deskControl(st, user => {
       bpmOut.textContent = bpmText(project.bpm, st);
       if (user && host.tempoChanged) host.tempoChanged(api);
-    }, mixing ? { fixed: true, range: 20 } : {});
+    }, mixing ? { fixed: true, range: 20 } : { onVolume: setSongVolume });
 
     const byStep = Array.from({ length: project.steps }, () => []);
     tracks.forEach((track, index) => track.events.forEach(event => byStep[event.t] && byStep[event.t].push([index, event])));
@@ -677,7 +736,7 @@
     }
 
     const narrow = typeof window.matchMedia === 'function' && window.matchMedia('(max-width: 44rem)').matches;
-    const labelStep = narrow && bars > 8 ? 4 : 1;
+    const labelStep = (narrow && bars > 8) || bars > 24 ? 4 : 1;
 
     for (let bar = 0; bar < Math.floor(bars); bar++) {
       if (bar % labelStep !== 0) {
@@ -2331,7 +2390,7 @@
 
     const desk = deskControl(S, () => {
       bpmOut.textContent = bpmText(parts[current].bpm);
-    });
+    }, { onVolume: setSongVolume });
     root.replaceChildren(transport, desk);
 
     const layout = parts.map(part => {
