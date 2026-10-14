@@ -346,6 +346,20 @@
     desk.append(body);
     refresh();
 
+    const lockNote = el('p', 'desk-lock', 'Das Pult wirkt nur auf die Chiptune-Version. Bei HQ ist es ausgeschaltet und zurückgesetzt, ebenso Mute und Solo bei den Spuren.');
+    lockNote.hidden = true;
+    body.prepend(lockNote);
+
+    desk.reset = () => resetButton.click();
+    desk.lock = locked => {
+      body.inert = locked;
+      desk.classList.toggle('locked', locked);
+      lockNote.hidden = !locked;
+
+      if (locked) state.textContent = 'aus';
+      else refresh();
+    };
+
     desk.setTempo = (percentValue, exact) => {
       const clamped = Math.max(-range, Math.min(range, percentValue));
       tempoSlider.value = String(Math.round(clamped * 10) / 10);
@@ -901,9 +915,28 @@
       });
     }
 
+    let tracksLocked = false;
+
     function toggle(list, index) {
+      if (tracksLocked) return;
+
       list[index] = !list[index];
       applyMix();
+    }
+
+    function lockTracks(locked) {
+      tracksLocked = locked;
+
+      if (locked) {
+        muted.fill(false);
+        soloed.fill(false);
+        applyMix();
+      }
+
+      rows.forEach(row => {
+        row.muteButton.disabled = locked;
+        row.soloButton.disabled = locked;
+      });
     }
 
     function applyMix() {
@@ -1156,7 +1189,7 @@
       return true;
     }
 
-    const api = { transport, desk, arrangement, bpmOut, project, st, toggleTransport, stop, play, seek, seekBars, positionAt, align, currentStep, follow, external, isPlaying: () => playing, auto: false };
+    const api = { transport, desk, arrangement, bpmOut, project, st, toggleTransport, stop, play, seek, seekBars, positionAt, align, currentStep, follow, external, lockTracks, isPlaying: () => playing, auto: false };
 
     if (mixing) {
       const controls = el('div', 'deck-controls');
@@ -1466,20 +1499,16 @@
       }
     };
     const hqUrl = secure(media.hq);
-    const studioUrl = secure(media.studio);
     const releaseUrl = secure(media.release);
 
-    if (!hqUrl && !studioUrl && !releaseUrl) return null;
+    if (!hqUrl && !releaseUrl) return null;
 
     const versions = [{ id: 'chip', label: 'Chiptune', note: 'Die Version aus dem Raster, vom Player erzeugt.' }];
 
     if (hqUrl) {
-      versions.push({ id: 'hq', label: 'HQ', url: hqUrl, sync: true, offset: Number(media.hqOffset) || 0, note: 'Dieselben Noten, in der DAW gerendert. Der Abspielkopf läuft mit.' });
+      versions.push({ id: 'hq', label: 'HQ', url: hqUrl, sync: true, offset: Number(media.hqOffset) || 0, note: 'Dieselben Noten, in einer DAW gerendert. Der Abspielkopf läuft mit.' });
     }
 
-    if (studioUrl) {
-      versions.push({ id: 'studio', label: 'Studio', url: studioUrl, sync: false, note: 'Freie Produktion. Läuft nicht im Raster mit.' });
-    }
 
     const box = el('div', 'studio');
     const note = el('span', 'studio-note', versions[0].note);
@@ -1539,6 +1568,7 @@
 
     function startAudio(version, step) {
       const audio = audioFor(version);
+      audio.volume = Math.max(0, Math.min(1, deck.st.volume));
 
       if (version.sync && step !== null) audio.currentTime = Math.max(0, version.offset + step * project.stepSeconds);
       else audio.currentTime = 0;
@@ -1585,6 +1615,10 @@
       stopAudio();
       deck.external(false);
       current = id;
+
+      if (id !== 'chip') deck.desk.reset();
+      deck.desk.lock(id !== 'chip');
+      deck.lockTracks(id !== 'chip');
       buttons.forEach((button, key) => button.setAttribute('aria-pressed', String(key === id)));
       note.textContent = versions.find(item => item.id === id).note;
 

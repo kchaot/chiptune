@@ -747,13 +747,13 @@ final class ProjectParser
 
     /**
      * @param array<string, mixed> $meta
-     * @return array{hq?: string, studio?: string, release?: string, hqOffset?: float}
+     * @return array{hq?: string, release?: string, hqOffset?: float}
      */
     private function media(array $meta): array
     {
         $media = [];
 
-        foreach (['hq', 'studio', 'release'] as $key) {
+        foreach (['hq', 'release'] as $key) {
             if (! isset($meta[$key])) {
                 continue;
             }
