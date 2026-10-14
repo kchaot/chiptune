@@ -23,6 +23,7 @@ final class Library
         array $files,
         private readonly ProjectParser $projects,
         private readonly SetParser $sets,
+        private readonly ?SessionParser $sessions = null,
     ) {
         foreach ($files as $file) {
             $this->files["{$file['prefix']}/{$file['slug']}"] = $file;
@@ -54,7 +55,10 @@ final class Library
 
             $fileKind = $this->projects->kind($source);
 
-            if ($fileKind === 'set') {
+            if ($fileKind === 'session') {
+                $kind = 'session';
+                $data = ($this->sessions ?? new SessionParser($this->projects))->parse($source, basename($file['slug']), $resolve);
+            } elseif ($fileKind === 'set') {
                 $kind = 'set';
                 $data = $this->sets->parse($source, basename($file['slug']), $resolve);
             } elseif ($fileKind === 'layer') {
@@ -91,7 +95,7 @@ final class Library
         }
 
         if ($entry['kind'] !== 'project') {
-            throw new BuildError("„{$ref}“ ist ein Set. Verweisen kann man nur auf Projects.");
+            throw new BuildError("„{$ref}“ ist ein " . ($entry['kind'] === 'session' ? 'Session' : 'Set') . '. Verweisen kann man nur auf Projects.');
         }
 
         return ['prefix' => $entry['prefix'], 'slug' => $entry['slug'], 'project' => $entry['data']];

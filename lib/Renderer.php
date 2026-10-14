@@ -83,7 +83,11 @@ HTML);
             : '<span class="author">von <a href="' . $this->url($entry['prefix'] . '/') . '">' . $this->e($this->authorTitle($entry['prefix'])) . '</a></span>';
         $tags = implode('', array_map(fn (string $tag): string => '<li>' . $this->e($tag) . '</li>', $project['tags']));
         $tags = $tags === '' ? '' : '<ul class="tags">' . $tags . '</ul>';
-        if (in_array($entry['kind'] ?? 'project', ['set', 'album'], true)) {
+        if (($entry['kind'] ?? 'project') === 'session') {
+            $facts = '<span>A: <b>' . $this->e($project['a']['title']) . '</b></span> <span>B: <b>' . $this->e($project['b']['title']) . '</b></span>';
+            $thumbnail = '';
+            $badge = '<span class="badge">Session</span> ';
+        } elseif (in_array($entry['kind'] ?? 'project', ['set', 'album'], true)) {
             $isAlbum = $entry['kind'] === 'album';
             $parts = count($project['parts']);
             $length = $this->duration($project['duration']);
@@ -170,7 +174,8 @@ HTML;
             $own = array_filter($entries, fn (array $entry): bool => $entry['prefix'] === $prefix);
             $sets = count(array_filter($own, fn (array $entry): bool => $entry['kind'] === 'set'));
             $albums = count(array_filter($own, fn (array $entry): bool => $entry['kind'] === 'album'));
-            $projects = count($own) - $sets - $albums;
+            $sessions = count(array_filter($own, fn (array $entry): bool => $entry['kind'] === 'session'));
+            $projects = count($own) - $sets - $albums - $sessions;
             $facts = '<span><b>' . $projects . '</b> ' . ($projects === 1 ? 'Project' : 'Projects') . '</span>';
 
             if ($albums > 0) {
@@ -179,6 +184,10 @@ HTML;
 
             if ($sets > 0) {
                 $facts .= ' <span><b>' . $sets . '</b> ' . ($sets === 1 ? 'Set' : 'Sets') . '</span>';
+            }
+
+            if ($sessions > 0) {
+                $facts .= ' <span><b>' . $sessions . '</b> ' . ($sessions === 1 ? 'Session' : 'Sessions') . '</span>';
             }
 
             $count = [];
@@ -502,6 +511,83 @@ HTML, withScript: true);
         return '<p class="credits">Enthält Material aus ' . implode(', ', $links) . '.</p>';
     }
 
+    public static function mixId(string $prefix, string $slug): string
+    {
+        return $prefix . '--' . str_replace('/', '--', $slug);
+    }
+
+    /**
+     * @param array<string, mixed> $session
+     */
+    private function mixLink(array $session, string $title): string
+    {
+        $query = http_build_query([
+            'a' => self::mixId($session['a']['prefix'], $session['a']['slug']),
+            'b' => self::mixId($session['b']['prefix'], $session['b']['slug']),
+            'start' => $session['start'],
+            'auto' => $session['auto'] ? 1 : 0,
+            'fader' => $session['fader'],
+            'name' => $title,
+        ], '', '&', PHP_QUERY_RFC3986);
+
+        return $this->url('+mixer/') . '#' . $this->e($query);
+    }
+
+    /**
+     * @param array{prefix: string, slug: string, project: array<string, mixed>} $entry
+     */
+    public function session(array $entry): string
+    {
+        $session = $entry['project'];
+        $title = $this->e($session['title']);
+        $artist = $this->artistLine($session['artist'], $entry['prefix'], 'p');
+        $tags = implode('', array_map(fn (string $tag): string => '<li>' . $this->e($tag) . '</li>', $session['tags']));
+        $tags = $tags === '' ? '' : '<ul class="tags">' . $tags . '</ul>';
+        $notes = $session['notesHtml'] === '' ? '' : '<section class="aside wide"><div class="notes">' . $session['notesHtml'] . '</div></section>';
+        $head = $this->head($entry['prefix'] . ($entry['album'] !== null ? '/' . $entry['album'] : ''), 'mix ' . basename($entry['slug']));
+        $href = $this->mixLink($session, $session['title']);
+        $rows = '';
+
+        foreach (['a' => 'Deck A', 'b' => 'Deck B'] as $key => $label) {
+            $deck = $session[$key];
+            $bpm = $this->number($deck['bpm']);
+            $bars = $this->number($deck['bars']);
+            $detail = $key === 'b' && $session['start'] > 1
+                ? "steigt auf Takt <b>{$session['start']}</b> von Deck A ein"
+                : 'startet auf Takt <b>1</b>';
+            $rows .= sprintf(
+                "\n      <li><span class=\"deck-label\">%s</span> <a href=\"%s\">%s</a> <span class=\"layer-facts\">%s BPM, %s Bars, %s</span></li>",
+                $label,
+                $this->url($deck['prefix'] . '/' . $deck['slug'] . '/'),
+                $this->e($deck['title']),
+                $bpm,
+                $bars,
+                $detail,
+            );
+        }
+
+        $auto = $session['auto'] ? 'Auto-Sync ist an: Deck B folgt dem Tempo von Deck A.' : 'Auto-Sync ist aus.';
+
+        return $this->page($session['title'] . ' – ' . $this->site['title'], 'project-page session-page', <<<HTML
+  {$head}
+  <main>
+    <div class="heading">
+      <h1><span class="badge">Session</span> {$title}</h1>
+      {$artist}
+      {$tags}
+    </div>
+    <section class="session">
+      <ul class="session-decks">{$rows}
+      </ul>
+      <p class="session-hint">{$auto} Im Mixer startest du die Session mit einem Klick.</p>
+      <p><a class="play session-open" href="{$href}">Im Mixer öffnen</a></p>
+    </section>
+    {$notes}
+    <p class="source"><a href="source.md">Quelltext dieser Session</a></p>
+  </main>
+HTML);
+    }
+
     /**
      * @param array{prefix: string, slug: string, project: array<string, mixed>} $entry
      */
@@ -519,6 +605,20 @@ HTML, withScript: true);
         $source = $isAlbum ? '' : '<p class="source"><a href="source.md">Quelltext dieses Sets</a></p>';
         $introNotes = $isAlbum ? $notes : '';
         $closingNotes = $isAlbum ? '' : $notes;
+
+        $sessionList = '';
+
+        foreach ($entry['sessions'] ?? [] as $session) {
+            $sessionList .= sprintf(
+                "\n      <li><a href=\"%s\">%s</a> <span class=\"layer-facts\">A: %s, B: %s</span></li>",
+                $this->url($session['prefix'] . '/' . $session['slug'] . '/'),
+                $this->e($session['project']['title']),
+                $this->e($session['project']['a']['title']),
+                $this->e($session['project']['b']['title']),
+            );
+        }
+
+        $sessions = $sessionList === '' ? '' : '<section class="album-sessions"><h2 class="sub">Sessions</h2><ul>' . $sessionList . "\n    </ul></section>";
 
         $payload = json_encode([
             'title' => $set['title'],
@@ -591,6 +691,7 @@ HTML;
     </div>
     <ol class="parts">{$items}
     </ol>
+    {$sessions}
     {$closingNotes}
     {$source}
   </main>

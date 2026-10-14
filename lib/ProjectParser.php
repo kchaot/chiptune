@@ -30,7 +30,7 @@ final class ProjectParser
         foreach ($this->markdown->parseMany($source, 'project', 'part') as $chunk) {
             $kind = $chunk->frontmatter['kind'] ?? 'project';
 
-            return in_array($kind, ['set', 'layer'], true) ? $kind : 'project';
+            return in_array($kind, ['set', 'layer', 'session'], true) ? $kind : 'project';
         }
 
         return 'project';

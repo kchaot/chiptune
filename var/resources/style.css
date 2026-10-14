@@ -516,6 +516,24 @@ body:has(.page:target) .home { display: none; }
 .layer-facts { margin-left: 0.5rem; color: var(--dim); font-size: 0.85rem; }
 .layer .notes { margin-top: 0.4rem; }
 
+.session { margin: 1.5rem 0 0; padding: 1.1rem 1.25rem; border-left: 4px solid var(--violet); background: var(--panel-solid); }
+.session-decks { margin: 0 0 0.9rem; padding: 0; list-style: none; }
+.session-decks li { margin: 0 0 0.5rem; }
+.session-decks a { font-weight: 800; }
+.deck-label { display: inline-block; min-width: 4.5rem; color: var(--pink); font-weight: 800; }
+.session-hint { margin: 0 0 1rem; color: var(--ink-soft); }
+.session-open { display: inline-flex; align-items: center; border-bottom: 0; text-decoration: none; }
+.session-open:hover { border-bottom: 0; }
+.album-sessions { margin: 0 0 3rem; }
+.album-sessions ul { margin: 0; padding: 0; list-style: none; }
+.album-sessions li { margin: 0 0 0.5rem; padding: 0.4rem 0.9rem; border-left: 4px solid var(--violet); background: var(--panel-solid); }
+.album-sessions a { font-weight: 800; }
+
+.session-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem 1rem; margin: 0 0 1rem; padding: 0.6rem 0.9rem; border-left: 4px solid var(--violet); background: var(--panel-solid); }
+.session-bar b { color: var(--cream); }
+.session-bar span { color: var(--ink-soft); font-size: 0.9rem; }
+.session-bar .play { min-width: 0; min-height: 2.4rem; padding: 0 1rem; font-size: 0.95rem; }
+
 .authors { display: grid; grid-template-columns: repeat(auto-fill, minmax(18rem, 1fr)); gap: 1.5rem; margin: 0; padding: 0 0 4rem; list-style: none; }
 
 .author-card {
