@@ -1506,7 +1506,7 @@
     const versions = [{ id: 'chip', label: 'Chiptune', note: 'Die Version aus dem Raster, vom Player erzeugt.' }];
 
     if (hqUrl) {
-      versions.push({ id: 'hq', label: 'HQ', url: hqUrl, sync: true, offset: Number(media.hqOffset) || 0, note: 'Dieselben Noten, in einer DAW gerendert. Der Abspielkopf läuft mit.' });
+      versions.push({ id: 'hq', label: 'HQ', url: hqUrl, sync: true, offset: Number(media.hqOffset) || 0, note: 'Dieselben Noten, in einer DAW gerendert. Der Abspielkopf läuft mit. Pult sowie Mute und Solo wirken nur auf Chiptune.' });
     }
 
 
@@ -1659,7 +1659,7 @@
     }
 
     if (releaseUrl) {
-      const link = el('a', 'release', 'Veröffentlichung');
+      const link = el('a', 'release', typeof media.releaseLabel === 'string' && media.releaseLabel !== '' ? media.releaseLabel.slice(0, 40) : 'Veröffentlichung');
       link.href = releaseUrl;
       link.rel = 'noopener noreferrer';
       link.target = '_blank';

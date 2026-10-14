@@ -387,7 +387,7 @@ final class Builder
      */
     private function checkedMedia(array $media, array $allowed, bool $strict, string $label, array &$errors): array
     {
-        foreach (['hq', 'release'] as $key) {
+        foreach (['hq'] as $key) {
             if (! isset($media[$key])) {
                 continue;
             }
