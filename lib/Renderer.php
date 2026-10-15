@@ -487,11 +487,11 @@ HTML, withScript: true);
             $release = (string) $media['release'];
 
             if (isset($media['releaseOwn'])) {
-                $marks .= ' <span class="mark mark-own" title="Veröffentlichung: direkt hier abspielbar">VÖ ▶</span>';
+                $marks .= ' <span class="mark mark-own" title="Veröffentlichung: direkt hier abspielbar">VÖ</span>';
             } elseif ($this->releaseService($release) === 'SoundCloud') {
-                $marks .= ' <span class="mark mark-soundcloud" title="Veröffentlichung auf SoundCloud">VÖ ↗</span>';
+                $marks .= ' <span class="mark mark-soundcloud" title="Veröffentlichung auf SoundCloud">VÖ</span>';
             } else {
-                $marks .= ' <span class="mark mark-ext" title="Mit Veröffentlichung' . ($this->releaseService($release) === null ? ' (externer Link)' : ' (' . $this->e($this->releaseLabel($release)) . ')') . '">VÖ ↗</span>';
+                $marks .= ' <span class="mark mark-ext" title="Mit Veröffentlichung' . ($this->releaseService($release) === null ? ' (externer Link)' : ' (' . $this->e($this->releaseLabel($release)) . ')') . '">VÖ</span>';
             }
         }
 
