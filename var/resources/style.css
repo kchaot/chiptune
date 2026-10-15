@@ -21,6 +21,7 @@
   --dim: #6e6288;
 
   --green: #4ef06e;
+  --soundcloud: #ff5500;
   --pink: #ff2e6e;
   --cyan: #35c8f0;
   --violet: #7b4dff;
@@ -221,9 +222,44 @@ main, .pagehead { max-width: 75rem; margin-inline: auto; padding-inline: clamp(1
 .daw .version:last-child { border-right: 0; }
 .daw .version[aria-pressed="true"] { background: var(--violet); color: var(--cream); }
 .daw .version:focus-visible { outline: 2px solid var(--cyan); outline-offset: -2px; }
-.daw .studio-note { flex: 1 1 14rem; color: var(--ink-soft); }
+.daw .studio-note { margin: -0.3rem 0 0.9rem; color: var(--ink-soft); font: 0.78rem var(--mono); }
+.daw .studio-note[hidden] { display: none; }
+.daw .deck-bar { position: relative; }
+.daw .versions-bar { position: absolute; top: 0; right: 0; display: flex; align-items: center; gap: 0.9rem; height: 2.25rem; font: 0.78rem var(--mono); }
+.daw .versions-bar .versions { height: 100%; border-color: var(--violet); }
+.daw .versions-bar .version { padding: 0 0.95rem; font-weight: 800; }
+.daw .versions-bar .release { margin-left: 0; }
+@media (max-width: 36rem) {
+  .daw .versions-bar { position: static; margin: 0 0 0.9rem; }
+}
+.daw .release-head { display: flex; align-items: baseline; justify-content: space-between; gap: 1rem; }
+.daw .release-share { padding: 0.15rem 0.6rem; border: 1px solid var(--line); border-radius: 4px; background: var(--panel-solid); color: var(--ink-soft); font: 0.7rem var(--mono); cursor: pointer; white-space: nowrap; }
+.daw .release-share:hover { border-color: var(--cream); color: var(--cream); }
+.daw .release-share:focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; }
 .daw .release { margin-left: auto; color: var(--green); text-decoration: none; border-bottom: 1px dashed currentColor; }
 .daw .release::after { content: " \2197"; }
+.daw .release.soundcloud { color: var(--soundcloud); }
+.daw .release-card { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 1.6rem; margin: 0.9rem 0 0; padding: 1.5rem; border: 1px solid var(--line); border-radius: 12px; background: linear-gradient(135deg, var(--panel-raised), var(--panel)); }
+.daw .release-card[hidden] { display: none; }
+.daw .release-card.no-cover { grid-template-columns: minmax(0, 1fr); }
+.daw .release-card .cover { display: block; width: 14rem; height: 14rem; object-fit: cover; border-radius: 8px; background: var(--panel-solid); box-shadow: 0 0.6rem 1.8rem rgba(0, 0, 0, 0.55); }
+.daw .release-body { display: flex; flex-direction: column; gap: 0.5rem; min-width: 0; }
+.daw .release-kicker { color: var(--green); font: 0.68rem var(--mono); letter-spacing: 0.14em; text-transform: uppercase; }
+.daw .release-title { margin: 0; color: var(--cream); font-size: clamp(1.4rem, 3.4vw, 2.1rem); line-height: 1.15; overflow-wrap: anywhere; }
+.daw .release-artist { margin: 0; color: var(--ink-soft); font-size: 1.05rem; }
+.daw .release-facts { margin: 0; color: var(--dim); font: 0.78rem var(--mono); letter-spacing: 0.04em; }
+.daw .release-credits { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 0.25rem 1rem; margin: 0.6rem 0 0; font: 0.8rem var(--mono); }
+.daw .release-credits dt { color: var(--dim); text-transform: uppercase; letter-spacing: 0.08em; font-size: 0.68rem; padding-top: 0.12rem; }
+.daw .release-credits dd { margin: 0; color: var(--ink); overflow-wrap: anywhere; }
+.daw .release-progress { display: flex; align-items: center; gap: 0.9rem; margin-top: auto; padding-top: 1rem; }
+.daw .release-seek { flex: 1 1 auto; min-width: 0; accent-color: var(--green); cursor: pointer; }
+.daw .release-seek:disabled { cursor: default; opacity: 0.5; }
+.daw .release-time { color: var(--ink-soft); font: 0.8rem var(--mono); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.transport.is-release .position, .transport.is-release .tempo { display: none; }
+@media (max-width: 40rem) {
+  .daw .release-card { grid-template-columns: minmax(0, 1fr); padding: 1.1rem; }
+  .daw .release-card .cover { width: min(100%, 16rem); height: auto; aspect-ratio: 1; }
+}
 .daw noscript .media-links { margin: 0.6rem 0 0; padding-left: 1.2rem; }
 .daw .midi { margin: 0.6rem 0 0; text-align: right; }
 .daw .midi-link { padding: 0.1rem 0.4rem; border: 0; background: none; color: var(--dim); font: 0.7rem var(--mono); cursor: pointer; }
@@ -794,3 +830,9 @@ main > .projects + .projects { margin-top: 1.5rem; }
 .mute:disabled, .solo:disabled { opacity: 0.35; cursor: default; }
 .mark { padding: 0 0.35rem; border: 1px solid var(--line); border-radius: 4px; color: var(--ink-soft); font-size: 0.7rem; letter-spacing: 0.05em; }
 .mark b { color: var(--cream); font-weight: 800; }
+.tags li.chip { border-color: var(--violet); color: var(--ink-soft); letter-spacing: 0.04em; }
+.tags li.chip b { color: var(--cream); font-weight: 800; }
+.mark-own { border-color: var(--green); color: var(--green); }
+.mark-soundcloud { border-color: var(--soundcloud); color: var(--soundcloud); }
+.media-links a.soundcloud { color: var(--soundcloud); }
+.media-links a.own { color: var(--green); }

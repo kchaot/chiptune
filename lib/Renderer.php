@@ -193,14 +193,6 @@ HTML;
                 $facts .= ' <span><b>' . $sessions . '</b> ' . ($sessions === 1 ? 'Session' : 'Sessions') . '</span>';
             }
 
-            if ($withHq > 0) {
-                $facts .= ' <span class="mark" title="Projekte mit HQ-Version"><b>' . $withHq . '</b> HQ</span>';
-            }
-
-            if ($withRelease > 0) {
-                $facts .= ' <span class="mark" title="Projekte mit Veröffentlichung"><b>' . $withRelease . '</b> VÖ</span>';
-            }
-
             $count = [];
 
             foreach ($own as $entry) {
@@ -211,6 +203,9 @@ HTML;
 
             arsort($count);
             $tags = implode('', array_map(fn (string $tag): string => '<li>' . $this->e($tag) . '</li>', array_slice(array_map(strval(...), array_keys($count)), 0, 6)));
+            $chips = ($withHq > 0 ? '<li class="chip" title="Projekte mit HQ-Version"><b>' . $withHq . '</b> HQ</li>' : '')
+                . ($withRelease > 0 ? '<li class="chip" title="Projekte mit Veröffentlichung"><b>' . $withRelease . '</b> VÖ</li>' : '');
+            $tags = $chips . $tags;
             $tags = $tags === '' ? '' : '<ul class="tags">' . $tags . '</ul>';
             $tagline = ($author['tagline'] ?? '') === '' ? '' : '<p class="tagline">' . $this->e($author['tagline']) . '</p>';
             $href = $this->url($prefix . '/');
@@ -353,6 +348,7 @@ HTML;
     {
         return [
             'title' => $project['title'],
+            'artist' => $project['artist'],
             'bpm' => $project['bpm'],
             'stepsPerBeat' => $project['stepsPerBeat'],
             'stepsPerBar' => $project['stepsPerBar'],
@@ -451,6 +447,11 @@ HTML, withScript: true);
 
     private function releaseLabel(string $url): string
     {
+        return $this->releaseService($url) ?? 'Veröffentlichung';
+    }
+
+    private function releaseService(string $url): ?string
+    {
         $host = (string) parse_url($url, PHP_URL_HOST);
         $services = [
             'soundcloud.com' => 'SoundCloud',
@@ -467,7 +468,7 @@ HTML, withScript: true);
             }
         }
 
-        return 'Veröffentlichung';
+        return null;
     }
 
     /**
@@ -483,7 +484,15 @@ HTML, withScript: true);
         }
 
         if (isset($media['release'])) {
-            $marks .= ' <span class="mark" title="Mit Veröffentlichung (' . $this->e($this->releaseLabel((string) $media['release'])) . ')">VÖ</span>';
+            $release = (string) $media['release'];
+
+            if (isset($media['releaseOwn'])) {
+                $marks .= ' <span class="mark mark-own" title="Veröffentlichung: direkt hier abspielbar">VÖ ▶</span>';
+            } elseif ($this->releaseService($release) === 'SoundCloud') {
+                $marks .= ' <span class="mark mark-soundcloud" title="Veröffentlichung auf SoundCloud">VÖ ↗</span>';
+            } else {
+                $marks .= ' <span class="mark mark-ext" title="Mit Veröffentlichung' . ($this->releaseService($release) === null ? ' (externer Link)' : ' (' . $this->e($this->releaseLabel($release)) . ')') . '">VÖ ↗</span>';
+            }
         }
 
         return $marks;
@@ -501,7 +510,9 @@ HTML, withScript: true);
         }
 
         if (isset($media['release'])) {
-            $items .= '<li><a href="' . $this->e((string) $media['release']) . '" rel="noopener noreferrer">' . $this->e($this->releaseLabel((string) $media['release'])) . '</a></li>';
+            $own = isset($media['releaseOwn']);
+            $class = $own ? ' class="own"' : ($this->releaseService((string) $media['release']) === 'SoundCloud' ? ' class="soundcloud"' : '');
+            $items .= '<li><a' . $class . ' href="' . $this->e((string) $media['release']) . '" rel="noopener noreferrer">' . $this->e($this->releaseLabel((string) $media['release'])) . ($own ? ' (Audio)' : '') . '</a></li>';
         }
 
         return $items === '' ? '' : '<ul class="media-links">' . $items . '</ul>';
