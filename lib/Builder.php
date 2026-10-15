@@ -170,10 +170,12 @@ final class Builder
 
         if (is_file($htaccess)) {
             $origin = $site['assets_origin'] === '' ? '' : ' ' . $site['assets_origin'];
-            $mediaSrc = $collected['media'] === [] ? '' : " media-src 'self' " . implode(' ', array_map(fn (string $host): string => "https://{$host}", $collected['media'])) . ';';
+            $hosts = implode(' ', array_map(fn (string $host): string => "https://{$host}", $collected['media']));
+            $mediaSrc = $collected['media'] === [] ? '' : " media-src 'self' {$hosts};";
+            $imgHosts = $collected['media'] === [] ? '' : " {$hosts}";
             Filesystem::write($this->public . '/.htaccess', str_replace(
-                ['__ASSET_ORIGIN__', '__BASE_PATH__', '__MEDIA_SRC__'],
-                [$origin, $site['base_path'], $mediaSrc],
+                ['__ASSET_ORIGIN__', '__BASE_PATH__', '__MEDIA_SRC__', '__IMG_HOSTS__'],
+                [$origin, $site['base_path'], $mediaSrc, $imgHosts],
                 (string) file_get_contents($htaccess),
             ));
         }
@@ -387,7 +389,7 @@ final class Builder
      */
     private function checkedMedia(array $media, array $allowed, bool $strict, string $label, array &$errors): array
     {
-        foreach (['hq'] as $key) {
+        foreach (['hq', 'cover'] as $key) {
             if (! isset($media[$key])) {
                 continue;
             }
@@ -411,6 +413,22 @@ final class Builder
 
         if (! isset($media['hq'])) {
             unset($media['hqOffset']);
+        }
+
+        if (isset($media['release']) && in_array((string) parse_url((string) $media['release'], PHP_URL_HOST), $allowed, true)) {
+            $media['releaseOwn'] = true;
+        }
+
+        if ((isset($media['cover']) || isset($media['info'])) && ! isset($media['releaseOwn'])) {
+            $message = 'Die Angaben in „release“ (cover, title, date, label, catalog, license, credits) werden nur bei einer selbst veröffentlichten Audiodatei angezeigt (Host unter „media“ in sources.json freigegeben).';
+
+            if ($strict) {
+                $errors[] = "{$label}: {$message}";
+            } else {
+                fwrite(STDERR, "Warnung in {$label}: {$message} Die Angaben werden ignoriert.\n");
+            }
+
+            unset($media['cover'], $media['info']);
         }
 
         return $media;

@@ -21,7 +21,7 @@
   function makeState() {
     return {
       rate: 1,
-      nudge: 0, // kurzer Tempo-Schub (Pitch-Bend), nur in den Decks
+      nudge: 0,
       fx: { low: 0, mid: 0, high: 0, filter: 0, echo: false, beat: 0.5 },
       kill: { low: false, mid: false, high: false },
       hold: { loopBars: 0, roll: 0, version: 0 },
@@ -346,7 +346,7 @@
     desk.append(body);
     refresh();
 
-    const lockNote = el('p', 'desk-lock', 'Das Pult wirkt nur auf die Chiptune-Version. Bei HQ ist es ausgeschaltet und zurückgesetzt, ebenso Mute und Solo bei den Spuren.');
+    const lockNote = el('p', 'desk-lock', 'Das Pult wirkt nur auf die Chiptune-Version. Bei HQ und VÖ ist es ausgeschaltet und zurückgesetzt, ebenso Mute und Solo bei den Spuren.');
     lockNote.hidden = true;
     body.prepend(lockNote);
 
@@ -1500,21 +1500,130 @@
     };
     const hqUrl = secure(media.hq);
     const releaseUrl = secure(media.release);
+    const own = media.releaseOwn === true && releaseUrl !== null;
+    const coverUrl = own ? secure(media.cover) : null;
 
-    if (!hqUrl && !releaseUrl) return null;
+    if (!hqUrl && !releaseUrl) return { bar: null, note: null, card: null };
 
+    const HASHES = { hq: 'hq', release: 'vo' };
     const versions = [{ id: 'chip', label: 'Chiptune', note: 'Die Version aus dem Raster, vom Player erzeugt.' }];
 
     if (hqUrl) {
       versions.push({ id: 'hq', label: 'HQ', url: hqUrl, sync: true, offset: Number(media.hqOffset) || 0, note: 'Dieselben Noten, in einer DAW gerendert. Der Abspielkopf läuft mit.' });
     }
 
+    if (own) {
+      versions.push({ id: 'release', label: 'VÖ', url: releaseUrl, sync: false, offset: 0, note: 'Die veröffentlichte Version, frei produziert. Sie läuft nicht im Takt des Rasters.' });
+    }
 
-    const box = el('div', 'studio');
-    const note = el('span', 'studio-note', versions[0].note);
+    const bar = el('div', 'versions-bar');
+    const note = el('p', 'studio-note');
+    note.hidden = true;
     note.setAttribute('aria-live', 'polite');
     const buttons = new Map();
     const audios = new Map();
+    const info = media.info && typeof media.info === 'object' ? media.info : {};
+    let card = null;
+    let seekBar = null;
+    let timeOut = null;
+
+    const clock = seconds => {
+      if (!Number.isFinite(seconds) || seconds < 0) return '–:––';
+
+      return Math.floor(seconds / 60) + ':' + String(Math.floor(seconds % 60)).padStart(2, '0');
+    };
+
+    const dateText = value => {
+      const match = /^(\d{4})(?:-(\d{2})(?:-(\d{2}))?)?$/.exec(typeof value === 'string' ? value : '');
+
+      if (!match) return '';
+      if (!match[2]) return match[1];
+
+      try {
+        const date = new Date(Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3] || 1)));
+        const options = match[3] ? { day: 'numeric', month: 'long', year: 'numeric' } : { month: 'long', year: 'numeric' };
+
+        return date.toLocaleDateString('de-DE', { ...options, timeZone: 'UTC' });
+      } catch (error) {
+        return match[0];
+      }
+    };
+
+    if (own) {
+      card = el('section', 'release-card' + (coverUrl ? '' : ' no-cover'));
+      card.hidden = true;
+      card.setAttribute('aria-label', 'Veröffentlichung');
+
+      if (coverUrl) {
+        const cover = el('img', 'cover');
+        cover.alt = 'Cover';
+        cover.width = 224;
+        cover.height = 224;
+        cover.decoding = 'async';
+        cover.referrerPolicy = 'no-referrer';
+        cover.addEventListener('error', () => {
+          cover.remove();
+          card.classList.add('no-cover');
+        });
+        cover.dataset.src = coverUrl;
+        card.append(cover);
+      }
+
+      const body = el('div', 'release-body');
+      const kicker = ['Veröffentlichung', typeof info.label === 'string' ? info.label : ''].filter(Boolean).join(' · ');
+      const head = el('div', 'release-head');
+      const share = el('button', 'release-share', 'Link kopieren');
+      share.type = 'button';
+      share.title = 'Direktlink zu dieser Veröffentlichung kopieren';
+      share.addEventListener('click', async () => {
+        const link = location.origin + location.pathname + '#vo';
+
+        try {
+          await navigator.clipboard.writeText(link);
+          share.textContent = 'Kopiert';
+        } catch (error) {
+          share.textContent = 'Adresszeile kopieren';
+        }
+
+        setTimeout(() => { share.textContent = 'Link kopieren'; }, 2000);
+      });
+      head.append(el('span', 'release-kicker', kicker), share);
+      body.append(head);
+      body.append(el('h2', 'release-title', typeof info.title === 'string' && info.title !== '' ? info.title : project.title));
+
+      if (typeof project.artist === 'string' && project.artist !== '') body.append(el('p', 'release-artist', project.artist));
+
+      const facts = [dateText(info.date), typeof info.catalog === 'string' ? info.catalog : '', typeof info.license === 'string' ? info.license : ''].filter(Boolean);
+
+      if (facts.length) body.append(el('p', 'release-facts', facts.join(' · ')));
+
+      if (info.credits && typeof info.credits === 'object') {
+        const list = el('dl', 'release-credits');
+
+        for (const [role, names] of Object.entries(info.credits)) {
+          if (!Array.isArray(names) || names.length === 0) continue;
+
+          list.append(el('dt', null, role), el('dd', null, names.join(', ')));
+        }
+
+        if (list.children.length) body.append(list);
+      }
+
+      const progress = el('div', 'release-progress');
+      seekBar = el('input', 'release-seek');
+      seekBar.type = 'range';
+      seekBar.min = '0';
+      seekBar.max = '1000';
+      seekBar.step = '1';
+      seekBar.value = '0';
+      seekBar.disabled = true;
+      seekBar.setAttribute('aria-label', 'Position in der Veröffentlichung');
+      timeOut = el('span', 'release-time', '0:00 / –:––');
+      progress.append(seekBar, timeOut);
+      body.append(progress);
+      card.append(body);
+    }
+
     let current = 'chip';
     let frameId = 0;
     let active = false;
@@ -1534,11 +1643,47 @@
         audio.addEventListener('error', () => {
           stopAudio();
           note.textContent = 'Die Audiodatei lässt sich nicht laden.';
+          note.hidden = false;
         });
+
+        if (version.id === 'release' && seekBar) {
+          const refresh = () => {
+            const known = Number.isFinite(audio.duration) && audio.duration > 0;
+            seekBar.disabled = !known;
+
+            if (known && document.activeElement !== seekBar) seekBar.value = String(Math.round(audio.currentTime / audio.duration * 1000));
+
+            timeOut.textContent = clock(audio.currentTime) + ' / ' + (known ? clock(audio.duration) : '–:––');
+          };
+
+          ['loadedmetadata', 'durationchange', 'timeupdate', 'seeked', 'emptied'].forEach(name => audio.addEventListener(name, refresh));
+          seekBar.addEventListener('input', () => {
+            if (Number.isFinite(audio.duration) && audio.duration > 0) {
+              audio.currentTime = Number(seekBar.value) / 1000 * audio.duration;
+              refresh();
+            }
+          });
+        }
         audios.set(version.id, audio);
       }
 
       return audio;
+    }
+
+    function session(on) {
+      if (!('mediaSession' in navigator) || typeof MediaMetadata !== 'function') return;
+
+      try {
+        const title = typeof info.title === 'string' && info.title !== '' ? info.title : project.title;
+
+        navigator.mediaSession.metadata = on
+          ? new MediaMetadata({ title, artist: project.artist || '', album: typeof info.label === 'string' ? info.label : '', artwork: coverUrl ? [{ src: coverUrl }] : [] })
+          : null;
+        navigator.mediaSession.setActionHandler('play', on ? () => { if (!active) deck.override(); } : null);
+        navigator.mediaSession.setActionHandler('pause', on ? () => { if (active) stopAudio(); } : null);
+      } catch (error) {
+        //
+      }
     }
 
     function stopAudio() {
@@ -1571,9 +1716,11 @@
       audio.volume = Math.max(0, Math.min(1, deck.st.volume));
 
       if (version.sync && step !== null) audio.currentTime = Math.max(0, version.offset + step * project.stepSeconds);
-      else audio.currentTime = 0;
+      else if (version.id !== 'release' || audio.ended) audio.currentTime = 0;
 
-      note.textContent = version.note;
+      if (version.id === 'release') session(true);
+
+      note.hidden = true;
       active = true;
       deck.external(true);
       audio.play().then(() => {
@@ -1583,6 +1730,7 @@
 
         stopAudio();
         note.textContent = 'Die Audiodatei lässt sich nicht abspielen.';
+        note.hidden = false;
       });
     }
 
@@ -1620,7 +1768,25 @@
       deck.desk.lock(id !== 'chip');
       deck.lockTracks(id !== 'chip');
       buttons.forEach((button, key) => button.setAttribute('aria-pressed', String(key === id)));
-      note.textContent = versions.find(item => item.id === id).note;
+      note.hidden = true;
+
+      try {
+        history.replaceState(history.state, '', location.pathname + location.search + (HASHES[id] ? '#' + HASHES[id] : ''));
+      } catch (error) {
+        //
+      }
+
+      if (card) {
+        const shown = id === 'release';
+        const image = card.querySelector('img.cover');
+
+        if (shown && image && !image.src) image.src = image.dataset.src;
+
+        card.hidden = !shown;
+        deck.arrangement.style.display = shown ? 'none' : '';
+        deck.transport.classList.toggle('is-release', shown);
+        if (!shown) session(false);
+      }
 
       if (!was) return;
 
@@ -1649,24 +1815,34 @@
       for (const version of versions) {
         const button = el('button', 'version', version.label);
         button.type = 'button';
+        button.title = version.note;
         button.setAttribute('aria-pressed', String(version.id === current));
         button.addEventListener('click', () => choose(version.id));
         buttons.set(version.id, button);
         group.append(button);
       }
 
-      box.append(el('span', 'studio-label', 'Version'), group, note);
+      bar.append(group);
     }
 
-    if (releaseUrl) {
-      const link = el('a', 'release', typeof media.releaseLabel === 'string' && media.releaseLabel !== '' ? media.releaseLabel.slice(0, 40) : 'Veröffentlichung');
+    if (releaseUrl && !own) {
+      const link = el('a', media.releaseLabel === 'SoundCloud' ? 'release soundcloud' : 'release', typeof media.releaseLabel === 'string' && media.releaseLabel !== '' ? media.releaseLabel.slice(0, 40) : 'Veröffentlichung');
       link.href = releaseUrl;
       link.rel = 'noopener noreferrer';
       link.target = '_blank';
-      box.append(link);
+      bar.append(link);
     }
 
-    return box;
+    const fromHash = () => {
+      const wanted = Object.keys(HASHES).find(id => HASHES[id] === location.hash.slice(1));
+
+      if (wanted && versions.some(item => item.id === wanted)) choose(wanted);
+    };
+
+    fromHash();
+    window.addEventListener('hashchange', fromHash);
+
+    return { bar: bar.children.length ? bar : null, note, card };
   }
 
   function mountProject(project) {
@@ -1680,7 +1856,13 @@
     };
     const deck = projectDeck(project, S, host);
 
-    root.replaceChildren(deck.transport, deck.desk, deck.arrangement, ...[studioPanel(deck, project), midiLink(project)].filter(Boolean));
+    const studio = studioPanel(deck, project);
+    const top = el('div', 'deck-bar');
+    top.append(deck.desk);
+
+    if (studio.bar) top.append(studio.bar);
+
+    root.replaceChildren(deck.transport, top, ...[studio.note, deck.arrangement, studio.card, midiLink(project)].filter(Boolean));
   }
 
   const PADS = [
@@ -1783,7 +1965,7 @@
       delay.connect(damp);
       damp.connect(feedback);
       feedback.connect(delay);
-      // Die Echo-Zeit folgt dem Tempo (punktierte Achtel)
+      //
       setInterval(() => {
         if (ctx && ctx.state === 'running') delay.delayTime.setTargetAtTime(Math.min(1.9, beat() * 0.75), ctx.currentTime, 0.1);
       }, 250);
@@ -1998,14 +2180,14 @@
     const names = ['A', 'B'];
     const states = [makeState(), makeState()];
     const decks = [null, null];
-    const levels = [1, 1]; // Lautstärke je Deck
+    const levels = [1, 1];
     let masterLevel = 0.9;
     let volumes = null;
     let faders = null;
     let channels = null;
     let masterGain = null;
     let machine = null;
-    let position = 50; // 0 = nur Deck A, 100 = nur Deck B
+    let position = 50;
     let analysers = null;
 
     const SEGMENTS = 12;
@@ -2647,7 +2829,7 @@
     try {
       machineOpen = localStorage.getItem('chiptune-machine') !== 'closed';
     } catch (error) {
-      // offen lassen
+      //
     }
 
     openMachine(machineOpen);

@@ -747,24 +747,47 @@ final class ProjectParser
 
     /**
      * @param array<string, mixed> $meta
-     * @return array{hq?: string, release?: string, hqOffset?: float}
+     * @return array<string, mixed>
      */
     private function media(array $meta): array
     {
         $media = [];
+        $release = $meta['release'] ?? null;
+        $details = [];
 
-        foreach (['hq', 'release'] as $key) {
-            if (! isset($meta[$key])) {
+        if (is_array($release)) {
+            $unknown = array_diff(array_keys($release), ['url', 'cover', 'title', 'date', 'label', 'catalog', 'license', 'credits']);
+
+            if ($unknown !== []) {
+                throw new BuildError('Project: „release“ kennt nur url, cover, title, date, label, catalog, license und credits (unbekannt: ' . implode(', ', array_map('strval', $unknown)) . ').');
+            }
+
+            if (! isset($release['url'])) {
+                throw new BuildError('Project: „release“ braucht eine „url“.');
+            }
+
+            $details = $release;
+            $release = $release['url'];
+        }
+
+        foreach (['hq' => $meta['hq'] ?? null, 'release' => $release, 'cover' => $details['cover'] ?? null] as $key => $url) {
+            if ($url === null) {
                 continue;
             }
 
-            $url = $meta[$key];
+            $name = $key === 'hq' ? 'hq' : ($key === 'release' ? 'release' : 'release: cover');
 
             if (! is_string($url) || strlen($url) > 300 || preg_match('~^https://(?=[a-z0-9.-]{3,100}(?::\d{1,5})?(?:/|$))[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)+(?::\d{1,5})?(?:/[^\s<>"\'\\\\\x00-\x1F\x7F]*)?$~', $url) !== 1) {
-                throw new BuildError("Project: „{$key}“ muss eine https-Adresse mit Kleinbuchstaben im Hostnamen sein (höchstens 300 Zeichen, ohne Leerzeichen).");
+                throw new BuildError("Project: „{$name}“ muss eine https-Adresse mit Kleinbuchstaben im Hostnamen sein (höchstens 300 Zeichen, ohne Leerzeichen).");
             }
 
             $media[$key] = $url;
+        }
+
+        $info = $this->releaseInfo($details);
+
+        if ($info !== []) {
+            $media['info'] = $info;
         }
 
         if (isset($meta['hq-offset'])) {
@@ -776,6 +799,67 @@ final class ProjectParser
         }
 
         return $media;
+    }
+
+    /**
+     * @param array<string, mixed> $details
+     * @return array<string, mixed>
+     */
+    private function releaseInfo(array $details): array
+    {
+        $info = [];
+
+        foreach (['title' => 120, 'label' => 80, 'catalog' => 40, 'license' => 60] as $key => $max) {
+            if (isset($details[$key])) {
+                $info[$key] = $this->text($details, $key, $max);
+            }
+        }
+
+        if (isset($details['date'])) {
+            $date = $details['date'];
+
+            if (is_int($date) && $date > 0) {
+                $date = gmdate('Y-m-d', $date);
+            }
+
+            if (! is_string($date) || preg_match('/^\d{4}(-\d{2}(-\d{2})?)?$/', $date) !== 1) {
+                throw new BuildError('Project: „release: date“ muss JJJJ, JJJJ-MM oder JJJJ-MM-TT sein.');
+            }
+
+            $info['date'] = $date;
+        }
+
+        if (isset($details['credits'])) {
+            $credits = $details['credits'];
+
+            if (! is_array($credits) || array_is_list($credits) || count($credits) > 12) {
+                throw new BuildError('Project: „release: credits“ muss eine Zuordnung Rolle: Name sein (höchstens 12 Rollen).');
+            }
+
+            foreach ($credits as $role => $names) {
+                $names = is_array($names) ? $names : [$names];
+
+                if (! is_string($role) || $names === [] || count($names) > 6 || ! array_is_list($names)) {
+                    throw new BuildError('Project: „release: credits“ braucht je Rolle einen Namen oder eine Liste mit höchstens 6 Namen.');
+                }
+
+                $role = trim((string) preg_replace('/\s+/u', ' ', $role));
+
+                if ($role === '' || mb_strlen($role) > 40) {
+                    throw new BuildError('Project: „release: credits“ hat eine leere oder zu lange Rolle (höchstens 40 Zeichen).');
+                }
+
+                foreach ($names as $name) {
+                    if (! is_string($name) || trim($name) === '' || mb_strlen($name) > 80) {
+                        throw new BuildError("Project: „release: credits“, Rolle „{$role}“: jeder Name ist Text mit höchstens 80 Zeichen.");
+                    }
+
+                    $info['credits'][$role][] = trim((string) preg_replace('/\s+/u', ' ', $name));
+                }
+            }
+        }
+
+        return $info;
     }
 
     /** @param array<string, mixed> $meta */
