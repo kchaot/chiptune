@@ -1506,7 +1506,7 @@
     const versions = [{ id: 'chip', label: 'Chiptune', note: 'Die Version aus dem Raster, vom Player erzeugt.' }];
 
     if (hqUrl) {
-      versions.push({ id: 'hq', label: 'HQ', url: hqUrl, sync: true, offset: Number(media.hqOffset) || 0, note: 'Dieselben Noten, in einer DAW gerendert. Der Abspielkopf läuft mit. Pult sowie Mute und Solo wirken nur auf Chiptune.' });
+      versions.push({ id: 'hq', label: 'HQ', url: hqUrl, sync: true, offset: Number(media.hqOffset) || 0, note: 'Dieselben Noten, in einer DAW gerendert. Der Abspielkopf läuft mit.' });
     }
 
 

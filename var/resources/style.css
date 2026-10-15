@@ -793,3 +793,4 @@ main > .projects + .projects { margin-top: 1.5rem; }
 .desk-lock { margin: 0 0 0.6rem; color: var(--ink-soft); font-size: 0.78rem; }
 .mute:disabled, .solo:disabled { opacity: 0.35; cursor: default; }
 .mark { padding: 0 0.35rem; border: 1px solid var(--line); border-radius: 4px; color: var(--ink-soft); font-size: 0.7rem; letter-spacing: 0.05em; }
+.mark b { color: var(--cream); font-weight: 800; }
