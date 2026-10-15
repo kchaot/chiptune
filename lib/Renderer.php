@@ -179,17 +179,7 @@ HTML;
             $projects = count($own) - $sets - $albums - $sessions;
             $withHq = count(array_filter($own, fn (array $entry): bool => $entry['kind'] === 'project' && isset($entry['project']['media']['hq'])));
             $withRelease = count(array_filter($own, fn (array $entry): bool => $entry['kind'] === 'project' && isset($entry['project']['media']['release'])));
-            $extras = [];
-
-            if ($withHq > 0) {
-                $extras[] = '<b>' . $withHq . '</b> HQ';
-            }
-
-            if ($withRelease > 0) {
-                $extras[] = '<b>' . $withRelease . '</b> VÖ';
-            }
-
-            $facts = '<span><b>' . $projects . '</b> ' . ($projects === 1 ? 'Project' : 'Projects') . ($extras === [] ? '' : ' (' . implode(', ', $extras) . ')') . '</span>';
+            $facts = '<span><b>' . $projects . '</b> ' . ($projects === 1 ? 'Project' : 'Projects') . '</span>';
 
             if ($albums > 0) {
                 $facts .= ' <span><b>' . $albums . '</b> ' . ($albums === 1 ? 'Album' : 'Alben') . '</span>';
@@ -201,6 +191,14 @@ HTML;
 
             if ($sessions > 0) {
                 $facts .= ' <span><b>' . $sessions . '</b> ' . ($sessions === 1 ? 'Session' : 'Sessions') . '</span>';
+            }
+
+            if ($withHq > 0) {
+                $facts .= ' <span class="mark" title="Projekte mit HQ-Version"><b>' . $withHq . '</b> HQ</span>';
+            }
+
+            if ($withRelease > 0) {
+                $facts .= ' <span class="mark" title="Projekte mit Veröffentlichung"><b>' . $withRelease . '</b> VÖ</span>';
             }
 
             $count = [];
