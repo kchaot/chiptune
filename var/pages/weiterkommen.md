@@ -66,6 +66,6 @@ Zwei **Kopfhörer-Ausgänge** sind dabei auch ein wichtiger Trick: einer für de
 - **[Traktor](https://www.native-instruments.com/en/products/traktor/)** ist ein Klassiker.
 - **[djay](https://www.algoriddim.com/djay-pro)** verbreitet sich auf Apple-Geräten. Auch "Mobil".
 
-Der Haken bei allen: Deine Vor- und Aufbereitung (Cue-Punkte, Beatgrids, Kisten) steckt in den Programmen und lässt sich kaum unabhängig mitnehmen bzw. es st wichtig, sein Talent auch unter umbequemen Umständen abrufen zu können. Früher gab es keine *K*omputer. Nur Koffer voll Schallplatten. - Interesse? ;-)
+Der Haken bei allen: Deine Vor- und Aufbereitung (Cue-Punkte, Beatgrids, Kisten) steckt in den Programmen und lässt sich kaum unabhängig mitnehmen bzw. es ist wichtig, sein Talent auch unter umbequemen Umständen abrufen zu können. Früher gab es keine *K*omputer. Nur Koffer voll Schallplatten. - Interesse? ;-)
 
 Übungsaufgabe: Sucht was über freie Formate zu "DJ"-Sessions oder erfindet es selbst. Wie hier: [Kanon](/kalkig/studio/kanon/)
