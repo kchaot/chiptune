@@ -433,6 +433,17 @@ main, .pagehead { max-width: 75rem; margin-inline: auto; padding-inline: clamp(1
 .page .panel-inner { padding: clamp(1.25rem, 3vw, 2rem); }
 body:has(.page:target) .home { display: none; }
 
+.page:has(.tab:target) { display: block; }
+body:has(.page .tab:target) .home { display: none; }
+.has-tabs .tab-panels { margin-top: 1.75rem; }
+.has-tabs .tab { display: none; scroll-margin-top: 1rem; }
+.has-tabs .tab:target,
+.has-tabs:not(:has(.tab:target)) .tab.first { display: block; }
+.tabs { display: flex; flex-wrap: wrap; gap: 0.4rem; margin: 0 0 1.25rem; padding-bottom: 0.9rem; border-bottom: 1px dashed rgb(239 227 198 / 0.18); font: 800 0.85rem var(--mono); }
+.tabs a { padding: 0.35rem 0.95rem; color: var(--cream); text-decoration: none; border: 1px solid rgb(239 227 198 / 0.22); border-radius: 0.35rem; }
+.tabs a:hover { border-color: var(--violet); }
+.tabs a.current { color: #0d0a14; background: var(--cream); border-color: var(--cream); }
+
 .footer { max-width: 75rem; margin-inline: auto; padding: 0 clamp(1.1rem, 4vw, 3rem) 3rem; }
 .footer::before { content: ""; display: block; margin-bottom: 2rem; border-top: 1px dashed rgb(239 227 198 / 0.18); }
 .footer nav { display: flex; flex-wrap: wrap; gap: 0.5rem 1.5rem; }

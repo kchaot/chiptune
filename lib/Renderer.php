@@ -13,7 +13,7 @@ final class Renderer
      * @param array{title: string, tagline: string, noindex: bool, prompt?: string, outro?: string, base_path?: string, parent?: array{title: string, url: string}|null} $site
      * @param array{css: array{url: string, integrity: string}, js: array{url: string, integrity: string}} $assets
      * @param array<string, array{title: string, url: string, tagline?: string, html?: string}> $authors
-     * @param list<array{slug: string, title: string, html: string}> $pages
+     * @param list<array{slug: string, title: string, html: string, tabs: list<array{slug: string, title: string, html: string}>}> $pages
      */
     public function __construct(
         private readonly array $site,
@@ -225,6 +225,42 @@ HTML;
         return '<ul class="authors">' . $items . "\n    </ul>";
     }
 
+    /**
+     * @param array{slug: string, title: string, html: string, tabs: list<array{slug: string, title: string, html: string}>} $page
+     */
+    private function pageTabs(array $page): string
+    {
+        if ($page['tabs'] === []) {
+            return '';
+        }
+
+        $html = '';
+
+        foreach ($page['tabs'] as $index => $tab) {
+            $bar = '';
+
+            foreach ($page['tabs'] as $other) {
+                $bar .= sprintf(
+                    '<a href="%s"%s>%s</a>',
+                    $this->url('#' . $page['slug'] . '--' . $other['slug']),
+                    $other['slug'] === $tab['slug'] ? ' class="current" aria-current="page"' : '',
+                    $this->e($other['title']),
+                );
+            }
+
+            $html .= sprintf(
+                "\n      <section class=\"tab%s\" id=\"%s\"><nav class=\"tabs\" aria-label=\"%s\">%s</nav><div class=\"notes\">%s</div></section>",
+                $index === 0 ? ' first' : '',
+                $this->e($page['slug'] . '--' . $tab['slug']),
+                $this->e($page['title']),
+                $bar,
+                $tab['html'],
+            );
+        }
+
+        return '<div class="tab-panels">' . $html . "\n    </div>";
+    }
+
     private function pageViews(): string
     {
         $html = '';
@@ -232,11 +268,13 @@ HTML;
         foreach ($this->pages as $page) {
             $head = $this->head(null, 'cat ' . $page['slug'] . '.md');
             $html .= sprintf(
-                "\n  <div class=\"page\" id=\"%s\">\n  %s\n  <main>\n    <div class=\"heading\"><h1>%s</h1></div>\n    <section class=\"panel\"><div class=\"panel-inner\"><div class=\"notes\">%s</div></div></section>\n  </main>\n  </div>",
+                "\n  <div class=\"page%s\" id=\"%s\">\n  %s\n  <main>\n    <div class=\"heading\"><h1>%s</h1></div>\n    <section class=\"panel\"><div class=\"panel-inner\"><div class=\"notes\">%s</div>%s</div></section>\n  </main>\n  </div>",
+                $page['tabs'] === [] ? '' : ' has-tabs',
                 $this->e($page['slug']),
                 $head,
                 $this->e($page['title']),
                 $page['html'],
+                $this->pageTabs($page),
             );
         }
 
