@@ -48,7 +48,7 @@ final class Builder
                 fwrite(STDERR, "Warnung in {$label}: {$warning}\n");
             }
 
-            if ($loaded['kind'] === 'project' && ($loaded['data']['media'] ?? []) !== []) {
+            if (in_array($loaded['kind'], ['project', 'release'], true) && ($loaded['data']['media'] ?? []) !== []) {
                 $loaded['data']['media'] = $this->checkedMedia($loaded['data']['media'], $file['media'], $file['strict'], $label, $errors);
             }
 
@@ -124,6 +124,7 @@ final class Builder
             Filesystem::write("{$directory}/index.html", match ($entry['kind']) {
                 'set' => $renderer->set($entry),
                 'session' => $renderer->session($entry),
+                'release' => $renderer->release($entry),
                 default => $renderer->project($entry),
             });
             Filesystem::write("{$directory}/source.md", (string) file_get_contents($entry['source']));
@@ -182,7 +183,8 @@ final class Builder
 
         $setCount = count(array_filter($entries, fn (array $entry): bool => $entry['kind'] === 'set'));
         $sessionCount = count(array_filter($entries, fn (array $entry): bool => $entry['kind'] === 'session'));
-        fwrite(STDOUT, sprintf("%d Projects, %d Sets, %d Sessions und %d Alben von %d Autoren gebaut: %s\n", count($entries) - $setCount - $sessionCount, $setCount, $sessionCount, count($albumEntries), count($authors), $this->public));
+        $releaseCount = count(array_filter($entries, fn (array $entry): bool => $entry['kind'] === 'release'));
+        fwrite(STDOUT, sprintf("%d Projects, %d Sets, %d Sessions, %d Releases und %d Alben von %d Autoren gebaut: %s\n", count($entries) - $setCount - $sessionCount - $releaseCount, $setCount, $sessionCount, $releaseCount, count($albumEntries), count($authors), $this->public));
 
         return 0;
     }
@@ -274,6 +276,7 @@ final class Builder
             'project' => $data,
             'order' => array_map(strval(...), array_keys($order)),
             'sessions' => array_values(array_filter($entries, fn (array $entry): bool => $entry['prefix'] === $album['prefix'] && $entry['album'] === $album['slug'] && $entry['kind'] === 'session')),
+            'releases' => array_values(array_filter($entries, fn (array $entry): bool => $entry['prefix'] === $album['prefix'] && $entry['album'] === $album['slug'] && $entry['kind'] === 'release')),
         ];
     }
 

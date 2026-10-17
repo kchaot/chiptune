@@ -847,3 +847,16 @@ main > .projects + .projects { margin-top: 1.5rem; }
 .mark-soundcloud { border-color: var(--soundcloud); color: var(--soundcloud); }
 .media-links a.soundcloud { color: var(--soundcloud); }
 .media-links a.own { color: var(--green); }
+
+.project.no-thumb { grid-template-columns: minmax(0, 1fr); grid-template-areas: "title" "facts" "tags"; grid-template-rows: none; }
+.rel-page { display: grid; grid-template-columns: minmax(0, 1fr); gap: 1.4rem; margin: 1rem 0; padding: 1.4rem; border: 1px solid var(--line); border-radius: 12px; background: linear-gradient(135deg, var(--panel-raised), var(--panel)); }
+.rel-page.has-cover { grid-template-columns: auto minmax(0, 1fr); }
+.rel-cover img { display: block; width: 14rem; max-width: 100%; height: auto; aspect-ratio: 1; object-fit: cover; border-radius: 8px; background: var(--panel-solid); box-shadow: 0 0.6rem 1.8rem rgba(0, 0, 0, 0.55); }
+.rel-body { display: flex; flex-direction: column; gap: 0.6rem; min-width: 0; }
+.rel-page .release-facts { margin: 0; color: var(--dim); font: 0.78rem var(--mono); letter-spacing: 0.04em; }
+.rel-page .release-credits { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 0.25rem 1rem; margin: 0; font: 0.8rem var(--mono); }
+.rel-page .release-credits dt { color: var(--dim); text-transform: uppercase; letter-spacing: 0.08em; font-size: 0.68rem; padding-top: 0.12rem; }
+.rel-page .release-credits dd { margin: 0; color: var(--ink); overflow-wrap: anywhere; }
+.rel-action { margin-top: auto; padding-top: 0.6rem; }
+.rel-action audio { width: min(100%, 32rem); }
+@media (max-width: 40rem) { .rel-page.has-cover { grid-template-columns: minmax(0, 1fr); } }

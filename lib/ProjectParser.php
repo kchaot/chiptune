@@ -30,7 +30,7 @@ final class ProjectParser
         foreach ($this->markdown->parseMany($source, 'project', 'part') as $chunk) {
             $kind = $chunk->frontmatter['kind'] ?? 'project';
 
-            return in_array($kind, ['set', 'layer', 'session'], true) ? $kind : 'project';
+            return in_array($kind, ['set', 'layer', 'session', 'release'], true) ? $kind : 'project';
         }
 
         return 'project';
@@ -749,7 +749,7 @@ final class ProjectParser
      * @param array<string, mixed> $meta
      * @return array<string, mixed>
      */
-    private function media(array $meta): array
+    public function media(array $meta): array
     {
         $media = [];
         $release = $meta['release'] ?? null;
