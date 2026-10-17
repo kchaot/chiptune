@@ -1570,7 +1570,7 @@
       }
 
       const body = el('div', 'release-body');
-      const kicker = ['Veröffentlichung', typeof info.label === 'string' ? info.label : ''].filter(Boolean).join(' · ');
+      const kicker = ['Veröffentlichung', typeof info.label === 'string' ? info.label : ''].filter(Boolean).join(' | ');
       const head = el('div', 'release-head');
       const share = el('button', 'release-share', 'Link kopieren');
       share.type = 'button';
@@ -1595,7 +1595,7 @@
 
       const facts = [dateText(info.date), typeof info.catalog === 'string' ? info.catalog : '', typeof info.license === 'string' ? info.license : ''].filter(Boolean);
 
-      if (facts.length) body.append(el('p', 'release-facts', facts.join(' · ')));
+      if (facts.length) body.append(el('p', 'release-facts', facts.join(' | ')));
 
       if (info.credits && typeof info.credits === 'object') {
         const list = el('dl', 'release-credits');
