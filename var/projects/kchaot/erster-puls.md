@@ -7,7 +7,7 @@ grid: 16
 tags: [minimal]
 remix: true
 ---
-Ein Beispielprojekt vom KChaot: Bassdrum, Offbeat-Hats und eine einzige Basslinie in E-Moll. Vier Bars, mehr nicht.
+Ein Beispielprojekt vom KChaot: Bassdrum, Offbeat-Hats und eine einzige Basslinie in E-Moll. Ein Takt, mehr nicht.
 
 <!-- track: kick -->
 ---
