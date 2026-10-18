@@ -265,6 +265,8 @@ main, .pagehead { max-width: 75rem; margin-inline: auto; padding-inline: clamp(1
 .daw .midi-link { padding: 0.1rem 0.4rem; border: 0; background: none; color: var(--dim); font: 0.7rem var(--mono); cursor: pointer; }
 .daw .midi-link + .midi-link { padding-left: 0; }
 .daw .midi-sep { color: var(--dim); font: 0.7rem var(--mono); }
+.daw .midi-sep + .midi-sep { padding-left: 0.4rem; }
+.daw .midi-sep + .midi-link { padding-left: 0.3rem; }
 .daw .midi-link:hover, .daw .midi-link:focus-visible { color: var(--ink-soft); text-decoration: underline; }
 .daw noscript { display: block; padding: 1rem; background: var(--panel); }
 .daw noscript .thumb { padding: 0; }
