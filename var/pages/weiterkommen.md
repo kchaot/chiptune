@@ -5,11 +5,11 @@ order: 30
 
 Unser Lernprojekt hier reicht für erste Schritte, zum Ausprobieren und zum Spielen. Wenn du mehr willst, finden sich im Folgenden mögliche Wege:
 
-Der rote Faden für beide Wege, Produzieren und Auflegen:
+Der rote Faden für alle Wege:
 
 - **Frei zuerst:** Offene Software gehört dir, sie lässt sich ansehen, ändern und weitergeben. Und sie läuft auf **Linux**, am einfachsten z.B. mit [Ubuntu Studio](https://ubuntustudio.org/), das alles Wichtige für Audio schon eingerichtet mitbringt. Ein **Apple-Rechner** geht auch, viele der freien Programme laufen dort ebenfalls. Er ist ja ein Unix im Herzen, nur eben ein geschlossenes. Was dich glücklicher macht, darfst du nehmen.
 - **Anschaffungen:** Mit unserem Projekt, einem Rechner und Kopfhörern kommst du schon voran. Wenn du nach ein paar Wochen merkst, was dir fehlt, weißt du, was du suchst.
-- **Über den Tellerrand schauen:** Jeder Weg hat unten auch einen Abschnitt zu den verbreiteten Profi-Programmen. Sie sind zwar geschlossen, aber wer in der Szene unterwegs ist, trifft sie überall.
+- **Über den Tellerrand schauen:** Die ersten beiden Wege haben unten auch einen Abschnitt zu den verbreiteten Profi-Programmen. Sie sind zwar geschlossen, aber wer in der Szene unterwegs ist, trifft sie überall.
 - **Dieses Dokument lebt.** Es ist **eine** Markdown-Datei, in Reiter geteilt. Du hast etwas Besseres gefunden, etwas ist veraltet, oder es fehlt dein Lieblingswerkzeug? Ändere [die Datei](https://github.com/kchaot/chiptune/blob/main/var/pages/weiterkommen.md) und schick den Vorschlag.
 
 <!-- tab: produzieren -->
@@ -69,3 +69,34 @@ Zwei **Kopfhörer-Ausgänge** sind dabei auch ein wichtiger Trick: einer für de
 Der Haken bei allen: Deine Vor- und Aufbereitung (Cue-Punkte, Beatgrids, Kisten) steckt in den Programmen und lässt sich kaum unabhängig mitnehmen bzw. es ist wichtig, sein Talent auch unter umbequemen Umständen abrufen zu können. Früher gab es keine *K*omputer. Nur Koffer voll Schallplatten. - Interesse? ;-)
 
 Übungsaufgabe: Sucht was über freie Formate zu "DJ"-Sessions oder erfindet es selbst. Wie hier: [Kanon](/kalkig/studio/kanon/)
+
+<!-- tab: programmieren -->
+---
+title: Music aus Live-Code
+---
+
+Ein dritter Weg: Die Musik wird nicht angeklickt oder abgespielt, sondern **programmiert**, ähnlich wie hier bei uns - nur halt live. Du tippst vor den Augen der Gäste ein Muster, löst es aus und alle hören was es bewirkt . Dann wird etwas modifizierst, und sofort ändert sich der Klang, also noch während er läuft. Das passt zu unserem Raster, denn auch hier ist Musik ja nur ein Text, der lesbar ist.
+
+### Frei und offen
+
+- **[Strudel](https://strudel.cc/)** läuft direkt im Browser, ganz ohne Installation. Es ist eine Umsetzung von TidalCycles für JavaScript. Der sicherlich beste Einstieg, weil schon nach Sekunden etwas zu hören ist.
+- **[TidalCycles](https://tidalcycles.org/)** ist eben das Vorbild dazu, für alle, die tiefer einsteigen wollen.
+- **[Sonic Pi](https://sonic-pi.net/)** ist eine ähhnliche Umsetzungsidee, dessen LIVE-Editor auch gut im Unterricht benutzt werden kann.
+
+### Vom Raster in den Strudel
+
+Nimm dir einen Beat aus unserer Bibliothek und schreibe ihn in Strudel nach. Ein erster Versuch sieht z.B. so aus:
+
+```
+s("bd hh sd hh")
+```
+
+Jedes Wort zwischen den Klammern ist ein Klang, ein Leerzeichen ist ein Schritt.
+Das ist dieselbe Denkweise wie bei unserem Raster, nur eben ohne "Kästchen".
+
+### Lust auf sowas in Kiel & Umgebung oder in Schwerin - als AlgoRave?
+
+Ein **AlgoRave** ist eine Party, auf der die Music auf genau die beschriebene Weise "Live aus Code" entsteht.
+Die Leute an den Rechnern schreiben ihre Muster, und die Texte erscheinen groß an den Wänden, damit alle mitlesen, tanzen und staunen können.
+
+Ein Abend, an dem alle ausprobieren dürfen, vom ersten Beat bis zum längeren Set. Wer mitmachen oder helfen will, meldet sich über den [Kontakt](/#kontakt).
