@@ -79,22 +79,28 @@ Ein dritter Weg: Die Musik wird nicht angeklickt oder abgespielt, sondern **prog
 
 ### Frei und offen
 
-- **[Strudel](https://strudel.cc/)** läuft direkt im Browser, ganz ohne Installation. Es ist eine Umsetzung von TidalCycles für JavaScript. Der sicherlich beste Einstieg, weil schon nach Sekunden etwas zu hören ist.
+- **[Sonic Pi](https://sonic-pi.net/)** ist der freundlichste Einstieg. Es wurde ursprünglich für den Informatik- und Musikunterricht in Schulen gebaut, zusammen mit der Raspberry Pi Foundation. Es läuft auf **Linux**, Mac und Windows und natürlich auf dem **Raspberry Pi**. Die Sprache ist an Ruby angelehnt: Du schreibst Schritt für Schritt auf, was gespielt wird und wie lange gewartet wird, fast wie ein Rezept. Die Projektseite zeigt gut, wie das aussieht.
+- **[Strudel](https://strudel.cc/)** läuft direkt im Browser, ganz ohne Installation. Statt Anweisungen schreibst du **Muster**: ein kurzer Text beschreibt, was in einem Takt passiert, und Strudel wiederholt und verwandelt ihn. Es ist eine Umsetzung der Muster-Sprache von TidalCycles für JavaScript.
 - **[TidalCycles](https://tidalcycles.org/)** ist eben das Vorbild dazu, für alle, die tiefer einsteigen wollen.
-- **[Sonic Pi](https://sonic-pi.net/)** ist eine ähhnliche Umsetzungsidee, dessen LIVE-Editor auch gut im Unterricht benutzt werden kann.
 
-### Vom Raster in den Strudel
+### Von unserem Raster ausgehend in den Code
 
-Auf jeder Song-Seite unserer Bibliothek gibt es unten rechts neben **MIDI** den Knopf **Strudel**. Ein Klick öffnet den Song als Text in einem neuen Reiter auf strudel.cc: ein Takt ist dort ein Zyklus, jede Spur ein Stück Text. Drück Play, ändere ein Wort und drück Update. Dann hörst du, wie aus dem Raster ein Muster wird.
+Auf jeder Song-Seite unserer Bibliothek gibt es unten rechts neben **MIDI** den Knopf **Strudel**. Ein Klick öffnet den Song als Text in einem neuen Reiter auf strudel.cc: ein Takt ist dort ein Zyklus, jede Spur ein Stück Text. Gleiche Takte sind dabei zusammengefasst, zum Beispiel `[bd ~ ~ ~]*4` für vier Kickschläge. Drück dort Play, ändere ein Wort und drück dann Update. Du hörst, wie aus unserem Raster ein "Strudel" wird.
 
-Weitere eigene Beats schreibst du dort dann von Hand:
+Eigene Beats schreibst du in den oben genannten Programmen also ebenfalls von Hand - z.B.:
 
+Strudel:
 ```
 s("bd hh sd hh")
 ```
 
-Jedes Wort zwischen den Klammern ist ein Klang, ein Leerzeichen ist ein Schritt.
-Das ist dieselbe Denkweise wie bei unserem Raster, nur eben ohne "Kästchen".
+Sonic Pi:
+```
+live_loop :beat do
+  sample :bd_haus
+  sleep 0.5
+end
+```
 
 ### Lust auf sowas in Kiel & Umgebung oder in Schwerin - als AlgoRave?
 
