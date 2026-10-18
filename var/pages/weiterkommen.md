@@ -85,7 +85,9 @@ Ein dritter Weg: Die Musik wird nicht angeklickt oder abgespielt, sondern **prog
 
 ### Vom Raster in den Strudel
 
-Nimm dir einen Beat aus unserer Bibliothek und schreibe ihn in Strudel nach. Ein erster Versuch sieht z.B. so aus:
+Auf jeder Song-Seite unserer Bibliothek gibt es unten rechts neben **MIDI** den Knopf **Strudel**. Ein Klick öffnet den Song als Text in einem neuen Reiter auf strudel.cc: ein Takt ist dort ein Zyklus, jede Spur ein Stück Text. Drück Play, ändere ein Wort und drück Update. Dann hörst du, wie aus dem Raster ein Muster wird.
+
+Weitere eigene Beats schreibst du dort dann von Hand:
 
 ```
 s("bd hh sd hh")

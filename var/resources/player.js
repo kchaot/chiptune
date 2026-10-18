@@ -1483,10 +1483,91 @@
       setTimeout(() => URL.revokeObjectURL(url), 1000);
     });
 
+    const strudel = el('button', 'midi-link', 'Strudel');
+    strudel.type = 'button';
+    strudel.title = 'Song als Text in Strudel öffnen (neuer Tab auf strudel.cc, erst beim Klick wird dorthin verbunden)';
+    strudel.addEventListener('click', () => {
+      window.open(strudelUrl(strudelCode(project)), '_blank', 'noopener,noreferrer');
+    });
+
     const line = el('p', 'midi');
-    line.append(button);
+    line.append(strudel, button);
 
     return line;
+  }
+
+  const STRUDEL_DRUMS = { k: 'bd', s: 'sd', c: 'cp', h: 'hh', o: 'oh' };
+  const STRUDEL_VOICES = { square: 'square', pulse: 'square', saw: 'sawtooth', triangle: 'triangle', sine: 'sine' };
+  const STRUDEL_NAMES = ['c', 'c#', 'd', 'd#', 'e', 'f', 'f#', 'g', 'g#', 'a', 'a#', 'b'];
+
+  function strudelNote(frequency) {
+    const midi = midiNote(frequency);
+
+    return STRUDEL_NAMES[midi % 12] + (Math.floor(midi / 12) - 1);
+  }
+
+  function asciiText(text) {
+    return String(text).replace(/[äÄ]/g, 'ae').replace(/[öÖ]/g, 'oe').replace(/[üÜ]/g, 'ue').replace(/ß/g, 'ss').replace(/[^\x20-\x7e]/g, '').replace(/\s+/g, ' ').trim();
+  }
+
+  function strudelCode(project) {
+    const barSteps = project.stepsPerBeat * 4;
+    const bars = Math.ceil(project.steps / barSteps);
+    const tracks = [];
+
+    for (const track of project.tracks) {
+      const drums = track.instrument === 'drums';
+      const cells = new Array(bars * barSteps).fill('~');
+
+      for (const event of track.events) {
+        const name = drums ? STRUDEL_DRUMS[event.d] : strudelNote(event.f);
+
+        if (!name || event.t >= cells.length) continue;
+
+        cells[event.t] = name;
+
+        const end = Math.min(event.t + (drums ? 1 : event.len), (Math.floor(event.t / barSteps) + 1) * barSteps);
+
+        for (let step = event.t + 1; step < end; step++) cells[step] = '_';
+      }
+
+      const lines = [];
+
+      for (let bar = 0; bar < bars; bar++) {
+        const row = cells.slice(bar * barSteps, (bar + 1) * barSteps);
+        lines.push(row.every(cell => cell === '~') ? '~' : '[' + row.join(' ') + ']');
+      }
+
+      const gain = Math.min(1, Math.round(track.volume * 250) / 100);
+      const label = asciiText(track.name) || 'track';
+      const body = '`\n    <' + lines.join('\n     ') + '>\n  `';
+      const voice = drums
+        ? `s(${body}).gain(${gain})`
+        : `note(${body}).s("${STRUDEL_VOICES[track.instrument] || 'square'}").clip(${Math.round(track.gate * 100) / 100}).gain(${gain})`;
+
+      tracks.push(`  // ${label}\n  ${voice}`);
+    }
+
+    const tempo = Number.isInteger(project.bpm) ? String(project.bpm) : String(Math.round(project.bpm * 100) / 100);
+
+    return [
+      `// ${asciiText(project.title) || 'Song'} (aus chiptune.kchaot.de, ein Takt = ein Zyklus)`,
+      `setcps(${tempo}/60/4)`,
+      '',
+      'stack(',
+      tracks.join(',\n'),
+      ')',
+      '',
+    ].join('\n');
+  }
+
+  function strudelUrl(code) {
+    const bytes = new TextEncoder().encode(code);
+    let binary = '';
+
+    for (let i = 0; i < bytes.length; i += 8192) binary += String.fromCharCode(...bytes.subarray(i, i + 8192));
+
+    return 'https://strudel.cc/#' + encodeURIComponent(btoa(binary));
   }
 
   function studioPanel(deck, project) {
