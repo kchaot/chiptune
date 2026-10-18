@@ -85,7 +85,7 @@ Ein dritter Weg: Die Musik wird nicht angeklickt oder abgespielt, sondern **prog
 
 ### Von unserem Raster ausgehend in den Code
 
-Auf jeder Song-Seite unserer Bibliothek gibt es unten rechts neben **MIDI** den Knopf **Strudel**. Ein Klick öffnet den Song als Text in einem neuen Reiter auf strudel.cc: ein Takt ist dort ein Zyklus, jede Spur ein Stück Text. Gleiche Takte sind dabei zusammengefasst, zum Beispiel `[bd ~ ~ ~]*4` für vier Kickschläge. Drück dort Play, ändere ein Wort und drück dann Update. Du hörst, wie aus unserem Raster ein "Strudel" wird.
+Auf jeder Song-Seite unserer Bibliothek gibt es unten rechts neben **MIDI** den Knopf **Strudel**. Ein Klick öffnet den Song als Text in einem neuen Reiter auf strudel.cc: ein Takt ist dort ein Zyklus, jede Spur ein Stück Text. Alles Wiederkehrende ist zusammengefasst: `[bd ~@3]*4` sind vier Kickschläge im Takt (`~` ist eine Pause, `@3` heißt drei Schritte lang), `~!8` sind acht stille Takte und `[…]@4!6` eine Phrase aus vier Takten, die sechsmal läuft. Drück dort Play, ändere ein Wort und drück dann Update. Du hörst, wie aus unserem Raster ein "Strudel" wird.
 
 Eigene Beats schreibst du in den oben genannten Programmen also ebenfalls von Hand - z.B.:
 

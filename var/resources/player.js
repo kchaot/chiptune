@@ -1510,6 +1510,39 @@
     return String(text).replace(/[äÄ]/g, 'ae').replace(/[öÖ]/g, 'oe').replace(/[üÜ]/g, 'ue').replace(/ß/g, 'ss').replace(/[^\x20-\x7e]/g, '').replace(/\s+/g, ' ').trim();
   }
 
+  function strudelSteps(cells) {
+    const steps = [];
+
+    for (let index = 0; index < cells.length;) {
+      let end = index + 1;
+
+      if (cells[index] === '~') {
+        while (end < cells.length && cells[end] === '~') end++;
+      } else {
+        while (end < cells.length && cells[end] === '_') end++;
+      }
+
+      steps.push({ name: cells[index], len: end - index });
+      index = end;
+    }
+
+    const parts = [];
+
+    for (let index = 0; index < steps.length;) {
+      let end = index + 1;
+
+      while (end < steps.length && steps[end].name === steps[index].name && steps[end].len === steps[index].len) end++;
+
+      const step = steps[index];
+      const count = end - index;
+
+      parts.push(step.name + (step.len > 1 ? '@' + step.len : '') + (count > 1 ? '!' + count : ''));
+      index = end;
+    }
+
+    return parts.join(' ');
+  }
+
   function strudelBar(row, compact) {
     if (row.every(cell => cell === '~')) return '~';
 
@@ -1519,29 +1552,83 @@
 
         const block = row.slice(0, size);
 
-        return (size === 1 ? block[0] : '[' + block.join(' ') + ']') + '*' + (row.length / size);
+        return (size === 1 ? block[0] : '[' + strudelSteps(block) + ']') + '*' + (row.length / size);
       }
+
+      return '[' + strudelSteps(row) + ']';
     }
 
     return '[' + row.join(' ') + ']';
   }
 
-  function strudelBars(rows, compact) {
-    const lines = [];
+  function strudelFlat(text) {
+    return text.replace(/\s*\n\s*/g, ' ');
+  }
 
-    for (let index = 0; index < rows.length;) {
-      let end = index + 1;
+  function strudelGroup(parts) {
+    const flat = '[' + parts.map(part => part.text).join(' ') + ']';
 
-      while (compact && end < rows.length && rows[end] === rows[index]) end++;
+    if (!flat.includes('\n') && flat.length <= 60) return flat;
 
-      const count = end - index;
-      const text = count === 1 ? rows[index] : (rows[index].includes('*') ? '[' + rows[index] + ']' : rows[index]) + '!' + count;
+    const lines = parts.map(part => part.text).join('\n').split('\n');
 
-      lines.push(text);
-      index = end;
+    return '[' + lines.map((line, index) => index === 0 ? line : ' ' + line).join('\n') + '\n]';
+  }
+
+  function strudelRepeat(parts, count) {
+    const unit = parts.reduce((sum, part) => sum + part.bars, 0);
+
+    if (parts.length === 1 && parts[0].bars === 1 && /^(~|\[[^\[\]\n]*\])$/.test(parts[0].text)) {
+      return { text: parts[0].text + '!' + count, bars: count, repeat: { parts, unit, count } };
     }
 
-    return lines;
+    return { text: strudelGroup(parts) + (unit > 1 ? '@' + unit : '') + '!' + count, bars: unit * count, repeat: { parts, unit, count } };
+  }
+
+  function strudelParts(input) {
+    let parts = input;
+
+    for (;;) {
+      let best = null;
+
+      for (let size = 1; size <= Math.floor(parts.length / 2); size++) {
+        for (let start = 0; start + 2 * size <= parts.length; start++) {
+          const block = parts.slice(start, start + size);
+          let count = 1;
+
+          while (start + (count + 1) * size <= parts.length && block.every((part, index) => part.text === parts[start + count * size + index].text)) count++;
+
+          if (count < 2) continue;
+
+          const token = strudelRepeat(strudelParts(block), count);
+          const before = strudelFlat(parts.slice(start, start + size * count).map(part => part.text).join(' ')).length;
+          const gain = before - strudelFlat(token.text).length;
+
+          if (gain > 0 && (!best || gain > best.gain)) best = { gain, start, length: size * count, token };
+        }
+      }
+
+      if (!best) return parts;
+
+      parts = [...parts.slice(0, best.start), best.token, ...parts.slice(best.start + best.length)];
+    }
+  }
+
+  function strudelPattern(rows, compact) {
+    if (!compact) return '<' + rows.join('\n ') + '>';
+
+    const parts = strudelParts(rows.map(text => ({ text, bars: 1 })));
+
+    if (parts.length === 1) {
+      const only = parts[0];
+
+      if (!only.repeat) return only.text;
+      if (only.repeat.unit === 1) return only.repeat.parts[0].text;
+
+      return strudelGroup(only.repeat.parts) + '/' + only.repeat.unit;
+    }
+
+    return strudelGroup(parts) + '/' + parts.reduce((sum, part) => sum + part.bars, 0);
   }
 
   function strudelCode(project, compact = true) {
@@ -1569,10 +1656,12 @@
 
       for (let bar = 0; bar < bars; bar++) rows.push(strudelBar(cells.slice(bar * barSteps, (bar + 1) * barSteps), compact));
 
-      const lines = strudelBars(rows, compact);
+      const pattern = strudelPattern(rows, compact);
       const gain = Math.min(1, Math.round(track.volume * 250) / 100);
       const label = asciiText(track.name) || 'track';
-      const body = '`\n    <' + lines.join('\n     ') + '>\n  `';
+      const body = !compact
+        ? '`\n    ' + pattern.split('\n').join('\n    ') + '\n  `'
+        : (pattern.includes('\n') ? '`\n    ' + pattern.split('\n').join('\n    ') + '\n  `' : '"' + pattern + '"');
       const voice = drums
         ? `s(${body}).gain(${gain})`
         : `note(${body}).s("${STRUDEL_VOICES[track.instrument] || 'square'}").clip(${Math.round(track.gate * 100) / 100}).gain(${gain})`;
