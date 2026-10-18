@@ -172,7 +172,7 @@ HTML;
             $name = $this->e((string) $members[0]['project']['group']);
             $count = count($members);
             $noun = $count === 1 ? 'Song' : 'Songs';
-            $html .= "\n    <details class=\"group\" open>\n      <summary><span class=\"group-name\">{$name}</span> <span class=\"group-count\">{$count} {$noun}</span></summary>\n    " . $items($members) . "\n    </details>";
+            $html .= "\n    <details class=\"group\">\n      <summary><span class=\"group-name\">{$name}</span> <span class=\"group-count\">{$count} {$noun}</span></summary>\n    " . $items($members) . "\n    </details>";
         }
 
         return $html . ($singles === [] ? '' : ($groups === [] ? '' : "\n    <h2 class=\"group-rest\">Weitere Songs</h2>") . $items($singles));
