@@ -1485,13 +1485,23 @@
 
     const strudel = el('button', 'midi-link', 'Strudel');
     strudel.type = 'button';
-    strudel.title = 'Song als Text in Strudel öffnen (neuer Tab auf strudel.cc, erst beim Klick wird dorthin verbunden)';
+    strudel.title = 'Song 1:1 als Text in Strudel öffnen: jeder Schritt des Rasters steht einzeln da (neuer Tab auf strudel.cc, erst beim Klick wird dorthin verbunden)';
     strudel.addEventListener('click', () => {
-      window.open(strudelUrl(strudelCode(project)), '_blank', 'noopener,noreferrer');
+      window.open(strudelUrl(strudelCode(project, false)), '_blank', 'noopener,noreferrer');
+    });
+
+    const compact = el('button', 'midi-link', '(kompakt)');
+    compact.type = 'button';
+    compact.setAttribute('aria-label', 'Strudel kompakt');
+    compact.title = 'Experimentell: derselbe Song, aber mit Wiederholungen zusammengefasst und kurzer Legende (neuer Tab auf strudel.cc, erst beim Klick wird dorthin verbunden)';
+    compact.addEventListener('click', () => {
+      window.open(strudelUrl(strudelCode(project, true)), '_blank', 'noopener,noreferrer');
     });
 
     const line = el('p', 'midi');
-    line.append(strudel, button);
+    const divider = el('span', 'midi-sep', '|');
+    divider.setAttribute('aria-hidden', 'true');
+    line.append(button, divider, strudel, compact);
 
     return line;
   }
@@ -1536,7 +1546,11 @@
       const step = steps[index];
       const count = end - index;
 
-      parts.push(step.name + (step.len > 1 ? '@' + step.len : '') + (count > 1 ? '!' + count : ''));
+      if (step.len > 1) {
+        for (let copy = 0; copy < count; copy++) parts.push(step.name + '@' + step.len);
+      } else {
+        parts.push(step.name + (count > 1 ? '!' + count : ''));
+      }
       index = end;
     }
 
@@ -1561,74 +1575,90 @@
     return '[' + row.join(' ') + ']';
   }
 
-  function strudelFlat(text) {
-    return text.replace(/\s*\n\s*/g, ' ');
-  }
+  function strudelItems(rows) {
+    const items = [];
 
-  function strudelGroup(parts) {
-    const flat = '[' + parts.map(part => part.text).join(' ') + ']';
+    for (let index = 0; index < rows.length;) {
+      let end = index + 1;
 
-    if (!flat.includes('\n') && flat.length <= 60) return flat;
+      while (end < rows.length && rows[end] === rows[index]) end++;
 
-    const lines = parts.map(part => part.text).join('\n').split('\n');
+      const text = rows[index];
+      const count = end - index;
+      const atom = /^(~|\[[^\[\]]*\])$/.test(text) ? text : '[' + text + ']';
 
-    return '[' + lines.map((line, index) => index === 0 ? line : ' ' + line).join('\n') + '\n]';
-  }
-
-  function strudelRepeat(parts, count) {
-    const unit = parts.reduce((sum, part) => sum + part.bars, 0);
-
-    if (parts.length === 1 && parts[0].bars === 1 && /^(~|\[[^\[\]\n]*\])$/.test(parts[0].text)) {
-      return { text: parts[0].text + '!' + count, bars: count, repeat: { parts, unit, count } };
+      items.push(count === 1 ? text : atom + '!' + count);
+      index = end;
     }
 
-    return { text: strudelGroup(parts) + (unit > 1 ? '@' + unit : '') + '!' + count, bars: unit * count, repeat: { parts, unit, count } };
+    return items;
   }
 
-  function strudelParts(input) {
-    let parts = input;
+  function strudelBody(rows) {
+    const items = strudelItems(rows);
+
+    if (items.length === 1) return rows[0];
+
+    const flat = '<' + items.join(' ') + '>';
+
+    return flat.length <= 60 ? flat : '<' + items.join('\n ') + '>';
+  }
+
+  function strudelQuote(body) {
+    return body.includes('\n') ? '`' + body + '`' : '"' + body + '"';
+  }
+
+  function strudelRender(segments) {
+    if (segments.length === 1) return strudelQuote(strudelBody(segments[0].rows));
+
+    return 'arrange(\n' + segments.map(segment => '    [' + segment.cycles + ', ' + strudelQuote(strudelBody(segment.rows)).replace(/\n/g, '\n          ') + ']').join(',\n') + '\n  )';
+  }
+
+  function strudelSegments(rows) {
+    let segments = [{ rows, cycles: rows.length }];
 
     for (;;) {
+      const current = strudelRender(segments).length;
       let best = null;
 
-      for (let size = 1; size <= Math.floor(parts.length / 2); size++) {
-        for (let start = 0; start + 2 * size <= parts.length; start++) {
-          const block = parts.slice(start, start + size);
-          let count = 1;
+      segments.forEach((segment, position) => {
+        const list = segment.rows;
 
-          while (start + (count + 1) * size <= parts.length && block.every((part, index) => part.text === parts[start + count * size + index].text)) count++;
+        if (segment.cycles !== list.length) return;
 
-          if (count < 2) continue;
+        for (let size = 2; size <= Math.floor(list.length / 2); size++) {
+          for (let start = 0; start + 2 * size <= list.length; start++) {
+            let count = 1;
 
-          const token = strudelRepeat(strudelParts(block), count);
-          const before = strudelFlat(parts.slice(start, start + size * count).map(part => part.text).join(' ')).length;
-          const gain = before - strudelFlat(token.text).length;
+            while (start + (count + 1) * size <= list.length && list.slice(start, start + size).every((row, index) => row === list[start + count * size + index])) count++;
 
-          if (gain > 0 && (!best || gain > best.gain)) best = { gain, start, length: size * count, token };
+            if (count < 2) continue;
+
+            const end = start + size * count;
+            const next = [
+              ...segments.slice(0, position),
+              ...(start > 0 ? [{ rows: list.slice(0, start), cycles: start }] : []),
+              { rows: list.slice(start, start + size), cycles: size * count },
+              ...(end < list.length ? [{ rows: list.slice(end), cycles: list.length - end }] : []),
+              ...segments.slice(position + 1),
+            ];
+            const gain = current - strudelRender(next).length;
+
+            if (gain > 0 && (!best || gain > best.gain)) best = { gain, next };
+          }
         }
-      }
+      });
 
-      if (!best) return parts;
+      if (!best) return segments;
 
-      parts = [...parts.slice(0, best.start), best.token, ...parts.slice(best.start + best.length)];
+      segments = best.next;
     }
   }
 
   function strudelPattern(rows, compact) {
-    if (!compact) return '<' + rows.join('\n ') + '>';
+    if (!compact) return '`\n    <' + rows.join('\n     ') + '>\n  `';
 
-    const parts = strudelParts(rows.map(text => ({ text, bars: 1 })));
-
-    if (parts.length === 1) {
-      const only = parts[0];
-
-      if (!only.repeat) return only.text;
-      if (only.repeat.unit === 1) return only.repeat.parts[0].text;
-
-      return strudelGroup(only.repeat.parts) + '/' + only.repeat.unit;
-    }
-
-    return strudelGroup(parts) + '/' + parts.reduce((sum, part) => sum + part.bars, 0);
+    return strudelRender(strudelSegments(rows));
   }
 
   function strudelCode(project, compact = true) {
@@ -1656,12 +1686,9 @@
 
       for (let bar = 0; bar < bars; bar++) rows.push(strudelBar(cells.slice(bar * barSteps, (bar + 1) * barSteps), compact));
 
-      const pattern = strudelPattern(rows, compact);
       const gain = Math.min(1, Math.round(track.volume * 250) / 100);
       const label = asciiText(track.name) || 'track';
-      const body = !compact
-        ? '`\n    ' + pattern.split('\n').join('\n    ') + '\n  `'
-        : (pattern.includes('\n') ? '`\n    ' + pattern.split('\n').join('\n    ') + '\n  `' : '"' + pattern + '"');
+      const body = strudelPattern(rows, compact);
       const voice = drums
         ? `s(${body}).gain(${gain})`
         : `note(${body}).s("${STRUDEL_VOICES[track.instrument] || 'square'}").clip(${Math.round(track.gate * 100) / 100}).gain(${gain})`;
@@ -1673,6 +1700,12 @@
 
     return [
       `// ${asciiText(project.title) || 'Song'} (aus chiptune.kchaot.de, ein Takt = ein Zyklus)`,
+      ...(compact
+        ? [
+          '// Kompakt: ~@3 = Pause ueber 3 Schritte, a2@4 = Ton ueber 4 Schritte, x*4 = viermal im Takt, x!4 = viermal hintereinander',
+          '// arrange([16, "<a b>"], ...) = Abschnitte: 16 Takte lang wiederholt sich "a b" (<...> spielt Takt fuer Takt)',
+        ]
+        : ['// 1:1 aus dem Raster: eine Zeile pro Takt, ~ = Pause, _ = Ton halten']),
       `setcps(${tempo}/60/4)`,
       '',
       'stack(',
