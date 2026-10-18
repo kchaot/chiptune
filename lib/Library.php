@@ -24,7 +24,7 @@ final class Library
         private readonly ProjectParser $projects,
         private readonly SetParser $sets,
         private readonly ?SessionParser $sessions = null,
-        private readonly ?ReleaseParser $releases = null,
+        private readonly ?LinkParser $links = null,
     ) {
         foreach ($files as $file) {
             $this->files["{$file['prefix']}/{$file['slug']}"] = $file;
@@ -59,9 +59,9 @@ final class Library
             if ($fileKind === 'session') {
                 $kind = 'session';
                 $data = ($this->sessions ?? new SessionParser($this->projects))->parse($source, basename($file['slug']), $resolve);
-            } elseif ($fileKind === 'release') {
-                $kind = 'release';
-                $data = ($this->releases ?? new ReleaseParser($this->projects))->parse($source, basename($file['slug']), $resolve, $file['prefix']);
+            } elseif ($fileKind === 'link') {
+                $kind = 'link';
+                $data = ($this->links ?? new LinkParser($this->projects))->parse($source, basename($file['slug']), $resolve, $file['prefix']);
             } elseif ($fileKind === 'set') {
                 $kind = 'set';
                 $data = $this->sets->parse($source, basename($file['slug']), $resolve);
@@ -99,7 +99,7 @@ final class Library
         }
 
         if ($entry['kind'] !== 'project') {
-            throw new BuildError("„{$ref}“ ist ein " . match ($entry['kind']) { 'session' => 'Session', 'release' => 'Release', default => 'Set' } . '. Verweisen kann man nur auf Projects.');
+            throw new BuildError("„{$ref}“ ist ein " . match ($entry['kind']) { 'session' => 'Session', 'link' => 'Link', default => 'Set' } . '. Verweisen kann man nur auf Projects.');
         }
 
         return ['prefix' => $entry['prefix'], 'slug' => $entry['slug'], 'project' => $entry['data']];

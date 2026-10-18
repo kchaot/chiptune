@@ -78,20 +78,28 @@ HTML);
         $href = $this->url($entry['prefix'] . '/' . $entry['slug'] . '/');
         $title = $this->e($project['title']);
         $artist = $this->artistLine($project['artist'], $entry['prefix'], 'span');
+        $rel = '';
         $author = $prefix !== null
             ? ''
             : '<span class="author">von <a href="' . $this->url($entry['prefix'] . '/') . '">' . $this->e($this->authorTitle($entry['prefix'])) . '</a></span>';
         $tags = implode('', array_map(fn (string $tag): string => '<li>' . $this->e($tag) . '</li>', $project['tags']));
         $tags = $tags === '' ? '' : '<ul class="tags">' . $tags . '</ul>';
-        if (($entry['kind'] ?? 'project') === 'release') {
+        if (($entry['kind'] ?? 'project') === 'link') {
             $media = $project['media'];
-            $service = $this->releaseLabel((string) $media['release']);
-            $facts = isset($media['releaseOwn']) ? '<span>Veröffentlichung</span>' : '<span><b>' . $this->e($service) . '</b> Veröffentlichung</span>';
             $info = $media['info'] ?? [];
+            $own = isset($media['releaseOwn']);
+            $href = $own ? $href : $this->e((string) $media['release']);
+            $facts = $own
+                ? '<span>hier abspielbar</span>'
+                : '<span><b>' . $this->e($this->releaseLabel((string) $media['release'])) . '</b> <span aria-hidden="true">↗</span></span>';
             $date = $this->dateText((string) ($info['date'] ?? ''));
             $facts .= $date === '' ? '' : ' <span><b>' . $this->e($date) . '</b></span>';
             $thumbnail = '';
-            $badge = '<span class="badge">VÖ</span> ';
+            $badge = '<span class="badge">Link</span> ';
+            $links = $this->credits($project['credits']);
+            $from = $links === '' ? '' : '<span class="author">' . str_replace(['<p class="credits">Enthält Material aus ', '.</p>'], ['aus ', ''], $links) . '</span>';
+            $author .= $from;
+            $rel = $own ? '' : ' rel="noopener noreferrer"';
         } elseif (($entry['kind'] ?? 'project') === 'session') {
             $facts = '<span>A: <b>' . $this->e($project['a']['title']) . '</b></span> <span>B: <b>' . $this->e($project['b']['title']) . '</b></span>';
             $thumbnail = '';
@@ -121,7 +129,7 @@ HTML);
 
       <li class="project{$noThumb}">
         <div class="title">
-          <h2>{$badge}<a href="{$href}">{$title}</a></h2>
+          <h2>{$badge}<a href="{$href}"{$rel}>{$title}</a></h2>
           {$artist}{$author}
         </div>
         {$thumbnail}
@@ -187,8 +195,8 @@ HTML;
             $sets = count(array_filter($own, fn (array $entry): bool => $entry['kind'] === 'set'));
             $albums = count(array_filter($own, fn (array $entry): bool => $entry['kind'] === 'album'));
             $sessions = count(array_filter($own, fn (array $entry): bool => $entry['kind'] === 'session'));
-            $releases = count(array_filter($own, fn (array $entry): bool => $entry['kind'] === 'release'));
-            $projects = count($own) - $sets - $albums - $sessions - $releases;
+            $links = count(array_filter($own, fn (array $entry): bool => $entry['kind'] === 'link'));
+            $projects = count($own) - $sets - $albums - $sessions - $links;
             $withHq = count(array_filter($own, fn (array $entry): bool => $entry['kind'] === 'project' && isset($entry['project']['media']['hq'])));
             $withRelease = count(array_filter($own, fn (array $entry): bool => $entry['kind'] === 'project' && isset($entry['project']['media']['release'])));
             $facts = '<span><b>' . $projects . '</b> ' . ($projects === 1 ? 'Project' : 'Projects') . '</span>';
@@ -205,8 +213,8 @@ HTML;
                 $facts .= ' <span><b>' . $sessions . '</b> ' . ($sessions === 1 ? 'Session' : 'Sessions') . '</span>';
             }
 
-            if ($releases > 0) {
-                $facts .= ' <span><b>' . $releases . '</b> ' . ($releases === 1 ? 'Veröffentlichung' : 'Veröffentlichungen') . '</span>';
+            if ($links > 0) {
+                $facts .= ' <span><b>' . $links . '</b> ' . ($links === 1 ? 'Link' : 'Links') . '</span>';
             }
 
             $count = [];
@@ -749,7 +757,7 @@ HTML);
     /**
      * @param array{prefix: string, slug: string, project: array<string, mixed>} $entry
      */
-    public function release(array $entry): string
+    public function link(array $entry): string
     {
         $release = $entry['project'];
         $media = $release['media'];
@@ -762,7 +770,7 @@ HTML);
         $tags = implode('', array_map(fn (string $tag): string => '<li>' . $this->e($tag) . '</li>', $release['tags']));
         $tags = $tags === '' ? '' : '<ul class="tags">' . $tags . '</ul>';
         $notes = $release['notesHtml'] === '' ? '' : '<section class="aside wide"><div class="notes">' . $release['notesHtml'] . '</div></section>';
-        $head = $this->head($entry['prefix'] . ($entry['album'] !== null ? '/' . $entry['album'] : ''), 'release ' . basename($entry['slug']));
+        $head = $this->head($entry['prefix'] . ($entry['album'] !== null ? '/' . $entry['album'] : ''), 'link ' . basename($entry['slug']));
         $facts = array_filter([$this->dateText((string) ($info['date'] ?? '')), $info['catalog'] ?? '', $info['label'] ?? '', $info['license'] ?? '']);
         $factLine = $facts === [] ? '' : '<p class="release-facts">' . $this->e(implode(' | ', $facts)) . '</p>';
         $credits = '';
@@ -791,7 +799,7 @@ HTML);
   {$head}
   <main>
     <div class="heading">
-      <h1><span class="badge">VÖ</span> {$title}</h1>
+      <h1><span class="badge">Link</span> {$title}</h1>
       {$artist}
       {$tags}
     </div>
@@ -805,7 +813,7 @@ HTML);
     </section>
     {$from}
     {$notes}
-    <p class="source"><a href="source.md">Quelltext dieser Veröffentlichung</a></p>
+    <p class="source"><a href="source.md">Quelltext dieses Links</a></p>
   </main>
 HTML, $own);
     }
@@ -842,18 +850,20 @@ HTML, $own);
 
         $sessions = $sessionList === '' ? '' : '<section class="album-sessions"><h2 class="sub">Sessions</h2><ul>' . $sessionList . "\n    </ul></section>";
 
-        $releaseList = '';
+        $linkList = '';
 
-        foreach ($entry['releases'] ?? [] as $release) {
-            $releaseList .= sprintf(
-                "\n      <li><a href=\"%s\">%s</a> <span class=\"layer-facts\">%s</span></li>",
-                $this->url($release['prefix'] . '/' . $release['slug'] . '/'),
-                $this->e($release['project']['title']),
-                $this->e($release['project']['artist']),
+        foreach ($entry['links'] ?? [] as $audio) {
+            $own = isset($audio['project']['media']['releaseOwn']);
+            $linkList .= sprintf(
+                "\n      <li><a href=\"%s\"%s>%s</a> <span class=\"layer-facts\">%s</span></li>",
+                $own ? $this->url($audio['prefix'] . '/' . $audio['slug'] . '/') : $this->e((string) $audio['project']['media']['release']),
+                $own ? '' : ' rel="noopener noreferrer"',
+                $this->e($audio['project']['title']),
+                $this->e($own ? $audio['project']['artist'] : $audio['project']['artist'] . ' | ' . $this->releaseLabel((string) $audio['project']['media']['release']) . ' ↗'),
             );
         }
 
-        $releases = $releaseList === '' ? '' : '<section class="album-sessions"><h2 class="sub">Veröffentlichungen</h2><ul>' . $releaseList . "\n    </ul></section>";
+        $albumLinks = $linkList === '' ? '' : '<section class="album-sessions"><h2 class="sub">Links</h2><ul>' . $linkList . "\n    </ul></section>";
 
         $payload = json_encode([
             'title' => $set['title'],
@@ -927,7 +937,7 @@ HTML;
     <ol class="parts">{$items}
     </ol>
     {$sessions}
-    {$releases}
+    {$albumLinks}
     {$closingNotes}
     {$source}
   </main>

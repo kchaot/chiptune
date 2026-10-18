@@ -28,6 +28,6 @@ Diese Seite ist im Moment statisch: keine Cookies, kein Tracking, keine Analyse-
 
 Der Webserver protokolliert, wenn überhaupt, nur Zugriffe mit gekürzter IP-Adresse (Zeitpunkt, aufgerufene Seite). Das dient allein dem Betrieb und der Fehlersuche.
 
-Bei einzelnen Songs können HQ-Audio und Images von anderen Servern geladen werden, nämlich von dem der jeweiligen Quelle. Das passiert erst, wenn du solche Versionen auswählst oder abspielen lässt. Auf der Seite einer Veröffentlichung wird das Cover sofort geladen, die Audiodatei erst beim Abspielen. Dabei sieht der fremde Server deine IP-Adresse. Links zu Diensten wie SoundCloud sind normale Links: Erst wenn du sie anklickst, verbindest du dich dorthin.
+Bei einzelnen Songs können HQ-Audio und Images von anderen Servern geladen werden, nämlich von dem der jeweiligen Quelle. Das passiert erst, wenn du solche Versionen auswählst oder abspielen lässt. Auf der Seite eines Links mit eigener Audiodatei wird das Cover sofort geladen, die Audiodatei erst beim Abspielen. Dabei sieht der fremde Server deine IP-Adresse. Links zu Diensten wie SoundCloud sind normale Links: Erst wenn du sie anklickst, verbindest du dich dorthin.
 
 Weitere Fragen zum Datenschutz: über die genannten Kontakte.
