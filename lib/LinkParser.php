@@ -6,7 +6,7 @@ namespace Chiptune;
 
 use Tempest\Markdown\Markdown;
 
-final class ReleaseParser
+final class LinkParser
 {
     public const FORMAT = 1;
     public const MAX_BYTES = 16384;
@@ -38,11 +38,11 @@ final class ReleaseParser
         $unknown = array_diff(array_keys($meta), ['kind', 'format', 'title', 'artist', 'group', 'tags', 'release', 'from']);
 
         if ($unknown !== []) {
-            throw new BuildError('Release: unbekannter Schlüssel „' . implode('“, „', array_map('strval', $unknown)) . '“ (erlaubt: title, artist, group, tags, release, from).');
+            throw new BuildError('Link: unbekannter Schlüssel „' . implode('“, „', array_map('strval', $unknown)) . '“ (erlaubt: title, artist, group, tags, release, from).');
         }
 
         if (! isset($meta['release'])) {
-            throw new BuildError('Release: „release“ fehlt. Es braucht mindestens die https-Adresse der Veröffentlichung.');
+            throw new BuildError('Link: „release“ fehlt. Es braucht mindestens die https-Adresse der Aufnahme.');
         }
 
         $media = $this->projects->media(['release' => $meta['release']]);
@@ -50,28 +50,28 @@ final class ReleaseParser
         $from = $meta['from'] ?? [];
 
         if (! is_array($from) || ! array_is_list($from) || count($from) > self::MAX_FROM) {
-            throw new BuildError(sprintf('Release: „from“ muss eine Liste mit höchstens %d Songs in der Form prefix/slug sein.', self::MAX_FROM));
+            throw new BuildError(sprintf('Link: „from“ muss eine Liste mit höchstens %d Songs in der Form prefix/slug sein.', self::MAX_FROM));
         }
 
         $credits = [];
 
         foreach ($from as $ref) {
             if (! is_string($ref) || preg_match('/^([a-z0-9][a-z0-9-]*)\/([a-z0-9][a-z0-9-]*(?:\/[a-z0-9][a-z0-9-]*)?)$/', trim($ref)) !== 1) {
-                throw new BuildError('Release: Jeder Eintrag in „from“ muss ein Song in der Form prefix/slug sein.');
+                throw new BuildError('Link: Jeder Eintrag in „from“ muss ein Song in der Form prefix/slug sein.');
             }
 
             $ref = trim($ref);
             $resolved = $resolve($ref);
 
             if ($resolved['prefix'] !== $owner && ($resolved['project']['remix'] ?? null) !== true) {
-                throw new BuildError("Release: „{$ref}“ erlaubt kein Remixen. Der Autor müsste „remix: true“ in sein Project schreiben.");
+                throw new BuildError("Link: „{$ref}“ erlaubt kein Remixen. Der Autor müsste „remix: true“ in sein Project schreiben.");
             }
 
             $credits[$ref] = ['prefix' => $resolved['prefix'], 'slug' => $resolved['slug'], 'title' => $resolved['project']['title']];
         }
 
         return [
-            'kind' => 'release',
+            'kind' => 'link',
             'format' => self::FORMAT,
             ...$this->projects->describe($meta, $fallbackTitle),
             'media' => $media,
