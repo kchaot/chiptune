@@ -406,12 +406,25 @@ HTML;
      * @param array<string, mixed> $project
      * @return array<string, mixed>
      */
+    public static function strudelStand(array $project): string
+    {
+        $data = [
+            $project['bpm'],
+            $project['stepsPerBeat'],
+            $project['steps'],
+            array_map(fn (array $track): array => [$track['name'], $track['instrument'], $track['volume'], $track['gate'], $track['events']], $project['tracks']),
+        ];
+
+        return substr(sha1(json_encode($data, JSON_THROW_ON_ERROR)), 0, 8);
+    }
+
     public function projectPayload(array $project): array
     {
         return [
             'title' => $project['title'],
             'artist' => $project['artist'],
             'bpm' => $project['bpm'],
+            'stand' => self::strudelStand($project),
             'stepsPerBeat' => $project['stepsPerBeat'],
             'stepsPerBar' => $project['stepsPerBar'],
             'stepSeconds' => $project['stepSeconds'],
@@ -474,7 +487,7 @@ HTML, true, false);
         $albumNav = $this->albumNav($entry['nav'] ?? null, $entry['prefix']);
         $thumbnail = $this->thumbnail($project);
 
-        $payload = json_encode($this->projectPayload($project), self::JSON_FLAGS);
+        $payload = json_encode($this->projectPayload($project) + (($entry['strudel'] ?? null) !== null ? ['strudel' => $entry['strudel']] : []), self::JSON_FLAGS);
 
         $trackNotes = $this->trackNotes($project['tracks']);
         $layersPanel = $this->layersPanel($project);

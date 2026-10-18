@@ -63,6 +63,7 @@ final class Builder
                 'source' => $file['file'],
                 'kind' => $loaded['kind'],
                 'project' => $loaded['data'],
+                'strudel' => $loaded['kind'] === 'project' ? $this->handStrudel($file['file'], $loaded['data'], $label) : null,
             ];
         }
 
@@ -489,6 +490,51 @@ final class Builder
 
             return $empty;
         }
+    }
+
+    private function handStrudel(string $markdownFile, array $project, string $label): ?string
+    {
+        $path = substr($markdownFile, 0, -3) . '.strudel';
+
+        if (! is_file($path) || is_link($path)) {
+            return null;
+        }
+
+        $name = basename($path);
+        $text = str_replace("\r\n", "\n", (string) file_get_contents($path));
+        $stand = Renderer::strudelStand($project);
+
+        if (strlen($text) > 65536) {
+            fwrite(STDERR, "Warnung in {$label}: {$name} ist größer als 64 KB und wird ignoriert.\n");
+
+            return null;
+        }
+
+        // Führende Kopfzeilen des Exports („// Quelle: …“, „// Stand: …“) dürfen mitkopiert sein; der Player setzt sie selbst.
+        $lines = explode("\n", $text);
+        $found = null;
+
+        while ($lines !== [] && preg_match('~^// (Quelle|Stand):[ \t]*(.*?)[ \t]*$~', $lines[0], $match) === 1) {
+            if ($match[1] === 'Stand') {
+                $found = $match[2];
+            }
+
+            array_shift($lines);
+        }
+
+        if ($found === null) {
+            fwrite(STDERR, "Warnung in {$label}: {$name} braucht eine Zeile „// Stand: {$stand}“ am Anfang und wird ignoriert.\n");
+
+            return null;
+        }
+
+        if ($found !== $stand) {
+            fwrite(STDERR, "Warnung in {$label}: {$name} ist veraltet (Stand {$found}, Song jetzt {$stand}). Es gilt der generierte Code.\n");
+
+            return null;
+        }
+
+        return rtrim(implode("\n", $lines), "\n") . "\n";
     }
 
     /**

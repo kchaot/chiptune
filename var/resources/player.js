@@ -1412,6 +1412,7 @@
     const head = [
       ...varLength(0), ...midiText(0x03, project.title),
       ...varLength(0), ...midiText(0x01, `Quelle: ${location.origin}${location.pathname}`),
+      ...(project.stand ? [...varLength(0), ...midiText(0x01, `Stand: ${project.stand}`)] : []),
       ...varLength(0), 0xff, 0x51, 3, (microseconds >> 16) & 255, (microseconds >> 8) & 255, microseconds & 255,
       ...varLength(0), 0xff, 0x58, 4, 4, 2, 24, 8,
       ...varLength(total), 0xff, 0x2f, 0,
@@ -1466,10 +1467,18 @@
     return new Uint8Array([...header, ...chunks.flat()]);
   }
 
+  function standTitle(project) {
+    return project.stand ? ` – Stand der Noten: ${project.stand}` : '';
+  }
+
+  function strudelStandLine(project) {
+    return project.stand ? `// Stand: ${project.stand}\n` : '';
+  }
+
   function midiLink(project) {
     const button = el('button', 'midi-link', 'MIDI');
     button.type = 'button';
-    button.title = 'Song als MIDI-Datei speichern (Noten und Schlagzeug, ohne Klang)';
+    button.title = 'Song als MIDI-Datei speichern (Noten und Schlagzeug, ohne Klang)' + standTitle(project);
     button.addEventListener('click', () => {
       const name = (project.title || 'song').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'song';
       const url = URL.createObjectURL(new Blob([midiFile(project)], { type: 'audio/midi' }));
@@ -1483,25 +1492,34 @@
       setTimeout(() => URL.revokeObjectURL(url), 1000);
     });
 
-    const strudel = el('button', 'midi-link', 'Strudel');
+    const strudel = el('button', 'midi-link', '1:1');
     strudel.type = 'button';
-    strudel.title = 'Song 1:1 als Text in Strudel öffnen: jeder Schritt des Rasters steht einzeln da (neuer Tab auf strudel.cc, erst beim Klick wird dorthin verbunden)';
+    strudel.setAttribute('aria-label', 'Strudel 1:1');
+    strudel.title = 'Song 1:1 als Text in Strudel öffnen: jeder Schritt des Rasters steht einzeln geschrieben' + standTitle(project);
     strudel.addEventListener('click', () => {
       window.open(strudelUrl(strudelCode(project, false, location.origin + location.pathname)), '_blank', 'noopener,noreferrer');
     });
 
-    const compact = el('button', 'midi-link', '(kompakt)');
+    const hand = typeof project.strudel === 'string' && project.strudel !== '';
+    const compact = el('button', 'midi-link', hand ? 'individuell' : 'kompakt');
     compact.type = 'button';
-    compact.setAttribute('aria-label', 'Strudel kompakt');
-    compact.title = 'Experimentell: derselbe Song, aber mit Wiederholungen zusammengefasst und kurzer Legende (neuer Tab auf strudel.cc, erst beim Klick wird dorthin verbunden)';
+    compact.setAttribute('aria-label', hand ? 'Strudel individuell' : 'Strudel kompakt');
+    compact.title = hand
+      ? 'Individuelle Fassung dieses Songs, von Hand geschrieben und nicht 1:1 aus dem Raster' + standTitle(project)
+      : 'Experimentell: derselbe Song, aber mit Wiederholungen zusammengefasst und kurzer Legende' + standTitle(project);
     compact.addEventListener('click', () => {
-      window.open(strudelUrl(strudelCode(project, true, location.origin + location.pathname)), '_blank', 'noopener,noreferrer');
+      const source = location.origin + location.pathname;
+      const code = hand ? `// Quelle: ${source}\n${strudelStandLine(project)}${project.strudel}` : strudelCode(project, true, source);
+
+      window.open(strudelUrl(code), '_blank', 'noopener,noreferrer');
     });
 
     const line = el('p', 'midi');
     const divider = el('span', 'midi-sep', '|');
     divider.setAttribute('aria-hidden', 'true');
-    line.append(button, divider, strudel, compact);
+    const label = el('span', 'midi-sep', 'STRUDEL:');
+    label.setAttribute('aria-hidden', 'true');
+    line.append(button, divider, label, strudel, compact);
 
     return line;
   }
@@ -1781,8 +1799,8 @@
     const tempo = Number.isInteger(project.bpm) ? String(project.bpm) : String(Math.round(project.bpm * 100) / 100);
 
     return [
-      `// ${asciiText(project.title) || 'Song'} (ein Takt = ein Zyklus)`,
-      ...(source ? [`// Quelle: ${source}`] : []),
+      source ? `// Quelle: ${source}` : `// ${asciiText(project.title) || 'Song'}`,
+      ...(project.stand ? [`// Stand: ${project.stand}`] : []),
       ...(compact
         ? [
           '// Kompakt: ~@3 = Pause ueber 3 Schritte, a2@4 = Ton ueber 4 Schritte, x*4 = viermal im Takt, x!4 = viermal hintereinander',
