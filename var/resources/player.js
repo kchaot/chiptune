@@ -1487,7 +1487,7 @@
     strudel.type = 'button';
     strudel.title = 'Song 1:1 als Text in Strudel öffnen: jeder Schritt des Rasters steht einzeln da (neuer Tab auf strudel.cc, erst beim Klick wird dorthin verbunden)';
     strudel.addEventListener('click', () => {
-      window.open(strudelUrl(strudelCode(project, false)), '_blank', 'noopener,noreferrer');
+      window.open(strudelUrl(strudelCode(project, false, location.origin + location.pathname)), '_blank', 'noopener,noreferrer');
     });
 
     const compact = el('button', 'midi-link', '(kompakt)');
@@ -1495,7 +1495,7 @@
     compact.setAttribute('aria-label', 'Strudel kompakt');
     compact.title = 'Experimentell: derselbe Song, aber mit Wiederholungen zusammengefasst und kurzer Legende (neuer Tab auf strudel.cc, erst beim Klick wird dorthin verbunden)';
     compact.addEventListener('click', () => {
-      window.open(strudelUrl(strudelCode(project, true)), '_blank', 'noopener,noreferrer');
+      window.open(strudelUrl(strudelCode(project, true, location.origin + location.pathname)), '_blank', 'noopener,noreferrer');
     });
 
     const line = el('p', 'midi');
@@ -1608,63 +1608,139 @@
     return body.includes('\n') ? '`' + body + '`' : '"' + body + '"';
   }
 
-  function strudelRender(segments) {
-    if (segments.length === 1) return strudelQuote(strudelBody(segments[0].rows));
+  function strudelName(names, id) {
+    return names ? names[id] : 'baustein_' + id;
+  }
 
-    return 'arrange(\n' + segments.map(segment => '    [' + segment.cycles + ', ' + strudelQuote(strudelBody(segment.rows)).replace(/\n/g, '\n          ') + ']').join(',\n') + '\n  )';
+  function strudelRender(segments, defs, names) {
+    const lines = defs.map((def, id) => 'const ' + strudelName(names, id) + ' = ' + strudelQuote(strudelBody(def.rows)));
+
+    if (segments.length === 1 && segments[0].def === undefined) return { defs: lines, expr: strudelQuote(strudelBody(segments[0].rows)) };
+
+    const sections = segments.map(segment => '    [' + segment.cycles + ', ' + (segment.def === undefined ? strudelQuote(strudelBody(segment.rows)) : strudelName(names, segment.def)) + ']');
+
+    return { defs: lines, expr: 'arrange(\n' + sections.join(',\n') + '\n  )' };
+  }
+
+  function strudelMeasure(segments, defs) {
+    const out = strudelRender(segments, defs, null);
+
+    return out.defs.reduce((sum, line) => sum + line.length + 1, 0) + out.expr.length;
   }
 
   function strudelSegments(rows) {
     let segments = [{ rows, cycles: rows.length }];
+    let defs = [];
+
+    const open = segment => segment.def === undefined && segment.cycles === segment.rows.length;
 
     for (;;) {
-      const current = strudelRender(segments).length;
+      const current = strudelMeasure(segments, defs);
+      const tried = new Set();
       let best = null;
 
-      segments.forEach((segment, position) => {
+      for (const segment of segments) {
+        if (!open(segment)) continue;
+
         const list = segment.rows;
 
-        if (segment.cycles !== list.length) return;
+        for (let size = 1; size <= list.length; size++) {
+          for (let start = 0; start + size <= list.length; start++) {
+            const block = list.slice(start, start + size);
+            const key = size + '|' + block.join('|');
 
-        for (let size = 2; size <= Math.floor(list.length / 2); size++) {
-          for (let start = 0; start + 2 * size <= list.length; start++) {
-            let count = 1;
+            if (tried.has(key)) continue;
 
-            while (start + (count + 1) * size <= list.length && list.slice(start, start + size).every((row, index) => row === list[start + count * size + index])) count++;
+            tried.add(key);
 
-            if (count < 2) continue;
+            const next = [];
+            const made = [];
+            let runs = 0;
+            let copies = 0;
 
-            const end = start + size * count;
-            const next = [
-              ...segments.slice(0, position),
-              ...(start > 0 ? [{ rows: list.slice(0, start), cycles: start }] : []),
-              { rows: list.slice(start, start + size), cycles: size * count },
-              ...(end < list.length ? [{ rows: list.slice(end), cycles: list.length - end }] : []),
-              ...segments.slice(position + 1),
-            ];
-            const gain = current - strudelRender(next).length;
+            for (const part of segments) {
+              if (!open(part)) {
+                next.push(part);
 
-            if (gain > 0 && (!best || gain > best.gain)) best = { gain, next };
+                continue;
+              }
+
+              const items = part.rows;
+              const matches = at => at + size <= items.length && block.every((row, index) => row === items[at + index]);
+              let piece = [];
+
+              for (let at = 0; at < items.length;) {
+                if (!matches(at)) {
+                  piece.push(items[at++]);
+
+                  continue;
+                }
+
+                let count = 0;
+
+                while (matches(at + count * size)) count++;
+
+                if (piece.length > 0) next.push({ rows: piece, cycles: piece.length });
+
+                piece = [];
+
+                const run = { rows: block, cycles: size * count };
+
+                made.push(run);
+                next.push(run);
+                runs++;
+                copies += count;
+                at += count * size;
+              }
+
+              if (piece.length > 0) next.push({ rows: piece, cycles: piece.length });
+            }
+
+            if (copies < 2) continue;
+
+            const nextDefs = runs === 1 ? defs : [...defs, { rows: block }];
+            const placed = runs === 1 ? next : next.map(part => made.includes(part) ? { def: defs.length, cycles: part.cycles } : part);
+            const gain = current - strudelMeasure(placed, nextDefs);
+
+            if (gain > 0 && (!best || gain > best.gain)) best = { gain, segments: placed, defs: nextDefs };
           }
         }
-      });
+      }
 
-      if (!best) return segments;
+      if (!best) return { segments, defs };
 
-      segments = best.next;
+      segments = best.segments;
+      defs = best.defs;
     }
   }
 
-  function strudelPattern(rows, compact) {
-    if (!compact) return '`\n    <' + rows.join('\n     ') + '>\n  `';
+  function strudelPattern(rows, compact, labels) {
+    if (!compact) return { defs: [], expr: '`\n    <' + rows.join('\n     ') + '>\n  `' };
 
-    return strudelRender(strudelSegments(rows));
+    const found = strudelSegments(rows);
+    const names = found.defs.map(() => {
+      let name;
+      let index = 0;
+
+      do {
+        name = labels.slug + '_' + (index < 26 ? String.fromCharCode(97 + index) : 'x' + index);
+        index++;
+      } while (labels.used.has(name));
+
+      labels.used.add(name);
+
+      return name;
+    });
+
+    return strudelRender(found.segments, found.defs, names);
   }
 
-  function strudelCode(project, compact = true) {
+  function strudelCode(project, compact = true, source = '') {
     const barSteps = project.stepsPerBeat * 4;
     const bars = Math.ceil(project.steps / barSteps);
     const tracks = [];
+    const blocks = [];
+    const used = new Set();
 
     for (const track of project.tracks) {
       const drums = track.instrument === 'drums';
@@ -1688,10 +1764,16 @@
 
       const gain = Math.min(1, Math.round(track.volume * 250) / 100);
       const label = asciiText(track.name) || 'track';
-      const body = strudelPattern(rows, compact);
+      let slug = label.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '') || 'spur';
+
+      if (/^[0-9]/.test(slug)) slug = 'spur_' + slug;
+
+      const pattern = strudelPattern(rows, compact, { slug, used });
       const voice = drums
-        ? `s(${body}).gain(${gain})`
-        : `note(${body}).s("${STRUDEL_VOICES[track.instrument] || 'square'}").clip(${Math.round(track.gate * 100) / 100}).gain(${gain})`;
+        ? `s(${pattern.expr}).gain(${gain})`
+        : `note(${pattern.expr}).s("${STRUDEL_VOICES[track.instrument] || 'square'}").clip(${Math.round(track.gate * 100) / 100}).gain(${gain})`;
+
+      if (pattern.defs.length > 0) blocks.push(`// ${label}`, ...pattern.defs);
 
       tracks.push(`  // ${label}\n  ${voice}`);
     }
@@ -1699,15 +1781,17 @@
     const tempo = Number.isInteger(project.bpm) ? String(project.bpm) : String(Math.round(project.bpm * 100) / 100);
 
     return [
-      `// ${asciiText(project.title) || 'Song'} (aus chiptune.kchaot.de, ein Takt = ein Zyklus)`,
+      `// ${asciiText(project.title) || 'Song'} (ein Takt = ein Zyklus)`,
+      ...(source ? [`// Quelle: ${source}`] : []),
       ...(compact
         ? [
           '// Kompakt: ~@3 = Pause ueber 3 Schritte, a2@4 = Ton ueber 4 Schritte, x*4 = viermal im Takt, x!4 = viermal hintereinander',
-          '// arrange([16, "<a b>"], ...) = Abschnitte: 16 Takte lang wiederholt sich "a b" (<...> spielt Takt fuer Takt)',
+          '// arrange([16, "<a b>"], ...) = Abschnitte: 16 Takte lang wiederholt sich "a b"; const = Baustein, der an mehreren Stellen vorkommt',
         ]
         : ['// 1:1 aus dem Raster: eine Zeile pro Takt, ~ = Pause, _ = Ton halten']),
       `setcps(${tempo}/60/4)`,
       '',
+      ...(blocks.length > 0 ? [...blocks, ''] : []),
       'stack(',
       tracks.join(',\n'),
       ')',
