@@ -1510,7 +1510,41 @@
     return String(text).replace(/[äÄ]/g, 'ae').replace(/[öÖ]/g, 'oe').replace(/[üÜ]/g, 'ue').replace(/ß/g, 'ss').replace(/[^\x20-\x7e]/g, '').replace(/\s+/g, ' ').trim();
   }
 
-  function strudelCode(project) {
+  function strudelBar(row, compact) {
+    if (row.every(cell => cell === '~')) return '~';
+
+    if (compact) {
+      for (let size = 1; size < row.length; size++) {
+        if (row.length % size !== 0 || !row.every((cell, index) => cell === row[index % size])) continue;
+
+        const block = row.slice(0, size);
+
+        return (size === 1 ? block[0] : '[' + block.join(' ') + ']') + '*' + (row.length / size);
+      }
+    }
+
+    return '[' + row.join(' ') + ']';
+  }
+
+  function strudelBars(rows, compact) {
+    const lines = [];
+
+    for (let index = 0; index < rows.length;) {
+      let end = index + 1;
+
+      while (compact && end < rows.length && rows[end] === rows[index]) end++;
+
+      const count = end - index;
+      const text = count === 1 ? rows[index] : (rows[index].includes('*') ? '[' + rows[index] + ']' : rows[index]) + '!' + count;
+
+      lines.push(text);
+      index = end;
+    }
+
+    return lines;
+  }
+
+  function strudelCode(project, compact = true) {
     const barSteps = project.stepsPerBeat * 4;
     const bars = Math.ceil(project.steps / barSteps);
     const tracks = [];
@@ -1531,13 +1565,11 @@
         for (let step = event.t + 1; step < end; step++) cells[step] = '_';
       }
 
-      const lines = [];
+      const rows = [];
 
-      for (let bar = 0; bar < bars; bar++) {
-        const row = cells.slice(bar * barSteps, (bar + 1) * barSteps);
-        lines.push(row.every(cell => cell === '~') ? '~' : '[' + row.join(' ') + ']');
-      }
+      for (let bar = 0; bar < bars; bar++) rows.push(strudelBar(cells.slice(bar * barSteps, (bar + 1) * barSteps), compact));
 
+      const lines = strudelBars(rows, compact);
       const gain = Math.min(1, Math.round(track.volume * 250) / 100);
       const label = asciiText(track.name) || 'track';
       const body = '`\n    <' + lines.join('\n     ') + '>\n  `';
