@@ -12,6 +12,8 @@
   const DRUM_ORDER = ['k', 'c', 's', 'o', 'h'];
   const LOOKAHEAD = 0.6;
   const MIX_LOOKAHEAD = 0.25;
+  const HIDDEN_LOOKAHEAD = 2.5;
+  const lookahead = base => (document.hidden ? Math.max(base, HIDDEN_LOOKAHEAD) : base);
 
   const pulseCache = new Map();
   let ctx = null;
@@ -1004,7 +1006,7 @@
     function tick() {
       if (!ctx) return;
 
-      while (!ended && nextTime - ctx.currentTime < (mixing ? MIX_LOOKAHEAD : LOOKAHEAD)) {
+      while (!ended && nextTime - ctx.currentTime < lookahead(mixing ? MIX_LOOKAHEAD : LOOKAHEAD)) {
         latch = holdRegion(st, latch, nextStep, project.steps, project.stepsPerBar, project.stepsPerBeat);
 
         if (latch && nextStep >= latch.end) nextStep = latch.start;
@@ -2526,6 +2528,7 @@
     let machine = null;
     let position = 50;
     let analysers = null;
+    const active = new Set();
 
     const SEGMENTS = 12;
     const meters = [0, 1].map(index => {
@@ -2541,8 +2544,45 @@
     });
     const samples = new Float32Array(512);
 
+    let metering = false;
+    let idleTimer = 0;
+
+    function startMeters() {
+      if (metering || !analysers) return;
+
+      metering = true;
+      requestAnimationFrame(drawMeters);
+    }
+
+    function settle() {
+      clearTimeout(idleTimer);
+
+      if (!ctx || busy()) return;
+
+      idleTimer = setTimeout(() => {
+        if (ctx && !busy()) ctx.suspend();
+      }, 6000);
+    }
+
+    function busy() {
+      return decks.some(deck => deck && deck.playing()) || active.size > 0;
+    }
+
     function drawMeters() {
-      if (!analysers) return;
+      if (!analysers || !ctx || ctx.state !== 'running') {
+        metering = false;
+
+        meters.forEach(meter => {
+          meter.held = 0;
+
+          if (meter.lit !== 0) {
+            meter.segments.forEach(node => node.classList.remove('on'));
+            meter.lit = 0;
+          }
+        });
+
+        return;
+      }
 
       analysers.forEach((analyser, index) => {
         analyser.getFloatTimeDomainData(samples);
@@ -2624,11 +2664,12 @@
           return analyser;
         });
         applyFader(true);
-        requestAnimationFrame(drawMeters);
         applyLevels(true);
       }
 
+      clearTimeout(idleTimer);
       await ctx.resume();
+      startMeters();
 
       return channels[index];
     }
@@ -2701,6 +2742,7 @@
       playAll.title = any ? 'Beide Decks pausieren' : 'Beide Decks spielen';
       playAll.setAttribute('aria-label', playAll.title);
       playAll.setAttribute('aria-pressed', String(any));
+      settle();
     }
 
     const lightButton = toolButton('', '', () => {
@@ -3059,15 +3101,15 @@
     machineHead.append(fold, masterLabel, latch);
 
     const grid = el('div', 'pads');
-    const active = new Set();
     const buttons = new Map();
 
     async function setPad(pad, on) {
-      if (!ctx) await open(0);
+      if (!ctx || ctx.state !== 'running') await open(0);
       if (!machine) return;
 
       if (pad.kind === 'shot') {
         if (on) machine.shot(pad.id);
+        settle();
         return;
       }
 
@@ -3076,6 +3118,7 @@
 
       machine.set(pad.id, on);
       buttons.get(pad.id).setAttribute('aria-pressed', String(on));
+      settle();
     }
 
     PADS.forEach((pad, index) => {
@@ -3422,7 +3465,7 @@
     function tick() {
       if (!ctx) return;
 
-      while (!ended && nextTime - ctx.currentTime < LOOKAHEAD) {
+      while (!ended && nextTime - ctx.currentTime < lookahead(LOOKAHEAD)) {
         if (latch && latch.part !== nextPart) latch = null;
 
         if (nextPart < parts.length) {
