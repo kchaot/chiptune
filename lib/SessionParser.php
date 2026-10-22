@@ -13,7 +13,7 @@ use Tempest\Markdown\Markdown;
 final class SessionParser
 {
     public const FORMAT = 1;
-    public const MAX_BYTES = 16384;
+    public const MAX_BYTES = 16_384;
 
     public function __construct(
         private readonly ProjectParser $projects,
@@ -41,7 +41,9 @@ final class SessionParser
         $unknown = array_diff(array_keys($meta), ['kind', 'format', 'title', 'artist', 'group', 'tags', 'a', 'b', 'start', 'auto', 'fader']);
 
         if ($unknown !== []) {
-            throw new BuildError('Session: unbekannter Schlüssel „' . implode('“, „', array_map('strval', $unknown)) . '“ (erlaubt: title, artist, tags, a, b, start, auto, fader).');
+            throw new BuildError(
+                'Session: unbekannter Schlüssel „' . implode('“, „', array_map('strval', $unknown)) . '“ (erlaubt: title, artist, tags, a, b, start, auto, fader).',
+            );
         }
 
         $decks = [];
@@ -49,7 +51,7 @@ final class SessionParser
         foreach (['a' => 'Deck A', 'b' => 'Deck B'] as $key => $label) {
             $ref = $meta[$key] ?? null;
 
-            if (! is_string($ref) || preg_match('/^([a-z0-9][a-z0-9-]*)\/([a-z0-9][a-z0-9-]*(?:\/[a-z0-9][a-z0-9-]*)?)$/', trim($ref)) !== 1) {
+            if (!is_string($ref) || preg_match('/^([a-z0-9][a-z0-9-]*)\/([a-z0-9][a-z0-9-]*(?:\/[a-z0-9][a-z0-9-]*)?)$/', trim($ref)) !== 1) {
                 throw new BuildError("Session: „{$key}“ ({$label}) muss ein Song in der Form prefix/slug sein.");
             }
 
@@ -68,7 +70,7 @@ final class SessionParser
 
         $start = $meta['start'] ?? 1;
 
-        if (! is_int($start) || $start < 1 || $start > $decks['a']['bars']) {
+        if (!is_int($start) || $start < 1 || $start > $decks['a']['bars']) {
             throw new BuildError("Session: „start“ ist der Takt von Deck A, auf dem Deck B einsteigt, eine ganze Zahl von 1 bis {$decks['a']['bars']}.");
         }
 
@@ -80,7 +82,7 @@ final class SessionParser
 
         $fader = $meta['fader'] ?? 50;
 
-        if (! is_int($fader) || $fader < 0 || $fader > 100) {
+        if (!is_int($fader) || $fader < 0 || $fader > 100) {
             throw new BuildError('Session: „fader“ muss eine ganze Zahl von 0 (nur Deck A) bis 100 (nur Deck B) sein.');
         }
 

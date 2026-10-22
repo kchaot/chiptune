@@ -2,7 +2,7 @@
     "name": "kchaot/chiptune",
     "type": "project",
     "require": {
-        "php": "^8.5",
+        "php": "^8.5.12",
         "ext-dom": "*",
         "ext-json": "*",
         "matthiasmullie/minify": "^1.3",
@@ -16,8 +16,24 @@
     "autoload": {
         "psr-4": { "Chiptune\\": "lib/" }
     },
+    "scripts": {
+        "fmt": "mago fmt",
+        "fmt:check": "mago fmt --check",
+        "lint": "mago lint",
+        "analyse": "mago analyze",
+        "build": "php bin/build.php --local-only",
+        "compare": "php bin/compare.php",
+        "qa": [
+            "@fmt:check",
+            "@lint",
+            "@build"
+        ]
+    },
     "config": {
         "vendor-dir": "opt/packagist",
         "sort-packages": true
+    },
+    "require-dev": {
+        "carthage-software/mago": "^1.58.2"
     }
 }

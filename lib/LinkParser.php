@@ -9,7 +9,7 @@ use Tempest\Markdown\Markdown;
 final class LinkParser
 {
     public const FORMAT = 1;
-    public const MAX_BYTES = 16384;
+    public const MAX_BYTES = 16_384;
     public const MAX_FROM = 6;
 
     public function __construct(
@@ -41,7 +41,7 @@ final class LinkParser
             throw new BuildError('Link: unbekannter Schlüssel „' . implode('“, „', array_map('strval', $unknown)) . '“ (erlaubt: title, artist, group, tags, release, from).');
         }
 
-        if (! isset($meta['release'])) {
+        if (!isset($meta['release'])) {
             throw new BuildError('Link: „release“ fehlt. Es braucht mindestens die https-Adresse der Aufnahme.');
         }
 
@@ -49,14 +49,14 @@ final class LinkParser
 
         $from = $meta['from'] ?? [];
 
-        if (! is_array($from) || ! array_is_list($from) || count($from) > self::MAX_FROM) {
+        if (!is_array($from) || !array_is_list($from) || count($from) > self::MAX_FROM) {
             throw new BuildError(sprintf('Link: „from“ muss eine Liste mit höchstens %d Songs in der Form prefix/slug sein.', self::MAX_FROM));
         }
 
         $credits = [];
 
         foreach ($from as $ref) {
-            if (! is_string($ref) || preg_match('/^([a-z0-9][a-z0-9-]*)\/([a-z0-9][a-z0-9-]*(?:\/[a-z0-9][a-z0-9-]*)?)$/', trim($ref)) !== 1) {
+            if (!is_string($ref) || preg_match('/^([a-z0-9][a-z0-9-]*)\/([a-z0-9][a-z0-9-]*(?:\/[a-z0-9][a-z0-9-]*)?)$/', trim($ref)) !== 1) {
                 throw new BuildError('Link: Jeder Eintrag in „from“ muss ein Song in der Form prefix/slug sein.');
             }
 

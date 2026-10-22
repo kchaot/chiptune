@@ -8,7 +8,7 @@ final class Filesystem
 {
     public static function removeDirectory(string $directory): void
     {
-        if (! is_dir($directory) || is_link($directory)) {
+        if (!is_dir($directory) || is_link($directory)) {
             return;
         }
 
@@ -20,7 +20,7 @@ final class Filesystem
         foreach ($items as $item) {
             $path = $item->getPathname();
 
-            if ($item->isDir() && ! $item->isLink()) {
+            if ($item->isDir() && !$item->isLink()) {
                 rmdir($path);
             } else {
                 unlink($path);
@@ -34,7 +34,7 @@ final class Filesystem
     {
         $directory = dirname($path);
 
-        if (! is_dir($directory) && ! mkdir($directory, 0775, true) && ! is_dir($directory)) {
+        if (!is_dir($directory) && !mkdir($directory, 0o775, true) && !is_dir($directory)) {
             throw new BuildError("Ordner konnte nicht angelegt werden: {$directory}");
         }
 

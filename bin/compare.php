@@ -12,7 +12,7 @@ if (str_starts_with($ref, '-')) {
 }
 
 foreach (['opt/packagist/autoload.php' => 'composer install', '.cache/sources' => 'php bin/build.php'] as $path => $remedy) {
-    if (! file_exists($root . '/' . $path)) {
+    if (!file_exists($root . '/' . $path)) {
         fwrite(STDERR, "{$path} fehlt. Bitte zuerst „{$remedy}“ ausführen.\n");
         exit(2);
     }
@@ -23,7 +23,7 @@ $base = $work . '/base';
 
 removeTree($work);
 
-if (! mkdir($base, 0777, true) && ! is_dir($base)) {
+if (!mkdir($base, 0o777, true) && !is_dir($base)) {
     fwrite(STDERR, "Ordner {$base} lässt sich nicht anlegen.\n");
     exit(2);
 }
@@ -31,7 +31,7 @@ if (! mkdir($base, 0777, true) && ! is_dir($base)) {
 run('git -C ' . escapeshellarg($root) . ' archive ' . escapeshellarg($ref) . ' | tar -x -C ' . escapeshellarg($base), "Stand „{$ref}“ lässt sich nicht auslesen.");
 
 foreach (['opt', '.cache'] as $shared) {
-    if (! symlink($root . '/' . $shared, $base . '/' . $shared)) {
+    if (!symlink($root . '/' . $shared, $base . '/' . $shared)) {
         fwrite(STDERR, "Verknüpfung für {$shared} lässt sich nicht anlegen.\n");
         exit(2);
     }
@@ -48,7 +48,7 @@ $after = hashes($root . '/tmp/public');
 
 $added = array_keys(array_diff_key($after, $before));
 $removed = array_keys(array_diff_key($before, $after));
-$changed = array_keys(array_filter($after, fn (string $hash, string $file): bool => isset($before[$file]) && $before[$file] !== $hash, ARRAY_FILTER_USE_BOTH));
+$changed = array_keys(array_filter($after, fn(string $hash, string $file): bool => isset($before[$file]) && $before[$file] !== $hash, ARRAY_FILTER_USE_BOTH));
 
 removeTree($work);
 
@@ -86,7 +86,7 @@ function hashes(string $directory): array
 {
     $result = [];
 
-    if (! is_dir($directory)) {
+    if (!is_dir($directory)) {
         return $result;
     }
 
@@ -111,7 +111,7 @@ function removeTree(string $path): void
         return;
     }
 
-    if (! is_dir($path)) {
+    if (!is_dir($path)) {
         return;
     }
 

@@ -52,7 +52,7 @@ final class Library
 
         try {
             $source = (string) file_get_contents($file['file']);
-            $resolve = fn (string $ref): array => $this->project($ref);
+            $resolve = $this->project(...);
 
             $fileKind = $this->projects->kind($source);
 
@@ -99,7 +99,14 @@ final class Library
         }
 
         if ($entry['kind'] !== 'project') {
-            throw new BuildError("„{$ref}“ ist ein " . match ($entry['kind']) { 'session' => 'Session', 'link' => 'Link', default => 'Set' } . '. Verweisen kann man nur auf Projects.');
+            throw new BuildError(
+                "„{$ref}“ ist ein " . match ($entry['kind']) {
+                    'session' => 'Session',
+                    'link' => 'Link',
+                    default => 'Set',
+                }
+                . '. Verweisen kann man nur auf Projects.',
+            );
         }
 
         return ['prefix' => $entry['prefix'], 'slug' => $entry['slug'], 'project' => $entry['data']];

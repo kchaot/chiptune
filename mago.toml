@@ -1,0 +1,31 @@
+php-version = "8.5.12"
+
+[source]
+paths = ["lib", "bin"]
+
+[formatter]
+print-width = 180
+null-type-hint = "question"
+preserve-breaking-argument-list = true
+preserve-breaking-array-like = true
+preserve-breaking-parameter-list = true
+
+[linter.rules]
+no-isset = { enabled = false }
+literal-named-argument = { enabled = false }
+no-else-clause = { enabled = false }
+prefer-static-closure = { enabled = false }
+no-boolean-flag-parameter = { enabled = false }
+cyclomatic-complexity = { enabled = false }
+halstead = { enabled = false }
+too-many-methods = { enabled = false }
+kan-defect = { enabled = false }
+no-insecure-comparison = { enabled = false }
+sensitive-parameter = { enabled = false }
+excessive-parameter-list = { enabled = false }
+no-empty = { enabled = false }
+loop-does-not-iterate = { enabled = false }
+prefer-early-continue = { enabled = false }
+no-shorthand-ternary = { enabled = false }
+no-nested-ternary = { enabled = false }
+function-name = { enabled = false }

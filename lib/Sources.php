@@ -28,7 +28,7 @@ final class Sources
     {
         $sources = $config['sources'] ?? null;
 
-        if (! is_array($sources) || $sources === []) {
+        if (!is_array($sources) || $sources === []) {
             throw new BuildError('sources.json: „sources“ muss eine nicht leere Liste sein.');
         }
 
@@ -41,13 +41,13 @@ final class Sources
         foreach ($sources as $index => $source) {
             $label = 'sources.json, Eintrag ' . ($index + 1);
 
-            if (! is_array($source)) {
+            if (!is_array($source)) {
                 throw new BuildError("{$label}: Ein Eintrag muss ein Objekt sein.");
             }
 
             $name = $source['name'] ?? null;
 
-            if (! is_string($name) || preg_match('/^[a-z0-9][a-z0-9-]{0,31}$/', $name) !== 1) {
+            if (!is_string($name) || preg_match('/^[a-z0-9][a-z0-9-]{0,31}$/', $name) !== 1) {
                 throw new BuildError("{$label}: „name“ fehlt oder ist ungültig (a-z, 0-9, Bindestrich).");
             }
 
@@ -59,7 +59,7 @@ final class Sources
 
             $prefix = $source['prefix'] ?? $name;
 
-            if (! is_string($prefix) || preg_match('/^[a-z0-9][a-z0-9-]{0,31}$/', $prefix) !== 1) {
+            if (!is_string($prefix) || preg_match('/^[a-z0-9][a-z0-9-]{0,31}$/', $prefix) !== 1) {
                 throw new BuildError("{$label}: „prefix“ ist ungültig (a-z, 0-9, Bindestrich, höchstens 32 Zeichen).");
             }
 
@@ -70,17 +70,17 @@ final class Sources
             $title = $source['title'] ?? null;
             $url = $source['url'] ?? '';
 
-            if ($title !== null && (! is_string($title) || trim($title) === '' || mb_strlen($title) > 60 || preg_match('/[\x00-\x1F\x7F]/', $title) === 1)) {
+            if ($title !== null && (!is_string($title) || trim($title) === '' || mb_strlen($title) > 60 || preg_match('/[\x00-\x1F\x7F]/', $title) === 1)) {
                 throw new BuildError("{$label}: „title“ muss ein Text mit 1 bis 60 Zeichen sein.");
             }
 
-            if (! is_string($url) || ($url !== '' && (preg_match('~^https?://[^\s<>"\']{1,200}$~', $url) !== 1 || str_contains($url, '\\') || ! Url::isHttp($url)))) {
+            if (!is_string($url) || $url !== '' && (preg_match('~^https?://[^\s<>"\']{1,200}$~', $url) !== 1 || str_contains($url, '\\') || !Url::isHttp($url))) {
                 throw new BuildError("{$label}: „url“ muss mit http:// oder https:// beginnen.");
             }
 
-            $strict = $source['strict'] ?? ! isset($source['repo']);
+            $strict = $source['strict'] ?? !isset($source['repo']);
 
-            if (! is_bool($strict)) {
+            if (!is_bool($strict)) {
                 throw new BuildError("{$label}: „strict“ muss true oder false sein.");
             }
 
@@ -99,9 +99,7 @@ final class Sources
                 $authors[$prefix] = ['title' => $title ?? $prefix, 'url' => $url, 'profile' => null];
             }
 
-            $directory = isset($source['repo'])
-                ? $this->repoDirectory($name, $source, $fetch)
-                : $this->localDirectory($name, $source);
+            $directory = isset($source['repo']) ? $this->repoDirectory($name, $source, $fetch) : $this->localDirectory($name, $source);
 
             if ($directory === null) {
                 continue;
@@ -109,7 +107,7 @@ final class Sources
 
             $profile = $directory . '/_profile.md';
 
-            if ($authors[$prefix]['profile'] === null && is_file($profile) && ! is_link($profile)) {
+            if ($authors[$prefix]['profile'] === null && is_file($profile) && !is_link($profile)) {
                 $authors[$prefix]['profile'] = $profile;
             }
 
@@ -138,7 +136,15 @@ final class Sources
                         throw new BuildError("„{$key}“ kommt in den Quellen „{$projects[$key]['source']}“ und „{$name}“ vor.");
                     }
 
-                    $projects[$key] = ['source' => $name, 'prefix' => $prefix, 'slug' => "{$album}/{$slug}", 'album' => $album, 'file' => $file, 'strict' => $strict, 'media' => $media];
+                    $projects[$key] = [
+                        'source' => $name,
+                        'prefix' => $prefix,
+                        'slug' => "{$album}/{$slug}",
+                        'album' => $album,
+                        'file' => $file,
+                        'strict' => $strict,
+                        'media' => $media,
+                    ];
                     $albums[$albumKey]['items'][] = (string) $slug;
                 }
             }
@@ -159,14 +165,14 @@ final class Sources
     /** @return list<string> */
     private function mediaHosts(mixed $hosts, string $label): array
     {
-        if (! is_array($hosts) || ! array_is_list($hosts) || count($hosts) > 8) {
+        if (!is_array($hosts) || !array_is_list($hosts) || count($hosts) > 8) {
             throw new BuildError("{$label}: „media“ muss eine Liste mit höchstens 8 Hostnamen sein.");
         }
 
         $result = [];
 
         foreach ($hosts as $host) {
-            if (! is_string($host) || preg_match('/^(?=.{3,100}$)[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)+$/', $host) !== 1) {
+            if (!is_string($host) || preg_match('/^(?=.{3,100}$)[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)+$/', $host) !== 1) {
                 throw new BuildError("{$label}: „media“ enthält einen ungültigen Hostnamen (nur Kleinbuchstaben, ohne https:// und ohne Pfad).");
             }
 
@@ -181,13 +187,13 @@ final class Sources
     {
         $path = $source['path'] ?? null;
 
-        if (! is_string($path) || ! $this->isRelativePath($path)) {
+        if (!is_string($path) || !$this->isRelativePath($path)) {
             throw new BuildError("Quelle „{$name}“: „path“ muss ein relativer Pfad ohne „..“ sein.");
         }
 
         $directory = realpath($this->root . '/' . $path);
 
-        if ($directory === false || ! is_dir($directory) || ! str_starts_with($directory, $this->root . DIRECTORY_SEPARATOR)) {
+        if ($directory === false || !is_dir($directory) || !str_starts_with($directory, $this->root . DIRECTORY_SEPARATOR)) {
             throw new BuildError("Quelle „{$name}“: Ordner „{$path}“ nicht gefunden.");
         }
 
@@ -201,22 +207,22 @@ final class Sources
         $ref = $source['ref'] ?? 'main';
         $path = $source['path'] ?? '';
 
-        if (! is_string($repo) || preg_match('~^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$~', $repo) !== 1) {
+        if (!is_string($repo) || preg_match('~^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$~', $repo) !== 1) {
             throw new BuildError("Quelle „{$name}“: „repo“ muss die Form owner/repo haben.");
         }
 
-        if (! is_string($ref) || preg_match('~^[A-Za-z0-9_][A-Za-z0-9_./-]{0,99}$~', $ref) !== 1 || str_contains($ref, '..')) {
+        if (!is_string($ref) || preg_match('~^[A-Za-z0-9_][A-Za-z0-9_./-]{0,99}$~', $ref) !== 1 || str_contains($ref, '..')) {
             throw new BuildError("Quelle „{$name}“: „ref“ ist ungültig.");
         }
 
-        if (! is_string($path) || ($path !== '' && ! $this->isRelativePath($path))) {
+        if (!is_string($path) || $path !== '' && !$this->isRelativePath($path)) {
             throw new BuildError("Quelle „{$name}“: „path“ muss ein relativer Pfad ohne „..“ sein.");
         }
 
         $checkout = $this->cacheDir . '/' . $name;
 
-        if (! $fetch) {
-            if (! is_dir($checkout)) {
+        if (!$fetch) {
+            if (!is_dir($checkout)) {
                 fwrite(STDERR, "Hinweis: Quelle „{$name}“ übersprungen (kein Abruf, kein Cache).\n");
 
                 return null;
@@ -227,7 +233,7 @@ final class Sources
 
         $directory = realpath($checkout . ($path === '' ? '' : '/' . $path));
 
-        if ($directory === false || ! is_dir($directory) || ! str_starts_with($directory, realpath($checkout) . '')) {
+        if ($directory === false || !is_dir($directory) || !str_starts_with($directory, realpath($checkout) . '')) {
             throw new BuildError("Quelle „{$name}“: Ordner „{$path}“ im Repo {$repo} nicht gefunden.");
         }
 
@@ -238,7 +244,7 @@ final class Sources
     {
         Filesystem::removeDirectory($target);
 
-        if (! is_dir(dirname($target)) && ! mkdir(dirname($target), 0775, true) && ! is_dir(dirname($target))) {
+        if (!is_dir(dirname($target)) && !mkdir(dirname($target), 0o775, true) && !is_dir(dirname($target))) {
             throw new BuildError('Cache-Ordner konnte nicht angelegt werden.');
         }
 
@@ -250,7 +256,7 @@ final class Sources
             array_merge(getenv(), ['GIT_TERMINAL_PROMPT' => '0']),
         );
 
-        if (! is_resource($process)) {
+        if (!is_resource($process)) {
             throw new BuildError('git konnte nicht gestartet werden.');
         }
 
@@ -275,7 +281,7 @@ final class Sources
         foreach (scandir($directory) ?: [] as $entry) {
             $path = $directory . '/' . $entry;
 
-            if ($entry === '.' || $entry === '..' || str_starts_with($entry, '.') || str_starts_with($entry, '_') || is_link($path) || ! is_dir($path)) {
+            if ($entry === '.' || $entry === '..' || str_starts_with($entry, '.') || str_starts_with($entry, '_') || is_link($path) || !is_dir($path)) {
                 continue;
             }
 
@@ -290,7 +296,7 @@ final class Sources
             }
 
             $meta = $path . '/_album.md';
-            $albums[$entry] = ['file' => is_file($meta) && ! is_link($meta) ? $meta : null, 'files' => $inside];
+            $albums[$entry] = ['file' => is_file($meta) && !is_link($meta) ? $meta : null, 'files' => $inside];
         }
 
         return ['files' => $files, 'albums' => $albums];
@@ -302,7 +308,7 @@ final class Sources
         $files = [];
 
         foreach (scandir($directory) ?: [] as $entry) {
-            if (! str_ends_with(strtolower($entry), '.md') || is_link($directory . '/' . $entry) || ! is_file($directory . '/' . $entry)) {
+            if (!str_ends_with(strtolower($entry), '.md') || is_link($directory . '/' . $entry) || !is_file($directory . '/' . $entry)) {
                 continue;
             }
 
@@ -316,8 +322,10 @@ final class Sources
                 continue;
             }
 
-            if (! str_ends_with($entry, '.md') || preg_match(self::SLUG, $base) !== 1) {
-                throw new BuildError("Quelle „{$source}“, Datei „{$entry}“: Der Dateiname muss aus a-z, 0-9 und Bindestrich bestehen und auf .md enden (zum Beispiel nachtschicht.md).");
+            if (!str_ends_with($entry, '.md') || preg_match(self::SLUG, $base) !== 1) {
+                throw new BuildError(
+                    "Quelle „{$source}“, Datei „{$entry}“: Der Dateiname muss aus a-z, 0-9 und Bindestrich bestehen und auf .md enden (zum Beispiel nachtschicht.md).",
+                );
             }
 
             $files[$base] = $directory . '/' . $entry;
@@ -328,10 +336,6 @@ final class Sources
 
     private function isRelativePath(string $path): bool
     {
-        return $path !== ''
-            && ! str_starts_with($path, '/')
-            && ! str_contains($path, '\\')
-            && ! in_array('..', explode('/', $path), true)
-            && preg_match('/[\x00-\x1F]/', $path) !== 1;
+        return $path !== '' && !str_starts_with($path, '/') && !str_contains($path, '\\') && !in_array('..', explode('/', $path), true) && preg_match('/[\x00-\x1F]/', $path) !== 1;
     }
 }

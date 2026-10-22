@@ -57,16 +57,16 @@ final class Renderer
         $views = $prefix === null ? $this->pageViews() : '';
 
         return $this->page($title, 'library', <<<HTML
-  <div class="home">
-  {$head}
-  <main>
-    <div class="heading">
-      <h1>{$heading}</h1>{$label}{$lead}
-    </div>{$sections}
-    {$list}
-  </main>
-  </div>{$views}
-HTML);
+              <div class="home">
+              {$head}
+              <main>
+                <div class="heading">
+                  <h1>{$heading}</h1>{$label}{$lead}
+                </div>{$sections}
+                {$list}
+              </main>
+              </div>{$views}
+            HTML);
     }
 
     /**
@@ -82,7 +82,7 @@ HTML);
         $author = $prefix !== null
             ? ''
             : '<span class="author">von <a href="' . $this->url($entry['prefix'] . '/') . '">' . $this->e($this->authorTitle($entry['prefix'])) . '</a></span>';
-        $tags = implode('', array_map(fn (string $tag): string => '<li>' . $this->e($tag) . '</li>', $project['tags']));
+        $tags = implode('', array_map(fn(string $tag): string => '<li>' . $this->e($tag) . '</li>', $project['tags']));
         $tags = $tags === '' ? '' : '<ul class="tags">' . $tags . '</ul>';
         if (($entry['kind'] ?? 'project') === 'link') {
             $media = $project['media'];
@@ -127,17 +127,16 @@ HTML);
 
         return <<<HTML
 
-      <li class="project{$noThumb}">
-        <div class="title">
-          <h2>{$badge}<a href="{$href}"{$rel}>{$title}</a></h2>
-          {$artist}{$author}
-        </div>
-        {$thumbnail}
-        <p class="facts">{$facts}</p>
-        {$tags}
-      </li>
-HTML;
-
+                  <li class="project{$noThumb}">
+                    <div class="title">
+                      <h2>{$badge}<a href="{$href}"{$rel}>{$title}</a></h2>
+                      {$artist}{$author}
+                    </div>
+                    {$thumbnail}
+                    <p class="facts">{$facts}</p>
+                    {$tags}
+                  </li>
+            HTML;
     }
 
     /**
@@ -165,14 +164,19 @@ HTML;
             }
         }
 
-        $items = fn (array $list): string => '<ul class="projects">' . implode('', array_map(fn (array $entry): string => $this->libraryItem($entry, $prefix), $list)) . "\n    </ul>";
+        $items = fn(array $list): string => (
+            '<ul class="projects">' . implode('', array_map(fn(array $entry): string => $this->libraryItem($entry, $prefix), $list)) . "\n    </ul>"
+        );
         $html = $albums === [] ? '' : $items($albums);
 
         foreach ($groups as $members) {
             $name = $this->e((string) $members[0]['project']['group']);
             $count = count($members);
             $noun = $count === 1 ? 'Song' : 'Songs';
-            $html .= "\n    <details class=\"group\">\n      <summary><span class=\"group-name\">{$name}</span> <span class=\"group-count\">{$count} {$noun}</span></summary>\n    " . $items($members) . "\n    </details>";
+            $html .=
+                "\n    <details class=\"group\">\n      <summary><span class=\"group-name\">{$name}</span> <span class=\"group-count\">{$count} {$noun}</span></summary>\n    "
+                . $items($members)
+                . "\n    </details>";
         }
 
         return $html . ($singles === [] ? '' : ($groups === [] ? '' : "\n    <h2 class=\"group-rest\">Weitere Songs</h2>") . $items($singles));
@@ -191,14 +195,14 @@ HTML;
 
         foreach ($this->authors as $prefix => $author) {
             $prefix = (string) $prefix;
-            $own = array_filter($entries, fn (array $entry): bool => $entry['prefix'] === $prefix);
-            $sets = count(array_filter($own, fn (array $entry): bool => $entry['kind'] === 'set'));
-            $albums = count(array_filter($own, fn (array $entry): bool => $entry['kind'] === 'album'));
-            $sessions = count(array_filter($own, fn (array $entry): bool => $entry['kind'] === 'session'));
-            $links = count(array_filter($own, fn (array $entry): bool => $entry['kind'] === 'link'));
+            $own = array_filter($entries, fn(array $entry): bool => $entry['prefix'] === $prefix);
+            $sets = count(array_filter($own, fn(array $entry): bool => $entry['kind'] === 'set'));
+            $albums = count(array_filter($own, fn(array $entry): bool => $entry['kind'] === 'album'));
+            $sessions = count(array_filter($own, fn(array $entry): bool => $entry['kind'] === 'session'));
+            $links = count(array_filter($own, fn(array $entry): bool => $entry['kind'] === 'link'));
             $projects = count($own) - $sets - $albums - $sessions - $links;
-            $withHq = count(array_filter($own, fn (array $entry): bool => $entry['kind'] === 'project' && isset($entry['project']['media']['hq'])));
-            $withRelease = count(array_filter($own, fn (array $entry): bool => $entry['kind'] === 'project' && isset($entry['project']['media']['release'])));
+            $withHq = count(array_filter($own, fn(array $entry): bool => $entry['kind'] === 'project' && isset($entry['project']['media']['hq'])));
+            $withRelease = count(array_filter($own, fn(array $entry): bool => $entry['kind'] === 'project' && isset($entry['project']['media']['release'])));
             $facts = '<span><b>' . $projects . '</b> ' . ($projects === 1 ? 'Project' : 'Projects') . '</span>';
 
             if ($albums > 0) {
@@ -226,8 +230,9 @@ HTML;
             }
 
             arsort($count);
-            $tags = implode('', array_map(fn (string $tag): string => '<li>' . $this->e($tag) . '</li>', array_slice(array_map(strval(...), array_keys($count)), 0, 6)));
-            $chips = ($withHq > 0 ? '<li class="chip" title="Projekte mit HQ-Version"><b>' . $withHq . '</b> HQ</li>' : '')
+            $tags = implode('', array_map(fn(string $tag): string => '<li>' . $this->e($tag) . '</li>', array_slice(array_map(strval(...), array_keys($count)), 0, 6)));
+            $chips =
+                ($withHq > 0 ? '<li class="chip" title="Projekte mit HQ-Version"><b>' . $withHq . '</b> HQ</li>' : '')
                 . ($withRelease > 0 ? '<li class="chip" title="Projekte mit Veröffentlichung"><b>' . $withRelease . '</b> VÖ</li>' : '');
             $tags = $chips . $tags;
             $tags = $tags === '' ? '' : '<ul class="tags">' . $tags . '</ul>';
@@ -237,13 +242,13 @@ HTML;
 
             $items .= <<<HTML
 
-      <li class="author-card">
-        <h2><a href="{$href}">{$title}</a></h2>
-        {$tagline}
-        <p class="facts">{$facts}</p>
-        {$tags}
-      </li>
-HTML;
+                      <li class="author-card">
+                        <h2><a href="{$href}">{$title}</a></h2>
+                        {$tagline}
+                        <p class="facts">{$facts}</p>
+                        {$tags}
+                      </li>
+                HTML;
         }
 
         return '<ul class="authors">' . $items . "\n    </ul>";
@@ -318,9 +323,7 @@ HTML;
     private function head(?string $prefix, string $command, bool $linkHost = true, bool $linkPrefix = true): string
     {
         $host = ($this->site['prompt'] ?? '') !== '' ? $this->site['prompt'] : $this->site['title'];
-        $hostHtml = $linkHost
-            ? '<a class="p-user" href="' . $this->url('') . '">' . $this->e($host) . '</a>'
-            : '<span class="p-user">' . $this->e($host) . '</span>';
+        $hostHtml = $linkHost ? '<a class="p-user" href="' . $this->url('') . '">' . $this->e($host) . '</a>' : '<span class="p-user">' . $this->e($host) . '</span>';
         $path = '';
 
         if ($prefix !== null) {
@@ -329,15 +332,21 @@ HTML;
 
             foreach ($segments as $index => $segment) {
                 $walked .= ($walked === '' ? '' : '/') . $segment;
-                $last = $index === count($segments) - 1;
-                $path .= $linkPrefix || ! $last
+                $last = $index === (count($segments) - 1);
+                $path .= $linkPrefix || !$last
                     ? '<a class="p-path" href="' . $this->url($walked . '/') . '">' . $this->e('/' . $segment) . '</a>'
                     : '<span class="p-path">' . $this->e('/' . $segment) . '</span>';
             }
         }
 
-        return '<header class="pagehead"><nav class="prompt" aria-label="Brotkrümel">' . $hostHtml . $path
-            . '<span class="p-dollar">$</span> <span class="p-cmd">' . $this->e($command) . '</span></nav></header>';
+        return (
+            '<header class="pagehead"><nav class="prompt" aria-label="Brotkrümel">'
+            . $hostHtml
+            . $path
+            . '<span class="p-dollar">$</span> <span class="p-cmd">'
+            . $this->e($command)
+            . '</span></nav></header>'
+        );
     }
 
     private function artistLine(string $artist, string $prefix, string $tag): string
@@ -356,7 +365,7 @@ HTML;
 
     private function projectBadge(array $project): string
     {
-        if (! empty($project['layers'])) {
+        if (!empty($project['layers'])) {
             return '<span class="badge">Layer</span> ';
         }
 
@@ -375,7 +384,7 @@ HTML;
         $descriptions = [];
 
         foreach ($project['tracks'] as $track) {
-            if (isset($track['group']) && ! isset($descriptions[$track['group']['ref']])) {
+            if (isset($track['group']) && !isset($descriptions[$track['group']['ref']])) {
                 $descriptions[$track['group']['ref']] = $track['group']['description'];
             }
         }
@@ -412,7 +421,7 @@ HTML;
             $project['bpm'],
             $project['stepsPerBeat'],
             $project['steps'],
-            array_map(fn (array $track): array => [$track['name'], $track['instrument'], $track['volume'], $track['gate'], $track['events']], $project['tracks']),
+            array_map(fn(array $track): array => [$track['name'], $track['instrument'], $track['volume'], $track['gate'], $track['events']], $project['tracks']),
         ];
 
         return substr(sha1(json_encode($data, JSON_THROW_ON_ERROR)), 0, 8);
@@ -430,12 +439,14 @@ HTML;
             'stepSeconds' => $project['stepSeconds'],
             'loop' => $project['loop'],
             'steps' => $project['steps'],
-            'media' => (object) (($project['media'] ?? []) + (isset($project['media']['release']) ? ['releaseLabel' => $this->releaseLabel((string) $project['media']['release'])] : [])),
+            'media' => (object) (
+                ($project['media'] ?? []) + (isset($project['media']['release']) ? ['releaseLabel' => $this->releaseLabel((string) $project['media']['release'])] : [])
+            ),
             'tracks' => array_map(function (array $track): array {
                 $notes = $track['notesHtml'] !== '';
                 unset($track['notesHtml']);
 
-                $track['refs'] = array_map(fn (array $ref): array => $ref + ['href' => $this->url($ref['ref'] . '/')], $track['refs'] ?? []);
+                $track['refs'] = array_map(fn(array $ref): array => $ref + ['href' => $this->url($ref['ref'] . '/')], $track['refs'] ?? []);
 
                 if (isset($track['group'])) {
                     $track['group'] = [
@@ -460,17 +471,17 @@ HTML;
         $title = 'Mixer';
 
         return $this->page($title . ' – ' . $this->site['title'], 'project-page mix-page', <<<HTML
-  <script type="application/json" id="mix">{$payload}</script>
-  {$head}
-  <main>
-    <div class="heading">
-      <h1>Mixer</h1>
-    </div>
-    <div class="daw mixer-page" id="daw">
-      <noscript><p class="empty">Der Mix braucht JavaScript.</p></noscript>
-    </div>
-  </main>
-HTML, true, false);
+              <script type="application/json" id="mix">{$payload}</script>
+              {$head}
+              <main>
+                <div class="heading">
+                  <h1>Mixer</h1>
+                </div>
+                <div class="daw mixer-page" id="daw">
+                  <noscript><p class="empty">Der Mix braucht JavaScript.</p></noscript>
+                </div>
+              </main>
+            HTML, true, false);
     }
 
     /** @param array{prefix: string, slug: string, project: array<string, mixed>} $entry */
@@ -479,7 +490,7 @@ HTML, true, false);
         $project = $entry['project'];
         $title = $this->e($project['title']);
         $artist = $this->artistLine($project['artist'], $entry['prefix'], 'p');
-        $tags = implode('', array_map(fn (string $tag): string => '<li>' . $this->e($tag) . '</li>', $project['tags']));
+        $tags = implode('', array_map(fn(string $tag): string => '<li>' . $this->e($tag) . '</li>', $project['tags']));
         $tags = $tags === '' ? '' : '<ul class="tags">' . $tags . '</ul>';
         $notes = $project['notesHtml'] === '' ? '' : '<section class="aside wide"><div class="notes">' . $project['notesHtml'] . '</div></section>';
         $head = $this->head($entry['prefix'] . ($entry['album'] !== null ? '/' . $entry['album'] : ''), 'play ' . basename($entry['slug']));
@@ -495,29 +506,29 @@ HTML, true, false);
         $mediaLinks = $this->mediaLinks($project['media'] ?? []);
 
         return $this->page($project['title'] . ' – ' . $this->site['title'], 'project-page', <<<HTML
-  <script type="application/json" id="project">{$payload}</script>
-  {$head}
-  <main>
-    <div class="heading">
-      <h1>{$badge}{$title}</h1>
-      {$artist}
-      {$tags}
-    </div>
-    <div class="daw" id="daw">
-      <noscript>
-        {$thumbnail}
-        <p>Zum Abspielen braucht diese Seite JavaScript.</p>
-        {$mediaLinks}
-      </noscript>
-    </div>
-    {$albumNav}
-    {$layersPanel}
-    {$trackNotes}
-    {$notes}
-    {$credits}
-    <p class="source"><a href="source.md">Quelltext dieses Projects</a></p>
-  </main>
-HTML, withScript: true);
+              <script type="application/json" id="project">{$payload}</script>
+              {$head}
+              <main>
+                <div class="heading">
+                  <h1>{$badge}{$title}</h1>
+                  {$artist}
+                  {$tags}
+                </div>
+                <div class="daw" id="daw">
+                  <noscript>
+                    {$thumbnail}
+                    <p>Zum Abspielen braucht diese Seite JavaScript.</p>
+                    {$mediaLinks}
+                  </noscript>
+                </div>
+                {$albumNav}
+                {$layersPanel}
+                {$trackNotes}
+                {$notes}
+                {$credits}
+                <p class="source"><a href="source.md">Quelltext dieses Projects</a></p>
+              </main>
+            HTML, withScript: true);
     }
 
     private function releaseLabel(string $url): string
@@ -566,7 +577,10 @@ HTML, withScript: true);
             } elseif ($this->releaseService($release) === 'SoundCloud') {
                 $marks .= ' <span class="mark mark-soundcloud" title="Veröffentlichung auf SoundCloud">VÖ</span>';
             } else {
-                $marks .= ' <span class="mark mark-ext" title="Mit Veröffentlichung' . ($this->releaseService($release) === null ? ' (externer Link)' : ' (' . $this->e($this->releaseLabel($release)) . ')') . '">VÖ</span>';
+                $marks .=
+                    ' <span class="mark mark-ext" title="Mit Veröffentlichung'
+                    . ($this->releaseService($release) === null ? ' (externer Link)' : ' (' . $this->e($this->releaseLabel($release)) . ')')
+                    . '">VÖ</span>';
             }
         }
 
@@ -587,7 +601,15 @@ HTML, withScript: true);
         if (isset($media['release'])) {
             $own = isset($media['releaseOwn']);
             $class = $own ? ' class="own"' : ($this->releaseService((string) $media['release']) === 'SoundCloud' ? ' class="soundcloud"' : '');
-            $items .= '<li><a' . $class . ' href="' . $this->e((string) $media['release']) . '" rel="noopener noreferrer">' . $this->e($this->releaseLabel((string) $media['release'])) . ($own ? ' (Audio)' : '') . '</a></li>';
+            $items .=
+                '<li><a'
+                . $class
+                . ' href="'
+                . $this->e((string) $media['release'])
+                . '" rel="noopener noreferrer">'
+                . $this->e($this->releaseLabel((string) $media['release']))
+                . ($own ? ' (Audio)' : '')
+                . '</a></li>';
         }
 
         return $items === '' ? '' : '<ul class="media-links">' . $items . '</ul>';
@@ -644,15 +666,35 @@ HTML, withScript: true);
             return '';
         }
 
-        $link = fn (?array $target, string $class, string $label): string => $target === null
+        $link = fn(?array $target, string $class, string $label): string => $target === null
             ? '<span class="' . $class . ' off"></span>'
-            : '<a class="' . $class . '" href="' . $this->url($prefix . '/' . $target['slug'] . '/') . '" rel="' . ($class === 'prev' ? 'prev' : 'next') . '">' . $label . ' <b>' . $this->e($target['title']) . '</b></a>';
+            : '<a class="'
+                . $class
+                . '" href="'
+                . $this->url($prefix . '/' . $target['slug'] . '/')
+                . '" rel="'
+                . ($class === 'prev' ? 'prev' : 'next')
+                . '">'
+                . $label
+                . ' <b>'
+                . $this->e($target['title'])
+                . '</b></a>';
 
-        return '<nav class="album-nav" aria-label="Album">'
+        return (
+            '<nav class="album-nav" aria-label="Album">'
             . $link($nav['prev'], 'prev', '←')
-            . '<a class="where" href="' . $this->url($prefix . '/' . $nav['album']['slug'] . '/') . '">' . $this->e($nav['album']['title']) . ' | ' . $nav['number'] . ' von ' . $nav['total'] . '</a>'
+            . '<a class="where" href="'
+            . $this->url($prefix . '/' . $nav['album']['slug'] . '/')
+            . '">'
+            . $this->e($nav['album']['title'])
+            . ' | '
+            . $nav['number']
+            . ' von '
+            . $nav['total']
+            . '</a>'
             . $link($nav['next'], 'next', '→')
-            . '</nav>';
+            . '</nav>'
+        );
     }
 
     private function credits(array $credits): string
@@ -662,7 +704,14 @@ HTML, withScript: true);
         }
 
         $links = array_map(
-            fn (array $credit): string => '<a href="' . $this->url($credit['prefix'] . '/' . $credit['slug'] . '/') . '">' . $this->e($credit['title']) . '</a> von ' . $this->e($this->authorTitle($credit['prefix'])),
+            fn(array $credit): string => (
+                '<a href="'
+                . $this->url($credit['prefix'] . '/' . $credit['slug'] . '/')
+                . '">'
+                . $this->e($credit['title'])
+                . '</a> von '
+                . $this->e($this->authorTitle($credit['prefix']))
+            ),
             $credits,
         );
 
@@ -679,14 +728,19 @@ HTML, withScript: true);
      */
     private function mixLink(array $session, string $title): string
     {
-        $query = http_build_query([
-            'a' => self::mixId($session['a']['prefix'], $session['a']['slug']),
-            'b' => self::mixId($session['b']['prefix'], $session['b']['slug']),
-            'start' => $session['start'],
-            'auto' => $session['auto'] ? 1 : 0,
-            'fader' => $session['fader'],
-            'name' => $title,
-        ], '', '&', PHP_QUERY_RFC3986);
+        $query = http_build_query(
+            [
+                'a' => self::mixId($session['a']['prefix'], $session['a']['slug']),
+                'b' => self::mixId($session['b']['prefix'], $session['b']['slug']),
+                'start' => $session['start'],
+                'auto' => $session['auto'] ? 1 : 0,
+                'fader' => $session['fader'],
+                'name' => $title,
+            ],
+            '',
+            '&',
+            PHP_QUERY_RFC3986,
+        );
 
         return $this->url('+mixer/') . '#' . $this->e($query);
     }
@@ -699,7 +753,7 @@ HTML, withScript: true);
         $session = $entry['project'];
         $title = $this->e($session['title']);
         $artist = $this->artistLine($session['artist'], $entry['prefix'], 'p');
-        $tags = implode('', array_map(fn (string $tag): string => '<li>' . $this->e($tag) . '</li>', $session['tags']));
+        $tags = implode('', array_map(fn(string $tag): string => '<li>' . $this->e($tag) . '</li>', $session['tags']));
         $tags = $tags === '' ? '' : '<ul class="tags">' . $tags . '</ul>';
         $notes = $session['notesHtml'] === '' ? '' : '<section class="aside wide"><div class="notes">' . $session['notesHtml'] . '</div></section>';
         $head = $this->head($entry['prefix'] . ($entry['album'] !== null ? '/' . $entry['album'] : ''), 'mix ' . basename($entry['slug']));
@@ -710,9 +764,7 @@ HTML, withScript: true);
             $deck = $session[$key];
             $bpm = $this->number($deck['bpm']);
             $bars = $this->number($deck['bars']);
-            $detail = $key === 'b' && $session['start'] > 1
-                ? "steigt auf Takt <b>{$session['start']}</b> von Deck A ein"
-                : 'startet auf Takt <b>1</b>';
+            $detail = $key === 'b' && $session['start'] > 1 ? "steigt auf Takt <b>{$session['start']}</b> von Deck A ein" : 'startet auf Takt <b>1</b>';
             $rows .= sprintf(
                 "\n      <li><span class=\"deck-label\">%s</span> <a href=\"%s\">%s</a> <span class=\"layer-facts\">%s BPM, %s Bars, %s</span></li>",
                 $label,
@@ -727,23 +779,23 @@ HTML, withScript: true);
         $auto = $session['auto'] ? 'Auto-Sync ist an: Deck B folgt dem Tempo von Deck A.' : 'Auto-Sync ist aus.';
 
         return $this->page($session['title'] . ' – ' . $this->site['title'], 'project-page session-page', <<<HTML
-  {$head}
-  <main>
-    <div class="heading">
-      <h1><span class="badge">Session</span> {$title}</h1>
-      {$artist}
-      {$tags}
-    </div>
-    <section class="session">
-      <ul class="session-decks">{$rows}
-      </ul>
-      <p class="session-hint">{$auto} Im Mixer startest du die Session mit einem Klick.</p>
-      <p><a class="play session-open" href="{$href}">Im Mixer öffnen</a></p>
-    </section>
-    {$notes}
-    <p class="source"><a href="source.md">Quelltext dieser Session</a></p>
-  </main>
-HTML);
+              {$head}
+              <main>
+                <div class="heading">
+                  <h1><span class="badge">Session</span> {$title}</h1>
+                  {$artist}
+                  {$tags}
+                </div>
+                <section class="session">
+                  <ul class="session-decks">{$rows}
+                  </ul>
+                  <p class="session-hint">{$auto} Im Mixer startest du die Session mit einem Klick.</p>
+                  <p><a class="play session-open" href="{$href}">Im Mixer öffnen</a></p>
+                </section>
+                {$notes}
+                <p class="source"><a href="source.md">Quelltext dieser Session</a></p>
+              </main>
+            HTML);
     }
 
     private function dateText(string $value): string
@@ -754,7 +806,7 @@ HTML);
 
         $months = ['', 'Januar', 'Februar', 'März', 'April', 'Mai', 'Juni', 'Juli', 'August', 'September', 'Oktober', 'November', 'Dezember'];
 
-        if (! isset($m[2])) {
+        if (!isset($m[2])) {
             return $m[1];
         }
 
@@ -764,7 +816,7 @@ HTML);
             return '';
         }
 
-        return isset($m[3]) ? ((int) $m[3]) . '. ' . $months[$month] . ' ' . $m[1] : $months[$month] . ' ' . $m[1];
+        return isset($m[3]) ? (int) $m[3] . '. ' . $months[$month] . ' ' . $m[1] : $months[$month] . ' ' . $m[1];
     }
 
     /**
@@ -780,7 +832,7 @@ HTML);
         $heading = (string) ($info['title'] ?? $release['title']);
         $title = $this->e($heading);
         $artist = $this->artistLine($release['artist'], $entry['prefix'], 'p');
-        $tags = implode('', array_map(fn (string $tag): string => '<li>' . $this->e($tag) . '</li>', $release['tags']));
+        $tags = implode('', array_map(fn(string $tag): string => '<li>' . $this->e($tag) . '</li>', $release['tags']));
         $tags = $tags === '' ? '' : '<ul class="tags">' . $tags . '</ul>';
         $notes = $release['notesHtml'] === '' ? '' : '<section class="aside wide"><div class="notes">' . $release['notesHtml'] . '</div></section>';
         $head = $this->head($entry['prefix'] . ($entry['album'] !== null ? '/' . $entry['album'] : ''), 'link ' . basename($entry['slug']));
@@ -794,12 +846,19 @@ HTML);
 
         $credits = $credits === '' ? '' : '<dl class="release-credits">' . $credits . '</dl>';
         $cover = isset($media['cover'])
-            ? '<div class="rel-cover"><img src="' . $this->e((string) $media['cover']) . '" alt="Cover" width="400" height="400" decoding="async" referrerpolicy="no-referrer"></div>'
+            ? '<div class="rel-cover"><img src="'
+            . $this->e((string) $media['cover'])
+            . '" alt="Cover" width="400" height="400" decoding="async" referrerpolicy="no-referrer"></div>'
             : '';
         $service = $this->releaseLabel($url);
 
         if ($own) {
-            $action = '<audio controls preload="none" src="' . $this->e($url) . '">Dein Browser kann das Audio nicht abspielen. <a href="' . $this->e($url) . '" rel="noopener noreferrer">Datei öffnen</a></audio>';
+            $action =
+                '<audio controls preload="none" src="'
+                . $this->e($url)
+                . '">Dein Browser kann das Audio nicht abspielen. <a href="'
+                . $this->e($url)
+                . '" rel="noopener noreferrer">Datei öffnen</a></audio>';
         } else {
             $action = '<a class="play" href="' . $this->e($url) . '" rel="noopener noreferrer">Auf ' . $this->e($service) . ' hören</a>';
         }
@@ -809,26 +868,26 @@ HTML);
         $from = $from === '' ? '' : str_replace('Enthält Material aus', 'Entstanden aus', $from);
 
         return $this->page($heading . ' – ' . $this->site['title'], 'project-page release-page', <<<HTML
-  {$head}
-  <main>
-    <div class="heading">
-      <h1><span class="badge">Link</span> {$title}</h1>
-      {$artist}
-      {$tags}
-    </div>
-    <section class="rel-page{$coverClass}">
-      {$cover}
-      <div class="rel-body">
-        {$factLine}
-        {$credits}
-        <div class="rel-action">{$action}</div>
-      </div>
-    </section>
-    {$from}
-    {$notes}
-    <p class="source"><a href="source.md">Quelltext dieses Links</a></p>
-  </main>
-HTML, $own);
+              {$head}
+              <main>
+                <div class="heading">
+                  <h1><span class="badge">Link</span> {$title}</h1>
+                  {$artist}
+                  {$tags}
+                </div>
+                <section class="rel-page{$coverClass}">
+                  {$cover}
+                  <div class="rel-body">
+                    {$factLine}
+                    {$credits}
+                    <div class="rel-action">{$action}</div>
+                  </div>
+                </section>
+                {$from}
+                {$notes}
+                <p class="source"><a href="source.md">Quelltext dieses Links</a></p>
+              </main>
+            HTML, $own);
     }
 
     /**
@@ -840,9 +899,9 @@ HTML, $own);
         $isAlbum = $entry['kind'] === 'album';
         $title = $this->e($set['title']);
         $artist = $this->artistLine($set['artist'], $entry['prefix'], 'p');
-        $tags = implode('', array_map(fn (string $tag): string => '<li>' . $this->e($tag) . '</li>', $set['tags']));
+        $tags = implode('', array_map(fn(string $tag): string => '<li>' . $this->e($tag) . '</li>', $set['tags']));
         $tags = $tags === '' ? '' : '<ul class="tags">' . $tags . '</ul>';
-        $notes = $set['notesHtml'] === '' ? '' : ('<section class="aside' . ($isAlbum ? '' : ' wide') . '"><div class="notes">' . $set['notesHtml'] . '</div></section>');
+        $notes = $set['notesHtml'] === '' ? '' : '<section class="aside' . ($isAlbum ? '' : ' wide') . '"><div class="notes">' . $set['notesHtml'] . '</div></section>';
         $head = $isAlbum ? $this->head($entry['prefix'], 'ls ' . $entry['slug']) : $this->head($entry['prefix'], 'play ' . basename($entry['slug']));
         $badge = $isAlbum ? 'Album' : 'Set';
         $source = $isAlbum ? '' : '<p class="source"><a href="source.md">Quelltext dieses Sets</a></p>';
@@ -878,29 +937,32 @@ HTML, $own);
 
         $albumLinks = $linkList === '' ? '' : '<section class="album-sessions"><h2 class="sub">Links</h2><ul>' . $linkList . "\n    </ul></section>";
 
-        $payload = json_encode([
-            'title' => $set['title'],
-            'album' => $entry['kind'] === 'album',
-            'loop' => $set['loop'],
-            'parts' => array_map(fn (array $part): array => [
-                'title' => $part['title'],
-                'bpm' => $part['bpm'],
-                'stepSeconds' => $part['stepSeconds'],
-                'stepsPerBar' => $part['stepsPerBar'],
-                'stepsPerBeat' => $part['stepsPerBeat'],
-                'start' => $part['start'],
-                'stop' => $part['stop'],
-                'startBar' => $part['startBar'],
-                'repeat' => $part['repeat'],
-                'tracks' => array_map(fn (array $track): array => [
-                    'instrument' => $track['instrument'],
-                    'volume' => $track['volume'],
-                    'gate' => $track['gate'],
-                    'pw' => $track['pw'],
-                    'events' => $track['events'],
-                ], $part['tracks']),
-            ], $set['parts']),
-        ], JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_THROW_ON_ERROR);
+        $payload = json_encode(
+            [
+                'title' => $set['title'],
+                'album' => $entry['kind'] === 'album',
+                'loop' => $set['loop'],
+                'parts' => array_map(fn(array $part): array => [
+                    'title' => $part['title'],
+                    'bpm' => $part['bpm'],
+                    'stepSeconds' => $part['stepSeconds'],
+                    'stepsPerBar' => $part['stepsPerBar'],
+                    'stepsPerBeat' => $part['stepsPerBeat'],
+                    'start' => $part['start'],
+                    'stop' => $part['stop'],
+                    'startBar' => $part['startBar'],
+                    'repeat' => $part['repeat'],
+                    'tracks' => array_map(fn(array $track): array => [
+                        'instrument' => $track['instrument'],
+                        'volume' => $track['volume'],
+                        'gate' => $track['gate'],
+                        'pw' => $track['pw'],
+                        'events' => $track['events'],
+                    ], $part['tracks']),
+                ], $set['parts']),
+            ],
+            JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_THROW_ON_ERROR,
+        );
 
         $items = '';
 
@@ -920,41 +982,41 @@ HTML, $own);
 
             $items .= <<<HTML
 
-      <li class="part" id="part-{$number}">
-        <div class="part-title">
-          <span class="num">{$number}</span>
-          <h2><a href="{$href}">{$partTitle}</a></h2>
-          <span class="by">von {$by}</span>
-        </div>
-        <p class="facts"><span><b>{$bpm}</b> BPM</span> <span>{$bars}</span>{$repeat} <span><b>{$length}</b> Länge</span></p>
-        {$thumb}
-        <div class="part-bar" aria-hidden="true"><span class="part-progress"></span></div>
-        {$text}
-      </li>
-HTML;
+                      <li class="part" id="part-{$number}">
+                        <div class="part-title">
+                          <span class="num">{$number}</span>
+                          <h2><a href="{$href}">{$partTitle}</a></h2>
+                          <span class="by">von {$by}</span>
+                        </div>
+                        <p class="facts"><span><b>{$bpm}</b> BPM</span> <span>{$bars}</span>{$repeat} <span><b>{$length}</b> Länge</span></p>
+                        {$thumb}
+                        <div class="part-bar" aria-hidden="true"><span class="part-progress"></span></div>
+                        {$text}
+                      </li>
+                HTML;
         }
 
         return $this->page($set['title'] . ' – ' . $this->site['title'], 'project-page set-page', <<<HTML
-  <script type="application/json" id="set">{$payload}</script>
-  {$head}
-  <main>
-    <div class="heading">
-      <h1><span class="badge">{$badge}</span> {$title}</h1>
-      {$artist}
-      {$tags}
-    </div>
-    {$introNotes}
-    <div class="daw" id="daw">
-      <noscript><p>Zum Abspielen braucht diese Seite JavaScript.</p></noscript>
-    </div>
-    <ol class="parts">{$items}
-    </ol>
-    {$sessions}
-    {$albumLinks}
-    {$closingNotes}
-    {$source}
-  </main>
-HTML, withScript: true);
+              <script type="application/json" id="set">{$payload}</script>
+              {$head}
+              <main>
+                <div class="heading">
+                  <h1><span class="badge">{$badge}</span> {$title}</h1>
+                  {$artist}
+                  {$tags}
+                </div>
+                {$introNotes}
+                <div class="daw" id="daw">
+                  <noscript><p>Zum Abspielen braucht diese Seite JavaScript.</p></noscript>
+                </div>
+                <ol class="parts">{$items}
+                </ol>
+                {$sessions}
+                {$albumLinks}
+                {$closingNotes}
+                {$source}
+              </main>
+            HTML, withScript: true);
     }
 
     /** @param list<array<string, mixed>> $tracks */
@@ -987,14 +1049,14 @@ HTML, withScript: true);
         $head = $this->head(null, 'cat 404.html');
 
         return $this->page('Nicht gefunden – ' . $this->site['title'], 'library', <<<HTML
-  {$head}
-  <main>
-    <div class="heading">
-      <h1>Nicht gefunden</h1>
-      <p class="lead">Diese Adresse gibt es nicht. Alle Autoren stehen auf der <a href="{$home}">Startseite</a>.</p>
-    </div>
-  </main>
-HTML);
+              {$head}
+              <main>
+                <div class="heading">
+                  <h1>Nicht gefunden</h1>
+                  <p class="lead">Diese Adresse gibt es nicht. Alle Autoren stehen auf der <a href="{$home}">Startseite</a>.</p>
+                </div>
+              </main>
+            HTML);
     }
 
     public function thumbnail(array $project, ?array $window = null): string
@@ -1003,12 +1065,13 @@ HTML);
         [$from, $to] = $window ?? [0, $project['steps']];
 
         return sprintf(
-            '<svg class="thumb" viewBox="%d 0 %d %d" height="%d" preserveAspectRatio="none" shape-rendering="crispEdges" aria-hidden="true" focusable="false">',
+            '<svg class="thumb" viewBox="%d 0 %d %d" height="%d" preserveAspectRatio="none" shape-rendering="crispEdges" aria-hidden="true" focusable="false">%s</svg>',
             $from,
             $to - $from,
             $this->rowsHeight($tracks),
             max(96, count($tracks) * 24),
-        ) . $this->rows($tracks) . '</svg>';
+            $this->rows($tracks),
+        );
     }
 
     private const ROW = 8;
@@ -1017,7 +1080,7 @@ HTML);
     /** @param list<array<string, mixed>> $tracks */
     private function rowsHeight(array $tracks): int
     {
-        return count($tracks) * (self::ROW + self::GAP) - self::GAP;
+        return (count($tracks) * (self::ROW + self::GAP)) - self::GAP;
     }
 
     private function rows(array $tracks): string
@@ -1030,20 +1093,20 @@ HTML);
             $svg .= '<g class="t' . ($index % 8) . '">';
 
             if ($track['instrument'] === 'drums') {
-                $kinds = array_values(array_filter(self::DRUM_ORDER, fn (string $kind): bool => in_array($kind, array_column($track['events'], 'd'), true)));
+                $kinds = array_values(array_filter(self::DRUM_ORDER, fn(string $kind): bool => in_array($kind, array_column($track['events'], 'd'), true)));
                 $part = $kinds === [] ? $row : $row / count($kinds);
 
                 foreach ($track['events'] as $event) {
-                    $svg .= $this->rect($event['t'], $top + array_search($event['d'], $kinds, true) * $part, $event['len'], max($part - ($part < $row ? 0.5 : 0), 0.5));
+                    $svg .= $this->rect($event['t'], $top + (array_search($event['d'], $kinds, true) * $part), $event['len'], max($part - ($part < $row ? 0.5 : 0), 0.5));
                 }
             } else {
-                $midis = array_map(fn (array $event): float => 69 + 12 * log($event['f'] / 440, 2), $track['events']);
+                $midis = array_map(fn(array $event): float => 69 + (12 * log($event['f'] / 440, 2)), $track['events']);
                 $low = $midis === [] ? 0 : min($midis);
                 $span = $midis === [] ? 1 : max($midis) - $low;
 
                 foreach ($track['events'] as $position => $event) {
                     $level = $span > 0 ? ($midis[$position] - $low) / $span : 0.5;
-                    $svg .= $this->rect($event['t'], $top + (1 - $level) * ($row - 2.5), $event['len'], 2.5);
+                    $svg .= $this->rect($event['t'], $top + ((1 - $level) * ($row - 2.5)), $event['len'], 2.5);
                 }
             }
 
@@ -1065,27 +1128,33 @@ HTML);
         $cssIntegrity = $this->e($this->assets['css']['integrity']);
         $robots = $this->site['noindex'] ? "\n  <meta name=\"robots\" content=\"noindex, nofollow\">" : '';
         $script = $withScript
-            ? "\n  <script src=\"" . $this->e($this->assets['js']['url']) . '" integrity="' . $this->e($this->assets['js']['integrity']) . '"' . $this->crossorigin($this->assets['js']['url']) . ' defer></script>'
+            ? "\n  <script src=\""
+            . $this->e($this->assets['js']['url'])
+            . '" integrity="'
+            . $this->e($this->assets['js']['integrity'])
+            . '"'
+            . $this->crossorigin($this->assets['js']['url'])
+            . ' defer></script>'
             : '';
         $cssCross = $this->crossorigin($this->assets['css']['url']);
         $footer = $this->footer($mixLink);
 
         return <<<HTML
-<!DOCTYPE html>
-<html lang="de">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>{$title}</title>{$robots}
-  <link rel="stylesheet" href="{$css}" integrity="{$cssIntegrity}"{$cssCross}>{$script}
-</head>
-<body class="{$bodyClass}">
-  <div class="rainbow"></div>
-{$body}{$footer}
-</body>
-</html>
+            <!DOCTYPE html>
+            <html lang="de">
+            <head>
+              <meta charset="utf-8">
+              <meta name="viewport" content="width=device-width, initial-scale=1">
+              <title>{$title}</title>{$robots}
+              <link rel="stylesheet" href="{$css}" integrity="{$cssIntegrity}"{$cssCross}>{$script}
+            </head>
+            <body class="{$bodyClass}">
+              <div class="rainbow"></div>
+            {$body}{$footer}
+            </body>
+            </html>
 
-HTML;
+            HTML;
     }
 
     private function crossorigin(string $url): string
@@ -1096,7 +1165,7 @@ HTML;
     private function footer(bool $mixLink = true): string
     {
         $links = array_map(
-            fn (array $page): string => '<a href="' . $this->url('#' . $page['slug']) . '">' . $this->e($page['title']) . '</a>',
+            fn(array $page): string => '<a href="' . $this->url('#' . $page['slug']) . '">' . $this->e($page['title']) . '</a>',
             $this->pages,
         );
 
@@ -1109,7 +1178,9 @@ HTML;
         $outro = $this->site['outro'] ?? '';
 
         $mix = $mixLink
-            ? '<a class="mix-link" href="' . $this->url('+mixer/') . '" title="Mixer: zwei Decks, Crossfader und Effekte" aria-label="Mixer: zwei Decks, Crossfader und Effekte"><b>+</b>Mixer</a>'
+            ? '<a class="mix-link" href="'
+            . $this->url('+mixer/')
+            . '" title="Mixer: zwei Decks, Crossfader und Effekte" aria-label="Mixer: zwei Decks, Crossfader und Effekte"><b>+</b>Mixer</a>'
             : '';
 
         if ($links === [] && $outro === '' && $mix === '') {

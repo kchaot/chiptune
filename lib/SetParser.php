@@ -9,7 +9,7 @@ use Tempest\Markdown\Markdown;
 final class SetParser
 {
     public const FORMAT = 1;
-    public const MAX_BYTES = 65536;
+    public const MAX_BYTES = 65_536;
     public const MAX_PARTS = 32;
 
     public function __construct(
@@ -84,7 +84,7 @@ final class SetParser
 
             $repeat = $fm['repeat'] ?? 1;
 
-            if (! is_int($repeat) || $repeat < 1 || $repeat > 16) {
+            if (!is_int($repeat) || $repeat < 1 || $repeat > 16) {
                 throw new BuildError("{$where}: „repeat“ muss eine ganze Zahl von 1 bis 16 sein.");
             }
 
@@ -96,7 +96,7 @@ final class SetParser
             if (isset($fm['bars'])) {
                 $value = is_int($fm['bars']) ? (string) $fm['bars'] : $fm['bars'];
 
-                if (! is_string($value) || preg_match('/^\s*(\d{1,4})\s*(?:-\s*(\d{1,4}))?\s*$/', $value, $r) !== 1) {
+                if (!is_string($value) || preg_match('/^\s*(\d{1,4})\s*(?:-\s*(\d{1,4}))?\s*$/', $value, $r) !== 1) {
                     throw new BuildError("{$where}: „bars“ muss eine Zahl oder ein Bereich wie 1-8 sein.");
                 }
 

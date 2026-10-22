@@ -17,8 +17,6 @@ final class Url
     {
         $uri = Uri::parse($url);
 
-        return $uri !== null
-            && in_array($uri->getScheme(), ['http', 'https'], true)
-            && ($uri->getHost() ?? '') !== '';
+        return $uri !== null && in_array($uri->getScheme(), ['http', 'https'], true) && ($uri->getHost() ?? '') !== '';
     }
 }
