@@ -527,7 +527,7 @@ HTML, withScript: true);
 
     private function releaseService(string $url): ?string
     {
-        $host = (string) parse_url($url, PHP_URL_HOST);
+        $host = Url::host($url);
         $services = [
             'soundcloud.com' => 'SoundCloud',
             'bandcamp.com' => 'Bandcamp',

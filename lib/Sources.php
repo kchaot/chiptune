@@ -74,7 +74,7 @@ final class Sources
                 throw new BuildError("{$label}: „title“ muss ein Text mit 1 bis 60 Zeichen sein.");
             }
 
-            if (! is_string($url) || ($url !== '' && (preg_match('~^https?://[^\s<>"\']{1,200}$~', $url) !== 1 || str_contains($url, '\\')))) {
+            if (! is_string($url) || ($url !== '' && (preg_match('~^https?://[^\s<>"\']{1,200}$~', $url) !== 1 || str_contains($url, '\\') || ! Url::isHttp($url)))) {
                 throw new BuildError("{$label}: „url“ muss mit http:// oder https:// beginnen.");
             }
 

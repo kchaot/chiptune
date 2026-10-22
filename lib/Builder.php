@@ -402,7 +402,7 @@ final class Builder
                 continue;
             }
 
-            $host = (string) parse_url((string) $media[$key], PHP_URL_HOST);
+            $host = Url::host((string) $media[$key]);
 
             if (in_array($host, $allowed, true)) {
                 continue;
@@ -423,7 +423,7 @@ final class Builder
             unset($media['hqOffset']);
         }
 
-        if (isset($media['release']) && in_array((string) parse_url((string) $media['release'], PHP_URL_HOST), $allowed, true)) {
+        if (isset($media['release']) && in_array(Url::host((string) $media['release']), $allowed, true)) {
             $media['releaseOwn'] = true;
         }
 
