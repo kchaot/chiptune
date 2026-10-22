@@ -38,7 +38,7 @@
     const saved = Number(localStorage.getItem('chiptune-volume'));
     if (localStorage.getItem('chiptune-volume') !== null && saved >= 0 && saved <= 1) S.volume = saved;
   } catch (error) {
-    //
+    // Kein gespeicherter Wert: es bleibt bei der Standard-Lautstärke.
   }
 
   let songGain = null;
@@ -51,7 +51,7 @@
     try {
       localStorage.setItem('chiptune-volume', String(value));
     } catch (error) {
-      //
+      // Speicher nicht verfügbar: die Lautstärke gilt nur für diese Sitzung.
     }
   }
 
@@ -126,14 +126,14 @@
       try {
         desk.open = localStorage.getItem('chiptune-desk') === 'open';
       } catch (error) {
-        //
+        // Speicher nicht verfügbar: das Pult bleibt bei seinem Standard.
       }
 
       desk.addEventListener('toggle', () => {
         try {
           localStorage.setItem('chiptune-desk', desk.open ? 'open' : 'closed');
         } catch (error) {
-          //
+          // Speicher nicht verfügbar: die Stellung geht beim Neuladen verloren.
         }
       });
     }
@@ -1220,14 +1220,14 @@
           cues.hot = [0, 1, 2, 3].map(index => (Number.isFinite(saved.hot[index]) && saved.hot[index] < project.steps ? saved.hot[index] : null));
         }
       } catch (error) {
-        //
+        // Gespeicherte Cues unlesbar oder Speicher nicht verfügbar: es bleibt bei den leeren Cues.
       }
 
       function saveCues() {
         try {
           if (storeKey) localStorage.setItem(storeKey, JSON.stringify(cues));
         } catch (error) {
-          //
+          // Speicher nicht verfügbar: die Cues gelten nur, solange die Seite offen ist.
         }
       }
 
@@ -2021,7 +2021,7 @@
         navigator.mediaSession.setActionHandler('play', on ? () => { if (!active) deck.override(); } : null);
         navigator.mediaSession.setActionHandler('pause', on ? () => { if (active) stopAudio(); } : null);
       } catch (error) {
-        //
+        // Media Session wird nicht unterstützt: Steuerung per Medientasten entfällt.
       }
     }
 
@@ -2112,7 +2112,7 @@
       try {
         history.replaceState(history.state, '', location.pathname + location.search + (HASHES[id] ? '#' + HASHES[id] : ''));
       } catch (error) {
-        //
+        // Adresszeile nicht änderbar: der Song läuft trotzdem.
       }
 
       if (card) {
@@ -2304,7 +2304,7 @@
       delay.connect(damp);
       damp.connect(feedback);
       feedback.connect(delay);
-      //
+      // Das Delay folgt dem Tempo, solange der Audiokontext läuft.
       setInterval(() => {
         if (ctx && ctx.state === 'running') delay.delayTime.setTargetAtTime(Math.min(1.9, beat() * 0.75), ctx.currentTime, 0.1);
       }, 250);
@@ -2752,7 +2752,7 @@
       try {
         localStorage.setItem('chiptune-light', LIGHTS[lightIndex][0]);
       } catch (error) {
-        //
+        // Speicher nicht verfügbar: das Farbschema gilt nur für diese Sitzung.
       }
     });
 
@@ -2779,7 +2779,7 @@
       const saved = LIGHTS.findIndex(entry => entry[0] === localStorage.getItem('chiptune-light'));
       if (saved >= 0) lightIndex = saved;
     } catch (error) {
-      //
+      // Speicher nicht verfügbar: es bleibt beim Standard-Farbschema.
     }
 
     applyLight();
@@ -3200,7 +3200,7 @@
       try {
         localStorage.setItem('chiptune-machine', open ? 'open' : 'closed');
       } catch (error) {
-        //
+        // Speicher nicht verfügbar: die Stellung geht beim Neuladen verloren.
       }
     }
 
@@ -3209,7 +3209,7 @@
     try {
       machineOpen = localStorage.getItem('chiptune-machine') !== 'closed';
     } catch (error) {
-      //
+      // Speicher nicht verfügbar: die Maschine startet im Standardzustand.
     }
 
     openMachine(machineOpen);
@@ -3269,7 +3269,7 @@
       try {
         history.replaceState(null, '', '#' + hash);
       } catch (error) {
-        //
+        // Adresszeile nicht änderbar: der Link wird trotzdem kopiert.
       }
 
       try {
