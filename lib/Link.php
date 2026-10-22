@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace Chiptune;
 
-final readonly class Link
+final readonly class Link implements Described
 {
     /**
      * @param list<string> $tags

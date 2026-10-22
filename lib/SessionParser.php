@@ -23,9 +23,8 @@ final class SessionParser
 
     /**
      * @param \Closure(string): array{prefix: string, slug: string, project: array<string, mixed>} $resolve
-     * @return array<string, mixed>
      */
-    public function parse(string $source, string $fallbackTitle, \Closure $resolve): array
+    public function parse(string $source, string $fallbackTitle, \Closure $resolve): Session
     {
         if (strlen($source) > self::MAX_BYTES) {
             throw new BuildError(sprintf('Die Datei ist größer als %d KB.', self::MAX_BYTES / 1024));
@@ -57,21 +56,21 @@ final class SessionParser
 
             $resolved = $resolve(trim($ref));
             $project = $resolved['project'];
-            $decks[$key] = [
-                'ref' => trim($ref),
-                'prefix' => $resolved['prefix'],
-                'slug' => $resolved['slug'],
-                'title' => $project['title'],
-                'bpm' => $project['bpm'],
-                'bars' => $project['bars'],
-                'stepsPerBar' => $project['stepsPerBar'],
-            ];
+            $decks[$key] = new SessionDeck(
+                ref: trim($ref),
+                prefix: $resolved['prefix'],
+                slug: $resolved['slug'],
+                title: $project['title'],
+                bpm: $project['bpm'],
+                bars: $project['bars'],
+                stepsPerBar: $project['stepsPerBar'],
+            );
         }
 
         $start = $meta['start'] ?? 1;
 
-        if (!is_int($start) || $start < 1 || $start > $decks['a']['bars']) {
-            throw new BuildError("Session: „start“ ist der Takt von Deck A, auf dem Deck B einsteigt, eine ganze Zahl von 1 bis {$decks['a']['bars']}.");
+        if (!is_int($start) || $start < 1 || $start > $decks['a']->bars) {
+            throw new BuildError("Session: „start“ ist der Takt von Deck A, auf dem Deck B einsteigt, eine ganze Zahl von 1 bis {$decks['a']->bars}.");
         }
 
         $auto = filter_var($meta['auto'] ?? true, FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE);
@@ -89,21 +88,23 @@ final class SessionParser
         $credits = [];
 
         foreach ($decks as $deck) {
-            $credits[$deck['ref']] = ['prefix' => $deck['prefix'], 'slug' => $deck['slug'], 'title' => $deck['title']];
+            $credits[$deck->ref] = ['prefix' => $deck->prefix, 'slug' => $deck->slug, 'title' => $deck->title];
         }
 
-        return [
-            'kind' => 'session',
-            'format' => self::FORMAT,
-            ...$this->projects->describe($meta, $fallbackTitle),
-            'a' => $decks['a'],
-            'b' => $decks['b'],
-            'start' => $start,
-            'auto' => $auto,
-            'fader' => $fader,
-            'warnings' => [],
-            'notesHtml' => $this->sanitizer->clean($parsed->html),
-            'credits' => array_values($credits),
-        ];
+        $head = $this->projects->describe($meta, $fallbackTitle);
+
+        return new Session(
+            title: $head['title'],
+            artist: $head['artist'],
+            group: $head['group'],
+            tags: $head['tags'],
+            a: $decks['a'],
+            b: $decks['b'],
+            start: $start,
+            auto: $auto,
+            fader: $fader,
+            notesHtml: $this->sanitizer->clean($parsed->html),
+            credits: array_values($credits),
+        );
     }
 }

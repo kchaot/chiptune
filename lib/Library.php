@@ -31,7 +31,7 @@ final class Library
         }
     }
 
-    /** @return array{kind: string, prefix: string, slug: string, data: array<string, mixed>|Link} */
+    /** @return array{kind: string, prefix: string, slug: string, data: array<string, mixed>|Described} */
     public function load(string $key): array
     {
         if (isset($this->loaded[$key])) {

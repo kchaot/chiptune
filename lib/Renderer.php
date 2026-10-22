@@ -98,7 +98,7 @@ final class Renderer
             $author .= $from;
             $rel = $own ? '' : ' rel="noopener noreferrer"';
         } elseif ($entry->kind === EntryKind::Session) {
-            $facts = '<span>A: <b>' . $this->e($project['a']['title']) . '</b></span> <span>B: <b>' . $this->e($project['b']['title']) . '</b></span>';
+            $facts = '<span>A: <b>' . $this->e($project->a->title) . '</b></span> <span>B: <b>' . $this->e($project->b->title) . '</b></span>';
             $thumbnail = '';
             $badge = '<span class="badge">Session</span> ';
         } elseif (in_array($entry->kind, [EntryKind::Set, EntryKind::Album], true)) {
@@ -722,18 +722,15 @@ final class Renderer
         return $prefix . '--' . str_replace('/', '--', $slug);
     }
 
-    /**
-     * @param array<string, mixed> $session
-     */
-    private function mixLink(array $session, string $title): string
+    private function mixLink(Session $session, string $title): string
     {
         $query = http_build_query(
             [
-                'a' => self::mixId($session['a']['prefix'], $session['a']['slug']),
-                'b' => self::mixId($session['b']['prefix'], $session['b']['slug']),
-                'start' => $session['start'],
-                'auto' => $session['auto'] ? 1 : 0,
-                'fader' => $session['fader'],
+                'a' => self::mixId($session->a->prefix, $session->a->slug),
+                'b' => self::mixId($session->b->prefix, $session->b->slug),
+                'start' => $session->start,
+                'auto' => $session->auto ? 1 : 0,
+                'fader' => $session->fader,
                 'name' => $title,
             ],
             '',
@@ -746,35 +743,35 @@ final class Renderer
 
     public function session(Entry $entry): string
     {
-        $session = $entry->project;
-        $title = $this->e($session['title']);
-        $artist = $this->artistLine($session['artist'], $entry->prefix, 'p');
-        $tags = implode('', array_map(fn(string $tag): string => '<li>' . $this->e($tag) . '</li>', $session['tags']));
+        $session = $entry->session();
+        $title = $this->e($session->title);
+        $artist = $this->artistLine($session->artist, $entry->prefix, 'p');
+        $tags = implode('', array_map(fn(string $tag): string => '<li>' . $this->e($tag) . '</li>', $session->tags));
         $tags = $tags === '' ? '' : '<ul class="tags">' . $tags . '</ul>';
-        $notes = $session['notesHtml'] === '' ? '' : '<section class="aside wide"><div class="notes">' . $session['notesHtml'] . '</div></section>';
+        $notes = $session->notesHtml === '' ? '' : '<section class="aside wide"><div class="notes">' . $session->notesHtml . '</div></section>';
         $head = $this->head($entry->prefix . ($entry->album !== null ? '/' . $entry->album : ''), 'mix ' . basename($entry->slug));
-        $href = $this->mixLink($session, $session['title']);
+        $href = $this->mixLink($session, $session->title);
         $rows = '';
 
         foreach (['a' => 'Deck A', 'b' => 'Deck B'] as $key => $label) {
-            $deck = $session[$key];
-            $bpm = $this->number($deck['bpm']);
-            $bars = $this->number($deck['bars']);
-            $detail = $key === 'b' && $session['start'] > 1 ? "steigt auf Takt <b>{$session['start']}</b> von Deck A ein" : 'startet auf Takt <b>1</b>';
+            $deck = $key === 'a' ? $session->a : $session->b;
+            $bpm = $this->number($deck->bpm);
+            $bars = $this->number($deck->bars);
+            $detail = $key === 'b' && $session->start > 1 ? "steigt auf Takt <b>{$session->start}</b> von Deck A ein" : 'startet auf Takt <b>1</b>';
             $rows .= sprintf(
                 "\n      <li><span class=\"deck-label\">%s</span> <a href=\"%s\">%s</a> <span class=\"layer-facts\">%s BPM, %s Bars, %s</span></li>",
                 $label,
-                $this->url($deck['prefix'] . '/' . $deck['slug'] . '/'),
-                $this->e($deck['title']),
+                $this->url($deck->prefix . '/' . $deck->slug . '/'),
+                $this->e($deck->title),
                 $bpm,
                 $bars,
                 $detail,
             );
         }
 
-        $auto = $session['auto'] ? 'Auto-Sync ist an: Deck B folgt dem Tempo von Deck A.' : 'Auto-Sync ist aus.';
+        $auto = $session->auto ? 'Auto-Sync ist an: Deck B folgt dem Tempo von Deck A.' : 'Auto-Sync ist aus.';
 
-        return $this->page($session['title'] . ' – ' . $this->site['title'], 'project-page session-page', <<<HTML
+        return $this->page($session->title . ' – ' . $this->site['title'], 'project-page session-page', <<<HTML
               {$head}
               <main>
                 <div class="heading">
@@ -902,9 +899,9 @@ final class Renderer
             $sessionList .= sprintf(
                 "\n      <li><a href=\"%s\">%s</a> <span class=\"layer-facts\">A: %s, B: %s</span></li>",
                 $this->url($session->prefix . '/' . $session->slug . '/'),
-                $this->e($session->project['title']),
-                $this->e($session->project['a']['title']),
-                $this->e($session->project['b']['title']),
+                $this->e($session->title()),
+                $this->e($session->session()->a->title),
+                $this->e($session->session()->b->title),
             );
         }
 

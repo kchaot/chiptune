@@ -46,7 +46,7 @@ final class Builder
 
             $data = $loaded['data'];
 
-            foreach ($data instanceof Link ? $data->warnings : $data['warnings'] as $warning) {
+            foreach ($data instanceof Described ? $data->warnings : $data['warnings'] as $warning) {
                 fwrite(STDERR, "Warnung in {$label}: {$warning}\n");
             }
 
@@ -58,7 +58,7 @@ final class Builder
                 $data['media'] = $this->checkedMedia($data['media'], $file['media'], $file['strict'], $label, $errors);
             }
 
-            if ($file['album'] !== null && ($data instanceof Link ? $data->group : $data['group'] ?? '') !== '') {
+            if ($file['album'] !== null && ($data instanceof Described ? $data->group : $data['group'] ?? '') !== '') {
                 fwrite(STDERR, "Warnung in {$label}: „group“ gilt nur für Songs ohne Album und wird ignoriert.\n");
             }
 
