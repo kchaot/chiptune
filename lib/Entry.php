@@ -64,6 +64,11 @@ final readonly class Entry
         return $this->project instanceof Session ? $this->project : throw new \LogicException("Eintrag {$this->key()} ist keine Session.");
     }
 
+    public function set(): Set
+    {
+        return $this->project instanceof Set ? $this->project : throw new \LogicException("Eintrag {$this->key()} ist kein Set.");
+    }
+
     public function key(): string
     {
         return $this->prefix . '/' . $this->slug;

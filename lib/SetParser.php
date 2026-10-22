@@ -20,9 +20,8 @@ final class SetParser
 
     /**
      * @param \Closure(string): array{prefix: string, slug: string, project: array<string, mixed>} $resolve
-     * @return array<string, mixed>
      */
-    public function parse(string $source, string $fallbackTitle, \Closure $resolve): array
+    public function parse(string $source, string $fallbackTitle, \Closure $resolve): Set
     {
         if (strlen($source) > self::MAX_BYTES) {
             throw new BuildError(sprintf('Die Datei ist größer als %d KB.', self::MAX_BYTES / 1024));
@@ -118,38 +117,40 @@ final class SetParser
             $run = ($stop - $start) * $project['stepSeconds'];
             $duration += $run * $repeat;
 
-            $parts[] = [
-                'ref' => $ref,
-                'prefix' => $resolved['prefix'],
-                'slug' => $resolved['slug'],
-                'title' => $project['title'],
-                'artist' => $project['artist'],
-                'bpm' => $project['bpm'],
-                'stepsPerBar' => $project['stepsPerBar'],
-                'stepsPerBeat' => $project['stepsPerBeat'],
-                'stepSeconds' => $project['stepSeconds'],
-                'steps' => $project['steps'],
-                'start' => $start,
-                'stop' => $stop,
-                'startBar' => $startBar,
-                'repeat' => $repeat,
-                'tracks' => $project['tracks'],
-                'notesHtml' => $this->sanitizer->clean($chunk->html),
-            ];
+            $parts[] = new SetPart(
+                ref: $ref,
+                prefix: $resolved['prefix'],
+                slug: $resolved['slug'],
+                title: $project['title'],
+                artist: $project['artist'],
+                bpm: $project['bpm'],
+                stepsPerBar: $project['stepsPerBar'],
+                stepsPerBeat: $project['stepsPerBeat'],
+                stepSeconds: $project['stepSeconds'],
+                steps: $project['steps'],
+                start: $start,
+                stop: $stop,
+                startBar: $startBar,
+                repeat: $repeat,
+                tracks: $project['tracks'],
+                notesHtml: $this->sanitizer->clean($chunk->html),
+            );
 
             $credits[$ref] = ['prefix' => $resolved['prefix'], 'slug' => $resolved['slug'], 'title' => $project['title']];
         }
 
-        return [
-            'kind' => 'set',
-            'format' => self::FORMAT,
-            ...$this->projects->describe($meta, $fallbackTitle),
-            'loop' => $loop,
-            'parts' => $parts,
-            'duration' => $duration,
-            'warnings' => [],
-            'notesHtml' => $this->sanitizer->clean($head->html ?? ''),
-            'credits' => array_values($credits),
-        ];
+        $info = $this->projects->describe($meta, $fallbackTitle);
+
+        return new Set(
+            title: $info['title'],
+            artist: $info['artist'],
+            group: $info['group'],
+            tags: $info['tags'],
+            loop: $loop,
+            parts: $parts,
+            duration: $duration,
+            notesHtml: $this->sanitizer->clean($head->html ?? ''),
+            credits: array_values($credits),
+        );
     }
 }

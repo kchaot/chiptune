@@ -103,8 +103,8 @@ final class Renderer
             $badge = '<span class="badge">Session</span> ';
         } elseif (in_array($entry->kind, [EntryKind::Set, EntryKind::Album], true)) {
             $isAlbum = $entry->kind === EntryKind::Album;
-            $parts = count($project['parts']);
-            $length = $this->duration($project['duration']);
+            $parts = count($project->parts);
+            $length = $this->duration($project->duration);
             $noun = $isAlbum ? ($parts === 1 ? 'Song' : 'Songs') : ($parts === 1 ? 'Part' : 'Parts');
             $facts = "<span><b>{$parts}</b> {$noun}</span> <span><b>{$length}</b> Länge</span>";
             $thumbnail = $this->setThumbnail($project);
@@ -614,14 +614,11 @@ final class Renderer
         return $items === '' ? '' : '<ul class="media-links">' . $items . '</ul>';
     }
 
-    /**
-     * @param array<string, mixed> $set
-     */
-    private function setThumbnail(array $set): string
+    private function setThumbnail(Set $set): string
     {
         $scale = 10;
         $height = 96;
-        $width = max(1, (int) round($set['duration'] * $scale));
+        $width = max(1, (int) round($set->duration * $scale));
         $svg = sprintf(
             '<svg class="thumb" viewBox="0 0 %d %d" height="%d" preserveAspectRatio="none" shape-rendering="crispEdges" aria-hidden="true" focusable="false">',
             $width,
@@ -630,19 +627,19 @@ final class Renderer
         );
         $x = 0.0;
 
-        foreach ($set['parts'] as $part) {
-            $run = ($part['stop'] - $part['start']) * $part['stepSeconds'] * $scale;
+        foreach ($set->parts as $part) {
+            $run = ($part->stop - $part->start) * $part->stepSeconds * $scale;
 
-            for ($i = 0; $i < $part['repeat']; $i++) {
+            for ($i = 0; $i < $part->repeat; $i++) {
                 $svg .= sprintf(
                     '<svg x="%s" y="0" width="%s" height="%d" viewBox="%d 0 %d %d" preserveAspectRatio="none">%s</svg>',
                     $this->number($x, 2),
                     $this->number($run, 2),
                     $height - 2,
-                    $part['start'],
-                    $part['stop'] - $part['start'],
-                    $this->rowsHeight($part['tracks']),
-                    $this->rows($part['tracks']),
+                    $part->start,
+                    $part->stop - $part->start,
+                    $this->rowsHeight($part->tracks),
+                    $this->rows($part->tracks),
                 );
                 $x += $run;
             }
@@ -880,13 +877,13 @@ final class Renderer
 
     public function set(Entry $entry): string
     {
-        $set = $entry->project;
+        $set = $entry->set();
         $isAlbum = $entry->kind === EntryKind::Album;
-        $title = $this->e($set['title']);
-        $artist = $this->artistLine($set['artist'], $entry->prefix, 'p');
-        $tags = implode('', array_map(fn(string $tag): string => '<li>' . $this->e($tag) . '</li>', $set['tags']));
+        $title = $this->e($set->title);
+        $artist = $this->artistLine($set->artist, $entry->prefix, 'p');
+        $tags = implode('', array_map(fn(string $tag): string => '<li>' . $this->e($tag) . '</li>', $set->tags));
         $tags = $tags === '' ? '' : '<ul class="tags">' . $tags . '</ul>';
-        $notes = $set['notesHtml'] === '' ? '' : '<section class="aside' . ($isAlbum ? '' : ' wide') . '"><div class="notes">' . $set['notesHtml'] . '</div></section>';
+        $notes = $set->notesHtml === '' ? '' : '<section class="aside' . ($isAlbum ? '' : ' wide') . '"><div class="notes">' . $set->notesHtml . '</div></section>';
         $head = $isAlbum ? $this->head($entry->prefix, 'ls ' . $entry->slug) : $this->head($entry->prefix, 'play ' . basename($entry->slug));
         $badge = $isAlbum ? 'Album' : 'Set';
         $source = $isAlbum ? '' : '<p class="source"><a href="source.md">Quelltext dieses Sets</a></p>';
@@ -924,46 +921,46 @@ final class Renderer
 
         $payload = json_encode(
             [
-                'title' => $set['title'],
+                'title' => $set->title,
                 'album' => $entry->kind === EntryKind::Album,
-                'loop' => $set['loop'],
-                'parts' => array_map(fn(array $part): array => [
-                    'title' => $part['title'],
-                    'bpm' => $part['bpm'],
-                    'stepSeconds' => $part['stepSeconds'],
-                    'stepsPerBar' => $part['stepsPerBar'],
-                    'stepsPerBeat' => $part['stepsPerBeat'],
-                    'start' => $part['start'],
-                    'stop' => $part['stop'],
-                    'startBar' => $part['startBar'],
-                    'repeat' => $part['repeat'],
+                'loop' => $set->loop,
+                'parts' => array_map(fn(SetPart $part): array => [
+                    'title' => $part->title,
+                    'bpm' => $part->bpm,
+                    'stepSeconds' => $part->stepSeconds,
+                    'stepsPerBar' => $part->stepsPerBar,
+                    'stepsPerBeat' => $part->stepsPerBeat,
+                    'start' => $part->start,
+                    'stop' => $part->stop,
+                    'startBar' => $part->startBar,
+                    'repeat' => $part->repeat,
                     'tracks' => array_map(fn(Track $track): array => [
                         'instrument' => $track->instrument,
                         'volume' => $track->volume,
                         'gate' => $track->gate,
                         'pw' => $track->pw,
                         'events' => $track->events,
-                    ], $part['tracks']),
-                ], $set['parts']),
+                    ], $part->tracks),
+                ], $set->parts),
             ],
             JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_THROW_ON_ERROR,
         );
 
         $items = '';
 
-        foreach ($set['parts'] as $index => $part) {
+        foreach ($set->parts as $index => $part) {
             $number = $index + 1;
-            $href = $this->url($part['prefix'] . '/' . $part['slug'] . '/');
-            $partTitle = $this->e($part['title']);
-            $by = $this->e($this->authorTitle($part['prefix']));
-            $bpm = $this->number($part['bpm']);
-            $from = $part['startBar'];
-            $to = $from + intdiv($part['stop'] - $part['start'], $part['stepsPerBar']) - 1;
+            $href = $this->url($part->prefix . '/' . $part->slug . '/');
+            $partTitle = $this->e($part->title);
+            $by = $this->e($this->authorTitle($part->prefix));
+            $bpm = $this->number($part->bpm);
+            $from = $part->startBar;
+            $to = $from + intdiv($part->stop - $part->start, $part->stepsPerBar) - 1;
             $bars = $from === $to ? "Bar {$from}" : "Bars {$from}–{$to}";
-            $repeat = $part['repeat'] > 1 ? ' <span>× <b>' . $part['repeat'] . '</b></span>' : '';
-            $length = $this->duration(($part['stop'] - $part['start']) * $part['stepSeconds'] * $part['repeat']);
-            $thumb = $this->thumbnail(['tracks' => $part['tracks'], 'steps' => $part['steps']], [$part['start'], $part['stop']]);
-            $text = $part['notesHtml'] === '' ? '' : '<div class="notes inner">' . $part['notesHtml'] . '</div>';
+            $repeat = $part->repeat > 1 ? ' <span>× <b>' . $part->repeat . '</b></span>' : '';
+            $length = $this->duration(($part->stop - $part->start) * $part->stepSeconds * $part->repeat);
+            $thumb = $this->thumbnail(['tracks' => $part->tracks, 'steps' => $part->steps], [$part->start, $part->stop]);
+            $text = $part->notesHtml === '' ? '' : '<div class="notes inner">' . $part->notesHtml . '</div>';
 
             $items .= <<<HTML
 
@@ -981,7 +978,7 @@ final class Renderer
                 HTML;
         }
 
-        return $this->page($set['title'] . ' – ' . $this->site['title'], 'project-page set-page', <<<HTML
+        return $this->page($set->title . ' – ' . $this->site['title'], 'project-page set-page', <<<HTML
               <script type="application/json" id="set">{$payload}</script>
               {$head}
               <main>

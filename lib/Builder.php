@@ -285,7 +285,7 @@ final class Builder
         }
 
         $data = $sets->parse($source, $album['slug'], $library->project(...));
-        $data['notesHtml'] = $html;
+        $data = $data->withNotesHtml($html);
 
         return new Entry(
             prefix: $album['prefix'],
