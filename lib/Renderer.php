@@ -381,8 +381,8 @@ final class Renderer
         $descriptions = [];
 
         foreach ($project['tracks'] as $track) {
-            if (isset($track['group']) && !isset($descriptions[$track['group']['ref']])) {
-                $descriptions[$track['group']['ref']] = $track['group']['description'];
+            if ($track->group !== null && !isset($descriptions[$track->group->ref])) {
+                $descriptions[$track->group->ref] = $track->group->description;
             }
         }
 
@@ -418,7 +418,7 @@ final class Renderer
             $project['bpm'],
             $project['stepsPerBeat'],
             $project['steps'],
-            array_map(fn(array $track): array => [$track['name'], $track['instrument'], $track['volume'], $track['gate'], $track['events']], $project['tracks']),
+            array_map(fn(Track $track): array => [$track->name, $track->instrument, $track->volume, $track->gate, $track->events], $project['tracks']),
         ];
 
         return substr(sha1(json_encode($data, JSON_THROW_ON_ERROR)), 0, 8);
@@ -439,21 +439,27 @@ final class Renderer
             'media' => (object) (
                 ($project['media'] ?? new Media())->toArray() + (isset($project['media']->release) ? ['releaseLabel' => $this->releaseLabel($project['media']->release)] : [])
             ),
-            'tracks' => array_map(function (array $track): array {
-                $notes = $track['notesHtml'] !== '';
-                unset($track['notesHtml']);
+            'tracks' => array_map(function (Track $track): array {
+                $data = [
+                    'name' => $track->name,
+                    'instrument' => $track->instrument,
+                    'volume' => $track->volume,
+                    'gate' => $track->gate,
+                    'pw' => $track->pw,
+                    'steps' => $track->steps,
+                    'events' => $track->events,
+                    'refs' => array_map(fn(array $ref): array => $ref + ['href' => $this->url($ref['ref'] . '/')], $track->refs),
+                ];
 
-                $track['refs'] = array_map(fn(array $ref): array => $ref + ['href' => $this->url($ref['ref'] . '/')], $track['refs'] ?? []);
-
-                if (isset($track['group'])) {
-                    $track['group'] = [
-                        'title' => $track['group']['title'],
-                        'href' => $this->url($track['group']['ref'] . '/'),
-                        'bpm' => $track['group']['bpm'],
+                if ($track->group !== null) {
+                    $data['group'] = [
+                        'title' => $track->group->title,
+                        'href' => $this->url($track->group->ref . '/'),
+                        'bpm' => $track->group->bpm,
                     ];
                 }
 
-                return $track + ['notes' => $notes];
+                return $data + ['notes' => $track->notesHtml !== ''];
             }, $project['tracks']),
         ];
     }
@@ -934,12 +940,12 @@ final class Renderer
                     'stop' => $part['stop'],
                     'startBar' => $part['startBar'],
                     'repeat' => $part['repeat'],
-                    'tracks' => array_map(fn(array $track): array => [
-                        'instrument' => $track['instrument'],
-                        'volume' => $track['volume'],
-                        'gate' => $track['gate'],
-                        'pw' => $track['pw'],
-                        'events' => $track['events'],
+                    'tracks' => array_map(fn(Track $track): array => [
+                        'instrument' => $track->instrument,
+                        'volume' => $track->volume,
+                        'gate' => $track->gate,
+                        'pw' => $track->pw,
+                        'events' => $track->events,
                     ], $part['tracks']),
                 ], $set['parts']),
             ],
@@ -1001,13 +1007,13 @@ final class Renderer
             HTML, withScript: true);
     }
 
-    /** @param list<array<string, mixed>> $tracks */
+    /** @param list<Track> $tracks */
     private function trackNotes(array $tracks): string
     {
         $html = '';
 
         foreach ($tracks as $index => $track) {
-            if ($track['notesHtml'] === '') {
+            if ($track->notesHtml === '') {
                 continue;
             }
 
@@ -1015,9 +1021,9 @@ final class Renderer
                 "\n      <details class=\"track-note t%d\" id=\"track-%d\"><summary><span class=\"name\">%s</span> <span class=\"instrument\">%s</span></summary><div class=\"notes inner\">%s</div></details>",
                 $index % 8,
                 $index + 1,
-                $this->e(isset($track['group']) ? $track['group']['title'] . ' | ' . $track['name'] : $track['name']),
-                $this->e($track['instrument']),
-                $track['notesHtml'],
+                $this->e($track->group !== null ? $track->group->title . ' | ' . $track->name : $track->name),
+                $this->e($track->instrument),
+                $track->notesHtml,
             );
         }
 
@@ -1059,12 +1065,13 @@ final class Renderer
     private const ROW = 8;
     private const GAP = 3;
 
-    /** @param list<array<string, mixed>> $tracks */
+    /** @param list<Track> $tracks */
     private function rowsHeight(array $tracks): int
     {
         return (count($tracks) * (self::ROW + self::GAP)) - self::GAP;
     }
 
+    /** @param list<Track> $tracks */
     private function rows(array $tracks): string
     {
         $row = self::ROW;
@@ -1074,19 +1081,19 @@ final class Renderer
             $top = $index * ($row + self::GAP);
             $svg .= '<g class="t' . ($index % 8) . '">';
 
-            if ($track['instrument'] === 'drums') {
-                $kinds = array_values(array_filter(self::DRUM_ORDER, fn(string $kind): bool => in_array($kind, array_column($track['events'], 'd'), true)));
+            if ($track->isDrums()) {
+                $kinds = array_values(array_filter(self::DRUM_ORDER, fn(string $kind): bool => in_array($kind, array_column($track->events, 'd'), true)));
                 $part = $kinds === [] ? $row : $row / count($kinds);
 
-                foreach ($track['events'] as $event) {
+                foreach ($track->events as $event) {
                     $svg .= $this->rect($event['t'], $top + (array_search($event['d'], $kinds, true) * $part), $event['len'], max($part - ($part < $row ? 0.5 : 0), 0.5));
                 }
             } else {
-                $midis = array_map(fn(array $event): float => 69 + (12 * log($event['f'] / 440, 2)), $track['events']);
+                $midis = array_map(fn(array $event): float => 69 + (12 * log($event['f'] / 440, 2)), $track->events);
                 $low = $midis === [] ? 0 : min($midis);
                 $span = $midis === [] ? 1 : max($midis) - $low;
 
-                foreach ($track['events'] as $position => $event) {
+                foreach ($track->events as $position => $event) {
                     $level = $span > 0 ? ($midis[$position] - $low) / $span : 0.5;
                     $svg .= $this->rect($event['t'], $top + ((1 - $level) * ($row - 2.5)), $event['len'], 2.5);
                 }

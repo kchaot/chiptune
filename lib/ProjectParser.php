@@ -46,7 +46,7 @@ final class ProjectParser
      * @return array{
      *     format: int, title: string, artist: string, tags: list<string>, bpm: float,
      *     stepsPerBeat: int, stepsPerBar: int, stepSeconds: float, loop: bool, steps: int, bars: float,
-     *     tracks: list<array<string, mixed>>, warnings: list<string>, notesHtml: string,
+     *     tracks: list<Track>, warnings: list<string>, notesHtml: string,
      *     remix: bool|null, credits: list<array{prefix: string, slug: string, title: string}>
      * }
      */
@@ -111,7 +111,7 @@ final class ProjectParser
 
     /**
      * @param array<string, mixed> $meta
-     * @param list<array<string, mixed>> $tracks
+     * @param list<Track> $tracks
      * @param array<string, array{prefix: string, slug: string, title: string}> $credits
      * @param array<string, mixed> $extra
      * @return array<string, mixed>
@@ -128,13 +128,13 @@ final class ProjectParser
         array $extra = [],
     ): array {
         $stepsPerBar = $stepsPerBeat * 4;
-        $steps = max(array_column($tracks, 'steps'));
+        $steps = max(array_map(fn(Track $track): int => $track->steps, $tracks));
 
         $warnings = [];
 
         foreach ($tracks as $track) {
-            if (!isset($extra['layers']) && $track['steps'] !== $steps) {
-                $warnings[] = "Track „{$track['name']}“ hat {$track['steps']} Steps, der längste {$steps}.";
+            if (!isset($extra['layers']) && $track->steps !== $steps) {
+                $warnings[] = "Track „{$track->name}“ hat {$track->steps} Steps, der längste {$steps}.";
             }
         }
 
@@ -241,7 +241,7 @@ final class ProjectParser
                 throw new BuildError("{$where}: „name“ hat 1 bis 32 Zeichen ohne < > & \".");
             }
 
-            $names = array_column($source['tracks'], 'name');
+            $names = array_map(fn(Track $track): string => $track->name, $source['tracks']);
             $selected = $names;
 
             if (array_key_exists('tracks', $fm)) {
@@ -354,20 +354,20 @@ final class ProjectParser
         foreach ($layers as $layer) {
             $repeat = $layer['repeat'] === 'fill' ? max(1, (int) ceil(($total - $layer['start']) / $layer['length'])) : $layer['repeat'];
 
-            $group = [
-                'title' => $layer['name'],
-                'ref' => $layer['ref'],
-                'bpm' => $layer['source']['bpm'],
-                'at' => $layer['at'],
-                'description' => $layer['description'],
-            ];
+            $group = new TrackGroup(
+                title: $layer['name'],
+                ref: $layer['ref'],
+                bpm: $layer['source']['bpm'],
+                at: $layer['at'],
+                description: $layer['description'],
+            );
 
             foreach ($layer['tracks'] as $trackName) {
                 $isDrums = false;
 
                 foreach ($layer['source']['tracks'] as $candidate) {
-                    if ($candidate['name'] === $trackName) {
-                        $isDrums = $candidate['instrument'] === 'drums';
+                    if ($candidate->name === $trackName) {
+                        $isDrums = $candidate->isDrums();
                     }
                 }
 
@@ -386,18 +386,18 @@ final class ProjectParser
                 $events = $result['events'];
                 usort($events, fn(array $a, array $b): int => $a['t'] <=> $b['t']);
 
-                $tracks[] = [
-                    'name' => $trackName,
-                    'instrument' => $first['instrument'],
-                    'volume' => $first['volume'],
-                    'gate' => $first['gate'],
-                    'pw' => $first['pw'],
-                    'steps' => $result['end'],
-                    'events' => $events,
-                    'refs' => $result['bands'],
-                    'group' => $group,
-                    'notesHtml' => $first['notesHtml'],
-                ];
+                $tracks[] = new Track(
+                    name: $trackName,
+                    instrument: $first->instrument,
+                    volume: $first->volume,
+                    gate: $first->gate,
+                    pw: $first->pw,
+                    steps: $result['end'],
+                    events: $events,
+                    refs: $result['bands'],
+                    notesHtml: $first->notesHtml,
+                    group: $group,
+                );
             }
         }
 
@@ -418,9 +418,8 @@ final class ProjectParser
     /**
      * @param (\Closure(string): array{prefix: string, slug: string, project: array<string, mixed>})|null $resolve
      * @param array<string, array{prefix: string, slug: string, title: string}> $credits
-     * @return array<string, mixed>
      */
-    private function parseTrack(ParsedMarkdown $chunk, int $stepsPerBeat, ?\Closure $resolve, string $owner, array &$credits): array
+    private function parseTrack(ParsedMarkdown $chunk, int $stepsPerBeat, ?\Closure $resolve, string $owner, array &$credits): Track
     {
         $name = trim((string) $chunk->name);
         $fm = $chunk->frontmatter;
@@ -450,7 +449,7 @@ final class ProjectParser
             );
         }
 
-        $instrument = $fm['instrument'] ?? $inherit['instrument'] ?? 'square';
+        $instrument = $fm['instrument'] ?? $inherit->instrument ?? 'square';
 
         if (!is_string($instrument) || !in_array($instrument, self::INSTRUMENTS, true)) {
             throw new BuildError("{$where}: unbekanntes instrument (erlaubt: " . implode(', ', self::INSTRUMENTS) . ').');
@@ -514,24 +513,22 @@ final class ProjectParser
         $events = array_merge($clipEvents, $events);
         usort($events, fn(array $a, array $b): int => $a['t'] <=> $b['t']);
 
-        $defaults = $inherit ?? [];
-
-        return [
-            'name' => $name,
-            'instrument' => $instrument,
-            'volume' => $this->number($fm, 'volume', (float) ($defaults['volume'] ?? ($isDrums ? 0.3 : 0.2)), 0, 1, $where),
-            'gate' => $this->number($fm, 'gate', (float) ($defaults['gate'] ?? 0.9), 0.05, 1, $where),
-            'pw' => $this->number($fm, 'pw', (float) ($defaults['pw'] ?? 0.25), 0.05, 0.5, $where),
-            'steps' => max($step, $clipEnd),
-            'events' => $events,
-            'refs' => $bands,
-            'notesHtml' => $this->sanitizer->clean($description),
-        ];
+        return new Track(
+            name: $name,
+            instrument: $instrument,
+            volume: $this->number($fm, 'volume', $inherit->volume ?? ($isDrums ? 0.3 : 0.2), 0, 1, $where),
+            gate: $this->number($fm, 'gate', $inherit->gate ?? 0.9, 0.05, 1, $where),
+            pw: $this->number($fm, 'pw', $inherit->pw ?? 0.25, 0.05, 0.5, $where),
+            steps: max($step, $clipEnd),
+            events: $events,
+            refs: $bands,
+            notesHtml: $this->sanitizer->clean($description),
+        );
     }
 
     /**
      * @param array<string, array{prefix: string, slug: string, title: string}> $credits
-     * @return array{events: list<array<string, mixed>>, end: int, first: array<string, mixed>|null, drums: list<bool>, bands: list<array<string, mixed>>}
+     * @return array{events: list<array<string, mixed>>, end: int, first: Track|null, drums: list<bool>, bands: list<array<string, mixed>>}
      */
     private function clips(mixed $clips, string $where, int $dstSpb, ?\Closure $resolve, string $owner, array &$credits): array
     {
@@ -584,7 +581,7 @@ final class ProjectParser
             $sourceTrack = null;
 
             foreach ($source['tracks'] as $candidate) {
-                if ($candidate['name'] === $trackName) {
+                if ($candidate->name === $trackName) {
                     $sourceTrack = $candidate;
 
                     break;
@@ -592,7 +589,11 @@ final class ProjectParser
             }
 
             if ($sourceTrack === null) {
-                throw new BuildError("{$label}: „{$prefix}/{$slug}“ hat keinen Track „{$trackName}“ (vorhanden: " . implode(', ', array_column($source['tracks'], 'name')) . ').');
+                throw new BuildError(
+                    "{$label}: „{$prefix}/{$slug}“ hat keinen Track „{$trackName}“ (vorhanden: "
+                    . implode(', ', array_map(fn(Track $track): string => $track->name, $source['tracks']))
+                    . ').',
+                );
             }
 
             $srcSpb = $source['stepsPerBeat'];
@@ -643,7 +644,7 @@ final class ProjectParser
 
             $repeat = isset($clip['repeat']) ? $this->integer($clip['repeat'], "{$label}: „repeat“", 1, 64) : 1;
             $transpose = isset($clip['transpose']) ? $this->integer($clip['transpose'], "{$label}: „transpose“", -36, 36) : 0;
-            $isDrums = $sourceTrack['instrument'] === 'drums';
+            $isDrums = $sourceTrack->isDrums();
 
             if ($isDrums && $transpose !== 0) {
                 throw new BuildError("{$label}: „transpose“ gibt es nur für Noten-Tracks.");
@@ -656,7 +657,7 @@ final class ProjectParser
             for ($r = 0; $r < $repeat; $r++) {
                 $base = $at + ($r * $length);
 
-                foreach ($sourceTrack['events'] as $event) {
+                foreach ($sourceTrack->events as $event) {
                     if ($event['t'] < $start || $event['t'] >= $stop) {
                         continue;
                     }
