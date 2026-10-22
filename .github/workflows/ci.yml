@@ -24,6 +24,15 @@ jobs:
       - name: Abhängigkeiten installieren
         run: composer install --no-interaction --no-progress --prefer-dist
 
+      - name: Format prüfen
+        run: composer fmt:check
+
+      - name: Lint
+        run: composer lint
+
+      - name: Statische Analyse
+        run: composer analyse
+
       - name: Seite bauen
         run: php bin/build.php
 
