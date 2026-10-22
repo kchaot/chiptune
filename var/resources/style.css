@@ -893,7 +893,12 @@ body.code-page::after { display: none; }
 .doc-index { margin: 0 0 1rem; padding: 0; list-style: none; columns: 2 24rem; font-size: 0.85rem; }
 .doc-index li { break-inside: avoid; margin-bottom: 0.2rem; }
 .doc-index span { color: var(--ink-soft); }
-.doc-area > h2 { margin: 2.5rem 0 0.5rem; padding-top: 1rem; border-top: 1px dashed var(--line); color: var(--cream); font-size: 1.25rem; }
+.doc-area { margin-top: 2rem; border-top: 1px dashed var(--line); }
+.doc-area > summary { padding: 1rem 0 0.5rem; cursor: pointer; list-style: none; }
+.doc-area > summary::-webkit-details-marker { display: none; }
+.doc-area > summary h2 { display: inline; margin: 0; color: var(--cream); font-size: 1.25rem; }
+.doc-area > summary::before { content: "▾ "; color: var(--violet); }
+.doc-area:not([open]) > summary::before { content: "▸ "; }
 .doc { margin: 0 0 1.75rem; padding: 0.9rem 1.1rem; background: var(--panel); border-left: 0.25rem solid var(--violet); scroll-margin-top: 1rem; }
 .doc h3 { margin: 0; color: var(--cream); font-size: 1.1rem; }
 .doc p { margin: 0.4rem 0; }

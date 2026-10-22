@@ -1087,7 +1087,7 @@ final class Renderer
             }
 
             $index .= '<h2>' . $this->e($title) . '</h2><p>' . $this->e($intro) . '</p><ul class="doc-index">' . $links . '</ul>';
-            $sections .= '<section class="doc-area"><h2>' . $this->e($title) . '</h2>' . $articles . '</section>';
+            $sections .= '<details class="doc-area" open><summary><h2>' . $this->e($title) . '</h2></summary>' . $articles . '</details>';
         }
 
         return $this->page('Code – ' . $this->site['title'], 'library code-page', <<<HTML
@@ -1100,7 +1100,18 @@ final class Renderer
                 <nav class="doc-toc" aria-label="Klassen">{$index}</nav>
                 {$sections}
               </main>
-            HTML);
+              <script>
+                function openTarget() {
+                  const target = document.getElementById(location.hash.slice(1));
+                  for (let node = target; node; node = node.parentElement) {
+                    if (node.tagName === 'DETAILS') node.open = true;
+                  }
+                  if (target) target.scrollIntoView();
+                }
+                addEventListener('hashchange', openTarget);
+                openTarget();
+              </script>
+            HTML, false, false, false);
     }
 
     private function docText(string $text, bool $paragraphs = false): string
@@ -1221,7 +1232,7 @@ final class Renderer
         return sprintf('<rect x="%d" y="%s" width="%d" height="%s"/>', $x, $this->number($y, 2), $width, $this->number($height, 2));
     }
 
-    private function page(string $title, string $bodyClass, string $body, bool $withScript = false, bool $mixLink = true): string
+    private function page(string $title, string $bodyClass, string $body, bool $withScript = false, bool $mixLink = true, bool $withFooter = true): string
     {
         $title = $this->e($title);
         $css = $this->e($this->assets['css']['url']);
@@ -1237,7 +1248,7 @@ final class Renderer
             . ' defer></script>'
             : '';
         $cssCross = $this->crossorigin($this->assets['css']['url']);
-        $footer = $this->footer($mixLink);
+        $footer = $withFooter ? $this->footer($mixLink) : '';
 
         return <<<HTML
             <!DOCTYPE html>
