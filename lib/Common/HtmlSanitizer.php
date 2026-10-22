@@ -158,6 +158,6 @@ final class HtmlSanitizer
             return false;
         }
 
-        return preg_match('~^(https?://|mailto:|/(?!/)|#|[a-z0-9._-]+(/|$))~i', $href) === 1;
+        return preg_match('~^(https?://|mailto:|/(?!/)|#|[a-z0-9._+-]+(/|$))~i', $href) === 1;
     }
 }

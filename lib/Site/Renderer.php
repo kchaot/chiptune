@@ -1042,6 +1042,97 @@ final class Renderer
         return $html === '' ? '' : '<section class="track-notes"><h2 class="sub">Zusätzliche Spurinformationen</h2>' . $html . "\n    </section>";
     }
 
+    /**
+     * @param array<string, list<DocEntry>> $areas
+     */
+    public function code(array $areas): string
+    {
+        $head = $this->head(null, 'cat code.md');
+        $index = '';
+        $sections = '';
+
+        foreach ($areas as $area => $entries) {
+            [$title, $intro] = CodeDocs::AREAS[$area];
+            $links = '';
+            $articles = '';
+
+            foreach ($entries as $entry) {
+                $id = $this->e(strtolower($entry->short));
+                $links .= '<li><a href="#' . $id . '">' . $this->e($entry->short) . '</a> <span>' . $this->docText($entry->summary()) . '</span></li>';
+                $articles .=
+                    '<article class="doc" id="'
+                    . $id
+                    . '"><h3>'
+                    . $this->e($entry->short)
+                    . '</h3><p class="doc-name">'
+                    . $this->e($entry->kind)
+                    . ' <code>'
+                    . $this->e($entry->name)
+                    . '</code></p>';
+                $articles .= $entry->text === '' ? '<p><em>Noch keine Beschreibung.</em></p>' : $this->docText($entry->text, true);
+                $articles .= $this->docTable('Felder', ['Name', 'Typ'], array_map(static fn(array $field): array => [$field['name'], $field['type']], $entry->fields));
+                $articles .= $entry->cases === []
+                    ? ''
+                    : '<p class="doc-cases"><b>Fälle</b> <code>' . implode('</code> <code>', array_map($this->e(...), $entry->cases)) . '</code></p>';
+                $articles .= $this->docTable('Konstanten', ['Name', 'Wert'], array_map(static fn(array $constant): array => [
+                    $constant['name'],
+                    $constant['value'],
+                ], $entry->constants));
+                $articles .= $entry->methods === []
+                    ? ''
+                    : '<p class="doc-table"><b>Methoden</b></p><ul class="doc-methods">'
+                    . implode('', array_map(fn(string $method): string => '<li><code>' . $this->e($method) . '</code></li>', $entry->methods))
+                    . '</ul>';
+                $articles .= '</article>';
+            }
+
+            $index .= '<h2>' . $this->e($title) . '</h2><p>' . $this->e($intro) . '</p><ul class="doc-index">' . $links . '</ul>';
+            $sections .= '<section class="doc-area"><h2>' . $this->e($title) . '</h2>' . $articles . '</section>';
+        }
+
+        return $this->page('Code – ' . $this->site['title'], 'library code-page', <<<HTML
+              {$head}
+              <main>
+                <div class="heading">
+                  <h1>Code-Übersicht</h1>
+                  <p class="lead">Für alle, die am Code mitbauen. Entsteht bei jedem Build aus den Klassenbeschreibungen in <code>lib/</code>.</p>
+                </div>
+                <nav class="doc-toc" aria-label="Klassen">{$index}</nav>
+                {$sections}
+              </main>
+            HTML);
+    }
+
+    private function docText(string $text, bool $paragraphs = false): string
+    {
+        $inline = fn(string $part): string => (string) preg_replace('/`([^`]+)`/', '<code>$1</code>', $this->e(trim((string) preg_replace('/\s+/', ' ', $part))));
+
+        if (!$paragraphs) {
+            return $inline($text);
+        }
+
+        return implode('', array_map(
+            fn(string $part): string => '<p>' . $inline($part) . '</p>',
+            array_filter(explode("\n\n", $text), static fn(string $part): bool => trim($part) !== ''),
+        ));
+    }
+
+    /**
+     * @param list<string> $columns
+     * @param list<array{string, string}> $rows
+     */
+    private function docTable(string $title, array $columns, array $rows): string
+    {
+        if ($rows === []) {
+            return '';
+        }
+
+        $head = implode('', array_map(fn(string $column): string => '<th>' . $this->e($column) . '</th>', $columns));
+        $body = implode('', array_map(fn(array $row): string => '<tr><td><code>' . $this->e($row[0]) . '</code></td><td><code>' . $this->e($row[1]) . '</code></td></tr>', $rows));
+
+        return '<p class="doc-table"><b>' . $this->e($title) . '</b></p><table class="doc-table"><thead><tr>' . $head . '</tr></thead><tbody>' . $body . '</tbody></table>';
+    }
+
     public function notFound(): string
     {
         $site = $this->e($this->site['title']);

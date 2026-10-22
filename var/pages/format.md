@@ -12,3 +12,7 @@ Jeder Song ist eine einzige Markdown-Datei aus mehreren Teilen. Eine sogenannte 
 ## Mehr Einblick
 
 Eine erste Basis zum Format gibt das README im Daten-Repo vom "Tutor": [github.com/ek9r/chiptune-data](https://github.com/ek9r/chiptune-data#readme).
+
+## Kleingedrucktes
+
+Wer am Code mitbauen will, findet hier eine: [Code-Übersicht](+code/)
