@@ -23,7 +23,7 @@ final class Renderer
     ) {}
 
     /**
-     * @param list<array{prefix: string, slug: string, project: array<string, mixed>}> $entries
+     * @param list<Entry> $entries
      * @param string|null $prefix
      */
     public function library(array $entries, ?string $prefix = null): string
@@ -69,22 +69,19 @@ final class Renderer
             HTML);
     }
 
-    /**
-     * @param array<string, mixed> $entry
-     */
-    private function libraryItem(array $entry, ?string $prefix): string
+    private function libraryItem(Entry $entry, ?string $prefix): string
     {
-        $project = $entry['project'];
-        $href = $this->url($entry['prefix'] . '/' . $entry['slug'] . '/');
+        $project = $entry->project;
+        $href = $this->url($entry->prefix . '/' . $entry->slug . '/');
         $title = $this->e($project['title']);
-        $artist = $this->artistLine($project['artist'], $entry['prefix'], 'span');
+        $artist = $this->artistLine($project['artist'], $entry->prefix, 'span');
         $rel = '';
         $author = $prefix !== null
             ? ''
-            : '<span class="author">von <a href="' . $this->url($entry['prefix'] . '/') . '">' . $this->e($this->authorTitle($entry['prefix'])) . '</a></span>';
+            : '<span class="author">von <a href="' . $this->url($entry->prefix . '/') . '">' . $this->e($this->authorTitle($entry->prefix)) . '</a></span>';
         $tags = implode('', array_map(fn(string $tag): string => '<li>' . $this->e($tag) . '</li>', $project['tags']));
         $tags = $tags === '' ? '' : '<ul class="tags">' . $tags . '</ul>';
-        if (($entry['kind'] ?? 'project') === 'link') {
+        if ($entry->kind === EntryKind::Link) {
             $media = $project['media'];
             $info = $media->info;
             $own = $media->releaseOwn;
@@ -100,12 +97,12 @@ final class Renderer
             $from = $links === '' ? '' : '<span class="author">' . str_replace(['<p class="credits">Enthält Material aus ', '.</p>'], ['aus ', ''], $links) . '</span>';
             $author .= $from;
             $rel = $own ? '' : ' rel="noopener noreferrer"';
-        } elseif (($entry['kind'] ?? 'project') === 'session') {
+        } elseif ($entry->kind === EntryKind::Session) {
             $facts = '<span>A: <b>' . $this->e($project['a']['title']) . '</b></span> <span>B: <b>' . $this->e($project['b']['title']) . '</b></span>';
             $thumbnail = '';
             $badge = '<span class="badge">Session</span> ';
-        } elseif (in_array($entry['kind'] ?? 'project', ['set', 'album'], true)) {
-            $isAlbum = $entry['kind'] === 'album';
+        } elseif (in_array($entry->kind, [EntryKind::Set, EntryKind::Album], true)) {
+            $isAlbum = $entry->kind === EntryKind::Album;
             $parts = count($project['parts']);
             $length = $this->duration($project['duration']);
             $noun = $isAlbum ? ($parts === 1 ? 'Song' : 'Songs') : ($parts === 1 ? 'Part' : 'Parts');
@@ -140,7 +137,7 @@ final class Renderer
     }
 
     /**
-     * @param list<array<string, mixed>> $entries
+     * @param list<Entry> $entries
      */
     private function libraryList(array $entries, ?string $prefix): string
     {
@@ -153,9 +150,9 @@ final class Renderer
         $singles = [];
 
         foreach ($entries as $entry) {
-            $group = (string) ($entry['project']['group'] ?? '');
+            $group = (string) ($entry->project['group'] ?? '');
 
-            if (($entry['kind'] ?? 'project') === 'album') {
+            if ($entry->kind === EntryKind::Album) {
                 $albums[] = $entry;
             } elseif ($group !== '') {
                 $groups[mb_strtolower($group)][] = $entry;
@@ -165,12 +162,12 @@ final class Renderer
         }
 
         $items = fn(array $list): string => (
-            '<ul class="projects">' . implode('', array_map(fn(array $entry): string => $this->libraryItem($entry, $prefix), $list)) . "\n    </ul>"
+            '<ul class="projects">' . implode('', array_map(fn(Entry $entry): string => $this->libraryItem($entry, $prefix), $list)) . "\n    </ul>"
         );
         $html = $albums === [] ? '' : $items($albums);
 
         foreach ($groups as $members) {
-            $name = $this->e((string) $members[0]['project']['group']);
+            $name = $this->e((string) $members[0]->project['group']);
             $count = count($members);
             $noun = $count === 1 ? 'Song' : 'Songs';
             $html .=
@@ -183,7 +180,7 @@ final class Renderer
     }
 
     /**
-     * @param list<array{prefix: string, slug: string, kind: string, project: array<string, mixed>}> $entries
+     * @param list<Entry> $entries
      */
     private function authorList(array $entries): string
     {
@@ -195,14 +192,14 @@ final class Renderer
 
         foreach ($this->authors as $prefix => $author) {
             $prefix = (string) $prefix;
-            $own = array_filter($entries, fn(array $entry): bool => $entry['prefix'] === $prefix);
-            $sets = count(array_filter($own, fn(array $entry): bool => $entry['kind'] === 'set'));
-            $albums = count(array_filter($own, fn(array $entry): bool => $entry['kind'] === 'album'));
-            $sessions = count(array_filter($own, fn(array $entry): bool => $entry['kind'] === 'session'));
-            $links = count(array_filter($own, fn(array $entry): bool => $entry['kind'] === 'link'));
+            $own = array_filter($entries, fn(Entry $entry): bool => $entry->prefix === $prefix);
+            $sets = count(array_filter($own, fn(Entry $entry): bool => $entry->kind === EntryKind::Set));
+            $albums = count(array_filter($own, fn(Entry $entry): bool => $entry->kind === EntryKind::Album));
+            $sessions = count(array_filter($own, fn(Entry $entry): bool => $entry->kind === EntryKind::Session));
+            $links = count(array_filter($own, fn(Entry $entry): bool => $entry->kind === EntryKind::Link));
             $projects = count($own) - $sets - $albums - $sessions - $links;
-            $withHq = count(array_filter($own, fn(array $entry): bool => $entry['kind'] === 'project' && $entry['project']['media']->hq !== null));
-            $withRelease = count(array_filter($own, fn(array $entry): bool => $entry['kind'] === 'project' && $entry['project']['media']->release !== null));
+            $withHq = count(array_filter($own, fn(Entry $entry): bool => $entry->kind === EntryKind::Project && $entry->project['media']->hq !== null));
+            $withRelease = count(array_filter($own, fn(Entry $entry): bool => $entry->kind === EntryKind::Project && $entry->project['media']->release !== null));
             $facts = '<span><b>' . $projects . '</b> ' . ($projects === 1 ? 'Project' : 'Projects') . '</span>';
 
             if ($albums > 0) {
@@ -224,7 +221,7 @@ final class Renderer
             $count = [];
 
             foreach ($own as $entry) {
-                foreach ($entry['project']['tags'] as $tag) {
+                foreach ($entry->project['tags'] as $tag) {
                     $count[$tag] = ($count[$tag] ?? 0) + 1;
                 }
             }
@@ -484,21 +481,20 @@ final class Renderer
             HTML, true, false);
     }
 
-    /** @param array{prefix: string, slug: string, project: array<string, mixed>} $entry */
-    public function project(array $entry): string
+    public function project(Entry $entry): string
     {
-        $project = $entry['project'];
+        $project = $entry->project;
         $title = $this->e($project['title']);
-        $artist = $this->artistLine($project['artist'], $entry['prefix'], 'p');
+        $artist = $this->artistLine($project['artist'], $entry->prefix, 'p');
         $tags = implode('', array_map(fn(string $tag): string => '<li>' . $this->e($tag) . '</li>', $project['tags']));
         $tags = $tags === '' ? '' : '<ul class="tags">' . $tags . '</ul>';
         $notes = $project['notesHtml'] === '' ? '' : '<section class="aside wide"><div class="notes">' . $project['notesHtml'] . '</div></section>';
-        $head = $this->head($entry['prefix'] . ($entry['album'] !== null ? '/' . $entry['album'] : ''), 'play ' . basename($entry['slug']));
+        $head = $this->head($entry->prefix . ($entry->album !== null ? '/' . $entry->album : ''), 'play ' . basename($entry->slug));
         $credits = $this->credits($project['credits'] ?? []);
-        $albumNav = $this->albumNav($entry['nav'] ?? null, $entry['prefix']);
+        $albumNav = $this->albumNav($entry->nav, $entry->prefix);
         $thumbnail = $this->thumbnail($project);
 
-        $payload = json_encode($this->projectPayload($project) + (($entry['strudel'] ?? null) !== null ? ['strudel' => $entry['strudel']] : []), self::JSON_FLAGS);
+        $payload = json_encode($this->projectPayload($project) + ($entry->strudel !== null ? ['strudel' => $entry->strudel] : []), self::JSON_FLAGS);
 
         $trackNotes = $this->trackNotes($project['tracks']);
         $layersPanel = $this->layersPanel($project);
@@ -742,18 +738,15 @@ final class Renderer
         return $this->url('+mixer/') . '#' . $this->e($query);
     }
 
-    /**
-     * @param array{prefix: string, slug: string, project: array<string, mixed>} $entry
-     */
-    public function session(array $entry): string
+    public function session(Entry $entry): string
     {
-        $session = $entry['project'];
+        $session = $entry->project;
         $title = $this->e($session['title']);
-        $artist = $this->artistLine($session['artist'], $entry['prefix'], 'p');
+        $artist = $this->artistLine($session['artist'], $entry->prefix, 'p');
         $tags = implode('', array_map(fn(string $tag): string => '<li>' . $this->e($tag) . '</li>', $session['tags']));
         $tags = $tags === '' ? '' : '<ul class="tags">' . $tags . '</ul>';
         $notes = $session['notesHtml'] === '' ? '' : '<section class="aside wide"><div class="notes">' . $session['notesHtml'] . '</div></section>';
-        $head = $this->head($entry['prefix'] . ($entry['album'] !== null ? '/' . $entry['album'] : ''), 'mix ' . basename($entry['slug']));
+        $head = $this->head($entry->prefix . ($entry->album !== null ? '/' . $entry->album : ''), 'mix ' . basename($entry->slug));
         $href = $this->mixLink($session, $session['title']);
         $rows = '';
 
@@ -816,23 +809,20 @@ final class Renderer
         return isset($m[3]) ? (int) $m[3] . '. ' . $months[$month] . ' ' . $m[1] : $months[$month] . ' ' . $m[1];
     }
 
-    /**
-     * @param array{prefix: string, slug: string, project: array<string, mixed>} $entry
-     */
-    public function link(array $entry): string
+    public function link(Entry $entry): string
     {
-        $release = $entry['project'];
+        $release = $entry->project;
         $media = $release['media'];
         $info = $media->info;
         $url = (string) $media->release;
         $own = $media->releaseOwn;
         $heading = $info->title ?? $release['title'];
         $title = $this->e($heading);
-        $artist = $this->artistLine($release['artist'], $entry['prefix'], 'p');
+        $artist = $this->artistLine($release['artist'], $entry->prefix, 'p');
         $tags = implode('', array_map(fn(string $tag): string => '<li>' . $this->e($tag) . '</li>', $release['tags']));
         $tags = $tags === '' ? '' : '<ul class="tags">' . $tags . '</ul>';
         $notes = $release['notesHtml'] === '' ? '' : '<section class="aside wide"><div class="notes">' . $release['notesHtml'] . '</div></section>';
-        $head = $this->head($entry['prefix'] . ($entry['album'] !== null ? '/' . $entry['album'] : ''), 'link ' . basename($entry['slug']));
+        $head = $this->head($entry->prefix . ($entry->album !== null ? '/' . $entry->album : ''), 'link ' . basename($entry->slug));
         $facts = array_filter([$this->dateText($info->date ?? ''), $info->catalog ?? '', $info->label ?? '', $info->license ?? '']);
         $factLine = $facts === [] ? '' : '<p class="release-facts">' . $this->e(implode(' | ', $facts)) . '</p>';
         $credits = '';
@@ -885,19 +875,16 @@ final class Renderer
             HTML, $own);
     }
 
-    /**
-     * @param array{prefix: string, slug: string, project: array<string, mixed>} $entry
-     */
-    public function set(array $entry): string
+    public function set(Entry $entry): string
     {
-        $set = $entry['project'];
-        $isAlbum = $entry['kind'] === 'album';
+        $set = $entry->project;
+        $isAlbum = $entry->kind === EntryKind::Album;
         $title = $this->e($set['title']);
-        $artist = $this->artistLine($set['artist'], $entry['prefix'], 'p');
+        $artist = $this->artistLine($set['artist'], $entry->prefix, 'p');
         $tags = implode('', array_map(fn(string $tag): string => '<li>' . $this->e($tag) . '</li>', $set['tags']));
         $tags = $tags === '' ? '' : '<ul class="tags">' . $tags . '</ul>';
         $notes = $set['notesHtml'] === '' ? '' : '<section class="aside' . ($isAlbum ? '' : ' wide') . '"><div class="notes">' . $set['notesHtml'] . '</div></section>';
-        $head = $isAlbum ? $this->head($entry['prefix'], 'ls ' . $entry['slug']) : $this->head($entry['prefix'], 'play ' . basename($entry['slug']));
+        $head = $isAlbum ? $this->head($entry->prefix, 'ls ' . $entry->slug) : $this->head($entry->prefix, 'play ' . basename($entry->slug));
         $badge = $isAlbum ? 'Album' : 'Set';
         $source = $isAlbum ? '' : '<p class="source"><a href="source.md">Quelltext dieses Sets</a></p>';
         $introNotes = $isAlbum ? $notes : '';
@@ -905,13 +892,13 @@ final class Renderer
 
         $sessionList = '';
 
-        foreach ($entry['sessions'] ?? [] as $session) {
+        foreach ($entry->sessions as $session) {
             $sessionList .= sprintf(
                 "\n      <li><a href=\"%s\">%s</a> <span class=\"layer-facts\">A: %s, B: %s</span></li>",
-                $this->url($session['prefix'] . '/' . $session['slug'] . '/'),
-                $this->e($session['project']['title']),
-                $this->e($session['project']['a']['title']),
-                $this->e($session['project']['b']['title']),
+                $this->url($session->prefix . '/' . $session->slug . '/'),
+                $this->e($session->project['title']),
+                $this->e($session->project['a']['title']),
+                $this->e($session->project['b']['title']),
             );
         }
 
@@ -919,14 +906,14 @@ final class Renderer
 
         $linkList = '';
 
-        foreach ($entry['links'] ?? [] as $audio) {
-            $own = $audio['project']['media']->releaseOwn;
+        foreach ($entry->links as $audio) {
+            $own = $audio->project['media']->releaseOwn;
             $linkList .= sprintf(
                 "\n      <li><a href=\"%s\"%s>%s</a> <span class=\"layer-facts\">%s</span></li>",
-                $own ? $this->url($audio['prefix'] . '/' . $audio['slug'] . '/') : $this->e((string) $audio['project']['media']->release),
+                $own ? $this->url($audio->prefix . '/' . $audio->slug . '/') : $this->e((string) $audio->project['media']->release),
                 $own ? '' : ' rel="noopener noreferrer"',
-                $this->e($audio['project']['title']),
-                $this->e($own ? $audio['project']['artist'] : $audio['project']['artist'] . ' | ' . $this->releaseLabel((string) $audio['project']['media']->release) . ' ↗'),
+                $this->e($audio->project['title']),
+                $this->e($own ? $audio->project['artist'] : $audio->project['artist'] . ' | ' . $this->releaseLabel((string) $audio->project['media']->release) . ' ↗'),
             );
         }
 
@@ -935,7 +922,7 @@ final class Renderer
         $payload = json_encode(
             [
                 'title' => $set['title'],
-                'album' => $entry['kind'] === 'album',
+                'album' => $entry->kind === EntryKind::Album,
                 'loop' => $set['loop'],
                 'parts' => array_map(fn(array $part): array => [
                     'title' => $part['title'],

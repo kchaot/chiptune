@@ -56,18 +56,19 @@ final class Builder
                 fwrite(STDERR, "Warnung in {$label}: „group“ gilt nur für Songs ohne Album und wird ignoriert.\n");
             }
 
-            $entries[] = [
-                'prefix' => $file['prefix'],
-                'slug' => $file['slug'],
-                'album' => $file['album'],
-                'source' => $file['file'],
-                'kind' => $loaded['kind'],
-                'project' => $loaded['data'],
-                'strudel' => $loaded['kind'] === 'project' ? $this->handStrudel($file['file'], $loaded['data'], $label) : null,
-            ];
+            $kind = EntryKind::from($loaded['kind']);
+            $entries[] = new Entry(
+                prefix: $file['prefix'],
+                slug: $file['slug'],
+                album: $file['album'],
+                source: $file['file'],
+                kind: $kind,
+                project: $loaded['data'],
+                strudel: $kind === EntryKind::Project ? $this->handStrudel($file['file'], $loaded['data'], $label) : null,
+            );
         }
 
-        usort($entries, fn(array $a, array $b): int => strcasecmp($a['project']['title'], $b['project']['title']));
+        usort($entries, fn(Entry $a, Entry $b): int => strcasecmp($a->project['title'], $b->project['title']));
 
         $albumEntries = [];
 
@@ -91,7 +92,7 @@ final class Builder
             return 1;
         }
 
-        usort($albumEntries, fn(array $a, array $b): int => strcasecmp($a['project']['title'], $b['project']['title']));
+        usort($albumEntries, fn(Entry $a, Entry $b): int => strcasecmp($a->project['title'], $b->project['title']));
         $entries = $this->linkAlbums($entries, $albumEntries);
 
         $authors = array_intersect_key($collected['authors'], array_flip(array_column($entries, 'prefix')));
@@ -111,59 +112,58 @@ final class Builder
         Filesystem::write($this->public . '/404.html', $renderer->notFound());
 
         foreach (array_map(strval(...), array_keys($authors)) as $prefix) {
-            $ownAlbums = array_values(array_filter($albumEntries, fn(array $entry): bool => $entry['prefix'] === $prefix));
-            $singles = array_values(array_filter($entries, fn(array $entry): bool => $entry['prefix'] === $prefix && $entry['album'] === null));
+            $ownAlbums = array_values(array_filter($albumEntries, fn(Entry $entry): bool => $entry->prefix === $prefix));
+            $singles = array_values(array_filter($entries, fn(Entry $entry): bool => $entry->prefix === $prefix && $entry->album === null));
             Filesystem::write("{$this->public}/{$prefix}/index.html", $renderer->library([...$ownAlbums, ...$singles], $prefix));
         }
 
         foreach ($albumEntries as $entry) {
-            Filesystem::write("{$this->public}/{$entry['prefix']}/{$entry['slug']}/index.html", $renderer->set($entry));
+            Filesystem::write("{$this->public}/{$entry->prefix}/{$entry->slug}/index.html", $renderer->set($entry));
         }
 
         foreach ($entries as $entry) {
-            if ($entry['kind'] === 'link' && !$entry['project']['media']->releaseOwn) {
+            if ($entry->kind === EntryKind::Link && !$entry->project['media']->releaseOwn) {
                 continue;
             }
 
-            $directory = "{$this->public}/{$entry['prefix']}/{$entry['slug']}";
-            Filesystem::write("{$directory}/index.html", match ($entry['kind']) {
-                'set' => $renderer->set($entry),
-                'session' => $renderer->session($entry),
-                'link' => $renderer->link($entry),
+            $directory = "{$this->public}/{$entry->prefix}/{$entry->slug}";
+            Filesystem::write("{$directory}/index.html", match ($entry->kind) {
+                EntryKind::Set => $renderer->set($entry),
+                EntryKind::Session => $renderer->session($entry),
+                EntryKind::Link => $renderer->link($entry),
                 default => $renderer->project($entry),
             });
-            Filesystem::write("{$directory}/source.md", (string) file_get_contents($entry['source']));
+            Filesystem::write("{$directory}/source.md", (string) file_get_contents((string) $entry->source));
         }
 
         $catalog = [];
         $albumTitles = [];
 
         foreach ($albumEntries as $albumEntry) {
-            $albumTitles[$albumEntry['prefix'] . '/' . $albumEntry['slug']] = (string) $albumEntry['project']['title'];
+            $albumTitles[$albumEntry->prefix . '/' . $albumEntry->slug] = (string) $albumEntry->project['title'];
         }
 
         foreach ($entries as $entry) {
-            if ($entry['kind'] !== 'project') {
+            if ($entry->kind !== EntryKind::Project) {
                 continue;
             }
 
-            $id = Renderer::mixId($entry['prefix'], $entry['slug']);
-            Filesystem::write("{$this->public}/+mixer/data/{$id}.json", json_encode($renderer->projectPayload($entry['project']), Renderer::JSON_FLAGS));
+            $id = Renderer::mixId($entry->prefix, $entry->slug);
+            Filesystem::write("{$this->public}/+mixer/data/{$id}.json", json_encode($renderer->projectPayload($entry->project), Renderer::JSON_FLAGS));
             $catalog[] = [
                 'id' => $id,
-                'title' => $entry['project']['title'],
-                'artist' => (string) $entry['project']['artist'],
-                'bpm' => $entry['project']['bpm'],
-                'bars' => $entry['project']['bars'],
-                'source' => (string) ($authors[$entry['prefix']]['title'] ?? $entry['prefix']),
-                'sourceId' => (string) $entry['prefix'],
-                'album' => $entry['album'] === null ? '' : $albumTitles[$entry['prefix'] . '/' . $entry['album']] ?? (string) $entry['album'],
-                'albumId' => $entry['album'] === null ? '' : $entry['prefix'] . '/' . $entry['album'],
-                'group' => $entry['album'] === null ? (string) ($entry['project']['group'] ?? '') : '',
-                'groupId' =>
-                    $entry['album'] === null && ($entry['project']['group'] ?? '') !== '' ? $entry['prefix'] . '/' . mb_strtolower((string) $entry['project']['group']) : '',
-                'tags' => array_values(array_map('strval', (array) ($entry['project']['tags'] ?? []))),
-                'href' => $site['base_path'] . "{$entry['prefix']}/{$entry['slug']}/",
+                'title' => $entry->project['title'],
+                'artist' => (string) $entry->project['artist'],
+                'bpm' => $entry->project['bpm'],
+                'bars' => $entry->project['bars'],
+                'source' => (string) ($authors[$entry->prefix]['title'] ?? $entry->prefix),
+                'sourceId' => (string) $entry->prefix,
+                'album' => $entry->album === null ? '' : $albumTitles[$entry->prefix . '/' . $entry->album] ?? (string) $entry->album,
+                'albumId' => $entry->album === null ? '' : $entry->prefix . '/' . $entry->album,
+                'group' => $entry->album === null ? (string) ($entry->project['group'] ?? '') : '',
+                'groupId' => $entry->album === null && ($entry->project['group'] ?? '') !== '' ? $entry->prefix . '/' . mb_strtolower((string) $entry->project['group']) : '',
+                'tags' => array_values(array_map('strval', (array) ($entry->project['tags'] ?? []))),
+                'href' => $site['base_path'] . "{$entry->prefix}/{$entry->slug}/",
                 'data' => "data/{$id}.json",
             ];
         }
@@ -187,9 +187,9 @@ final class Builder
             ));
         }
 
-        $setCount = count(array_filter($entries, fn(array $entry): bool => $entry['kind'] === 'set'));
-        $sessionCount = count(array_filter($entries, fn(array $entry): bool => $entry['kind'] === 'session'));
-        $linkCount = count(array_filter($entries, fn(array $entry): bool => $entry['kind'] === 'link'));
+        $setCount = count(array_filter($entries, fn(Entry $entry): bool => $entry->kind === EntryKind::Set));
+        $sessionCount = count(array_filter($entries, fn(Entry $entry): bool => $entry->kind === EntryKind::Session));
+        $linkCount = count(array_filter($entries, fn(Entry $entry): bool => $entry->kind === EntryKind::Link));
         fwrite(STDOUT, sprintf(
             "%d Projects, %d Sets, %d Sessions, %d Links und %d Alben von %d Autoren gebaut: %s\n",
             count($entries) - $setCount - $sessionCount - $linkCount,
@@ -206,10 +206,9 @@ final class Builder
 
     /**
      * @param array{source: string, prefix: string, slug: string, file: string|null, strict: bool, items: list<string>} $album
-     * @param list<array<string, mixed>> $entries
-     * @return array<string, mixed>
+     * @param list<Entry> $entries
      */
-    private function buildAlbum(array $album, array $entries, Library $library, SetParser $sets): array
+    private function buildAlbum(array $album, array $entries, Library $library, SetParser $sets): Entry
     {
         $meta = [];
         $html = '';
@@ -235,8 +234,8 @@ final class Builder
         $available = [];
 
         foreach ($entries as $entry) {
-            if ($entry['prefix'] === $album['prefix'] && $entry['album'] === $album['slug'] && $entry['kind'] === 'project') {
-                $available[substr($entry['slug'], strlen($album['slug']) + 1)] = $entry['prefix'] . '/' . $entry['slug'];
+            if ($entry->prefix === $album['prefix'] && $entry->album === $album['slug'] && $entry->kind === EntryKind::Project) {
+                $available[substr($entry->slug, strlen($album['slug']) + 1)] = $entry->prefix . '/' . $entry->slug;
             }
         }
 
@@ -282,55 +281,55 @@ final class Builder
         $data = $sets->parse($source, $album['slug'], $library->project(...));
         $data['notesHtml'] = $html;
 
-        return [
-            'prefix' => $album['prefix'],
-            'slug' => $album['slug'],
-            'album' => $album['slug'],
-            'source' => null,
-            'kind' => 'album',
-            'project' => $data,
-            'order' => array_map(strval(...), array_keys($order)),
-            'sessions' => array_values(array_filter(
+        return new Entry(
+            prefix: $album['prefix'],
+            slug: $album['slug'],
+            album: $album['slug'],
+            source: null,
+            kind: EntryKind::Album,
+            project: $data,
+            order: array_map(strval(...), array_keys($order)),
+            sessions: array_values(array_filter(
                 $entries,
-                fn(array $entry): bool => $entry['prefix'] === $album['prefix'] && $entry['album'] === $album['slug'] && $entry['kind'] === 'session',
+                fn(Entry $entry): bool => $entry->prefix === $album['prefix'] && $entry->album === $album['slug'] && $entry->kind === EntryKind::Session,
             )),
-            'links' => array_values(array_filter(
+            links: array_values(array_filter(
                 $entries,
-                fn(array $entry): bool => $entry['prefix'] === $album['prefix'] && $entry['album'] === $album['slug'] && $entry['kind'] === 'link',
+                fn(Entry $entry): bool => $entry->prefix === $album['prefix'] && $entry->album === $album['slug'] && $entry->kind === EntryKind::Link,
             )),
-        ];
+        );
     }
 
     /**
-     * @param list<array<string, mixed>> $entries
-     * @param list<array<string, mixed>> $albums
-     * @return list<array<string, mixed>>
+     * @param list<Entry> $entries
+     * @param list<Entry> $albums
+     * @return list<Entry>
      */
     private function linkAlbums(array $entries, array $albums): array
     {
         $titles = [];
 
         foreach ($entries as $entry) {
-            $titles[$entry['prefix'] . '/' . $entry['slug']] = $entry['project']['title'];
+            $titles[$entry->prefix . '/' . $entry->slug] = $entry->project['title'];
         }
 
         $navigation = [];
 
         foreach ($albums as $album) {
-            $order = $album['order'];
+            $order = $album->order;
 
             foreach ($order as $index => $name) {
                 $link = fn(?string $other): ?array => (
                     $other === null
                         ? null
                         : [
-                            'slug' => "{$album['slug']}/{$other}",
-                            'title' => $titles["{$album['prefix']}/{$album['slug']}/{$other}"] ?? $other,
+                            'slug' => "{$album->slug}/{$other}",
+                            'title' => $titles["{$album->prefix}/{$album->slug}/{$other}"] ?? $other,
                         ]
                 );
 
-                $navigation["{$album['prefix']}/{$album['slug']}/{$name}"] = [
-                    'album' => ['slug' => $album['slug'], 'title' => $album['project']['title']],
+                $navigation["{$album->prefix}/{$album->slug}/{$name}"] = [
+                    'album' => ['slug' => $album->slug, 'title' => $album->project['title']],
                     'number' => $index + 1,
                     'total' => count($order),
                     'prev' => $link($order[$index - 1] ?? null),
@@ -339,11 +338,7 @@ final class Builder
             }
         }
 
-        return array_map(function (array $entry) use ($navigation): array {
-            $entry['nav'] = $navigation[$entry['prefix'] . '/' . $entry['slug']] ?? null;
-
-            return $entry;
-        }, $entries);
+        return array_map(fn(Entry $entry): Entry => $entry->withNav($navigation[$entry->key()] ?? null), $entries);
     }
 
     /**

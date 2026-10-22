@@ -30,9 +30,30 @@ if (!mkdir($base, 0o777, true) && !is_dir($base)) {
 
 run('git -C ' . escapeshellarg($root) . ' archive ' . escapeshellarg($ref) . ' | tar -x -C ' . escapeshellarg($base), "Stand „{$ref}“ lässt sich nicht auslesen.");
 
-foreach (['opt', '.cache'] as $shared) {
-    if (!symlink($root . '/' . $shared, $base . '/' . $shared)) {
-        fwrite(STDERR, "Verknüpfung für {$shared} lässt sich nicht anlegen.\n");
+if (!symlink($root . '/.cache', $base . '/.cache')) {
+    fwrite(STDERR, "Verknüpfung für .cache lässt sich nicht anlegen.\n");
+    exit(2);
+}
+
+if (!mkdir($base . '/opt/packagist', 0o775, true)) {
+    fwrite(STDERR, "Ordner opt/packagist lässt sich nicht anlegen.\n");
+    exit(2);
+}
+
+foreach (scandir($root . '/opt/packagist') ?: [] as $name) {
+    if ($name === '.' || $name === '..') {
+        continue;
+    }
+
+    $from = $root . '/opt/packagist/' . $name;
+    $to = $base . '/opt/packagist/' . $name;
+
+    if ($name === 'composer') {
+        copyTree($from, $to);
+    } elseif ($name === 'autoload.php') {
+        copy($from, $to);
+    } elseif (!symlink($from, $to)) {
+        fwrite(STDERR, "Verknüpfung für {$name} lässt sich nicht anlegen.\n");
         exit(2);
     }
 }
@@ -122,4 +143,17 @@ function removeTree(string $path): void
     }
 
     rmdir($path);
+}
+
+function copyTree(string $from, string $to): void
+{
+    mkdir($to, 0o775, true);
+
+    foreach (scandir($from) ?: [] as $entry) {
+        if ($entry === '.' || $entry === '..') {
+            continue;
+        }
+
+        is_dir($from . '/' . $entry) ? copyTree($from . '/' . $entry, $to . '/' . $entry) : copy($from . '/' . $entry, $to . '/' . $entry);
+    }
 }
