@@ -20,9 +20,8 @@ final class LinkParser
 
     /**
      * @param \Closure(string): array{prefix: string, slug: string, project: array<string, mixed>} $resolve
-     * @return array<string, mixed>
      */
-    public function parse(string $source, string $fallbackTitle, \Closure $resolve, string $owner): array
+    public function parse(string $source, string $fallbackTitle, \Closure $resolve, string $owner): Link
     {
         if (strlen($source) > self::MAX_BYTES) {
             throw new BuildError(sprintf('Die Datei ist größer als %d KB.', self::MAX_BYTES / 1024));
@@ -70,14 +69,16 @@ final class LinkParser
             $credits[$ref] = ['prefix' => $resolved['prefix'], 'slug' => $resolved['slug'], 'title' => $resolved['project']['title']];
         }
 
-        return [
-            'kind' => 'link',
-            'format' => self::FORMAT,
-            ...$this->projects->describe($meta, $fallbackTitle),
-            'media' => $media,
-            'warnings' => [],
-            'notesHtml' => $this->sanitizer->clean($parsed->html),
-            'credits' => array_values($credits),
-        ];
+        $head = $this->projects->describe($meta, $fallbackTitle);
+
+        return new Link(
+            title: $head['title'],
+            artist: $head['artist'],
+            group: $head['group'],
+            tags: $head['tags'],
+            media: $media,
+            notesHtml: $this->sanitizer->clean($parsed->html),
+            credits: array_values($credits),
+        );
     }
 }

@@ -44,15 +44,21 @@ final class Builder
                 continue;
             }
 
-            foreach ($loaded['data']['warnings'] as $warning) {
+            $data = $loaded['data'];
+
+            foreach ($data instanceof Link ? $data->warnings : $data['warnings'] as $warning) {
                 fwrite(STDERR, "Warnung in {$label}: {$warning}\n");
             }
 
-            if (in_array($loaded['kind'], ['project', 'link'], true) && isset($loaded['data']['media']) && !$loaded['data']['media']->isEmpty()) {
-                $loaded['data']['media'] = $this->checkedMedia($loaded['data']['media'], $file['media'], $file['strict'], $label, $errors);
+            if ($data instanceof Link) {
+                if (!$data->media->isEmpty()) {
+                    $data = $data->withMedia($this->checkedMedia($data->media, $file['media'], $file['strict'], $label, $errors));
+                }
+            } elseif ($loaded['kind'] === 'project' && isset($data['media']) && !$data['media']->isEmpty()) {
+                $data['media'] = $this->checkedMedia($data['media'], $file['media'], $file['strict'], $label, $errors);
             }
 
-            if ($file['album'] !== null && ($loaded['data']['group'] ?? '') !== '') {
+            if ($file['album'] !== null && ($data instanceof Link ? $data->group : $data['group'] ?? '') !== '') {
                 fwrite(STDERR, "Warnung in {$label}: „group“ gilt nur für Songs ohne Album und wird ignoriert.\n");
             }
 
@@ -63,12 +69,12 @@ final class Builder
                 album: $file['album'],
                 source: $file['file'],
                 kind: $kind,
-                project: $loaded['data'],
-                strudel: $kind === EntryKind::Project ? $this->handStrudel($file['file'], $loaded['data'], $label) : null,
+                project: $data,
+                strudel: $kind === EntryKind::Project ? $this->handStrudel($file['file'], $data, $label) : null,
             );
         }
 
-        usort($entries, fn(Entry $a, Entry $b): int => strcasecmp($a->project['title'], $b->project['title']));
+        usort($entries, fn(Entry $a, Entry $b): int => strcasecmp($a->title(), $b->title()));
 
         $albumEntries = [];
 
@@ -92,7 +98,7 @@ final class Builder
             return 1;
         }
 
-        usort($albumEntries, fn(Entry $a, Entry $b): int => strcasecmp($a->project['title'], $b->project['title']));
+        usort($albumEntries, fn(Entry $a, Entry $b): int => strcasecmp($a->title(), $b->title()));
         $entries = $this->linkAlbums($entries, $albumEntries);
 
         $authors = array_intersect_key($collected['authors'], array_flip(array_column($entries, 'prefix')));
@@ -122,7 +128,7 @@ final class Builder
         }
 
         foreach ($entries as $entry) {
-            if ($entry->kind === EntryKind::Link && !$entry->project['media']->releaseOwn) {
+            if ($entry->kind === EntryKind::Link && !$entry->link()->media->releaseOwn) {
                 continue;
             }
 
@@ -140,7 +146,7 @@ final class Builder
         $albumTitles = [];
 
         foreach ($albumEntries as $albumEntry) {
-            $albumTitles[$albumEntry->prefix . '/' . $albumEntry->slug] = (string) $albumEntry->project['title'];
+            $albumTitles[$albumEntry->prefix . '/' . $albumEntry->slug] = $albumEntry->title();
         }
 
         foreach ($entries as $entry) {
@@ -152,17 +158,17 @@ final class Builder
             Filesystem::write("{$this->public}/+mixer/data/{$id}.json", json_encode($renderer->projectPayload($entry->project), Renderer::JSON_FLAGS));
             $catalog[] = [
                 'id' => $id,
-                'title' => $entry->project['title'],
-                'artist' => (string) $entry->project['artist'],
+                'title' => $entry->title(),
+                'artist' => $entry->artist(),
                 'bpm' => $entry->project['bpm'],
                 'bars' => $entry->project['bars'],
                 'source' => (string) ($authors[$entry->prefix]['title'] ?? $entry->prefix),
                 'sourceId' => (string) $entry->prefix,
                 'album' => $entry->album === null ? '' : $albumTitles[$entry->prefix . '/' . $entry->album] ?? (string) $entry->album,
                 'albumId' => $entry->album === null ? '' : $entry->prefix . '/' . $entry->album,
-                'group' => $entry->album === null ? (string) ($entry->project['group'] ?? '') : '',
-                'groupId' => $entry->album === null && ($entry->project['group'] ?? '') !== '' ? $entry->prefix . '/' . mb_strtolower((string) $entry->project['group']) : '',
-                'tags' => array_values(array_map('strval', (array) ($entry->project['tags'] ?? []))),
+                'group' => $entry->album === null ? $entry->group() : '',
+                'groupId' => $entry->album === null && $entry->group() !== '' ? $entry->prefix . '/' . mb_strtolower($entry->group()) : '',
+                'tags' => array_values(array_map('strval', $entry->tags())),
                 'href' => $site['base_path'] . "{$entry->prefix}/{$entry->slug}/",
                 'data' => "data/{$id}.json",
             ];
@@ -310,7 +316,7 @@ final class Builder
         $titles = [];
 
         foreach ($entries as $entry) {
-            $titles[$entry->prefix . '/' . $entry->slug] = $entry->project['title'];
+            $titles[$entry->prefix . '/' . $entry->slug] = $entry->title();
         }
 
         $navigation = [];
@@ -329,7 +335,7 @@ final class Builder
                 );
 
                 $navigation["{$album->prefix}/{$album->slug}/{$name}"] = [
-                    'album' => ['slug' => $album->slug, 'title' => $album->project['title']],
+                    'album' => ['slug' => $album->slug, 'title' => $album->title()],
                     'number' => $index + 1,
                     'total' => count($order),
                     'prev' => $link($order[$index - 1] ?? null),
