@@ -8,10 +8,6 @@ use Chiptune\Common\BuildError;
 use Chiptune\Common\HtmlSanitizer;
 use Tempest\Markdown\Markdown;
 
-/**
- * Eine Session hält den Startzustand des Mixers fest: zwei Songs, der Takt von Deck A,
- * auf dem Deck B einsteigt, Auto-Sync und die Stellung des Crossfaders.
- */
 final class SessionParser
 {
     public const FORMAT = 1;
