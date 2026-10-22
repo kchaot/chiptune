@@ -6,6 +6,12 @@ namespace Chiptune\Site;
 
 use Chiptune\Common\BuildError;
 
+/**
+ * Hilfen für Dateien.
+ *
+ * Ordner samt Inhalt löschen, ohne Symlinks zu verfolgen, und Dateien schreiben, wobei fehlende
+ * Ordner angelegt werden.
+ */
 final class Filesystem
 {
     public static function removeDirectory(string $directory): void

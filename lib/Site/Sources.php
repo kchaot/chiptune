@@ -6,6 +6,12 @@ namespace Chiptune\Site;
 
 use Chiptune\Common\BuildError;
 
+/**
+ * Liest `etc/sources.json` und findet die Dateien.
+ *
+ * Eine Quelle ist ein lokaler Ordner oder ein Git-Repo, das in den Cache geholt wird. Geprüft werden
+ * Namen, Präfixe und freigegebene Medien-Hosts. Das Ergebnis sind Dateien, Alben, Autoren und Hosts.
+ */
 final class Sources
 {
     private const IGNORED = '/^(readme|license|licence|contributing|code_of_conduct|changelog|security)(\.[a-z]+)?$/i';

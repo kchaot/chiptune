@@ -4,6 +4,12 @@ declare(strict_types=1);
 
 namespace Chiptune\Format;
 
+/**
+ * Angaben zu einer Veröffentlichung.
+ *
+ * Das sind Titel, Label, Katalognummer, Lizenz, Datum und die Mitwirkenden (`credits`, je Rolle
+ * eine Liste von Namen).
+ */
 final readonly class ReleaseInfo
 {
     /**

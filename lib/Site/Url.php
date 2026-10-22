@@ -6,6 +6,11 @@ namespace Chiptune\Site;
 
 use Uri\Rfc3986\Uri;
 
+/**
+ * Prüft Adressen mit der URI-Erweiterung von PHP.
+ *
+ * Sie liest den Host aus und stellt fest, ob eine Adresse eine http(s)-Adresse mit Host ist.
+ */
 final class Url
 {
     public static function host(string $url): string

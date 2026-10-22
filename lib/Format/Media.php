@@ -4,6 +4,14 @@ declare(strict_types=1);
 
 namespace Chiptune\Format;
 
+/**
+ * Audio und Bilder zu einem Song oder Link.
+ *
+ * Das ist die in einer DAW gerenderte HQ-Version (`hq`, mit `hqOffset` in Sekunden gegen das
+ * Raster verschoben), die Adresse der Veröffentlichung (`release`), ein Cover und die Angaben
+ * dazu (`info`). `releaseOwn` heißt, dass die Aufnahme zu dieser Seite gehört und hier abspielbar
+ * ist, weil ihr Host in `sources.json` freigegeben ist.
+ */
 final readonly class Media
 {
     public function __construct(

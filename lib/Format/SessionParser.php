@@ -8,6 +8,12 @@ use Chiptune\Common\BuildError;
 use Chiptune\Common\HtmlSanitizer;
 use Tempest\Markdown\Markdown;
 
+/**
+ * Liest Sessions aus Markdown.
+ *
+ * Die Datei besteht nur aus dem Kopf: zwei Songs (`a`, `b`), `start`, `auto` und `fader`. Das
+ * Ergebnis ist eine `Session`.
+ */
 final class SessionParser
 {
     public const FORMAT = 1;

@@ -7,6 +7,12 @@ namespace Chiptune\Common;
 use Dom\Element;
 use Dom\HTMLDocument;
 
+/**
+ * Säubert HTML, das aus Markdown entstanden ist.
+ *
+ * Erlaubt sind nur bekannte Elemente und bei Links ein sicheres `href`. Alles andere fällt weg,
+ * Skripte und Ähnliches samt Inhalt, ebenso Kommentare.
+ */
 final class HtmlSanitizer
 {
     private const ALLOWED = [
@@ -152,6 +158,6 @@ final class HtmlSanitizer
             return false;
         }
 
-        return preg_match('~^(https?://|mailto:|/(?!/)|#|[a-z0-9._-]+(/|$))~i', $href) === 1;
+        return preg_match('~^(https?://|mailto:|/(?!/)|#|[a-z0-9._+-]+(/|$))~i', $href) === 1;
     }
 }

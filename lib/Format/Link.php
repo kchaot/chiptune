@@ -4,6 +4,12 @@ declare(strict_types=1);
 
 namespace Chiptune\Format;
 
+/**
+ * Ein Verweis auf eine fertige Aufnahme, ohne eigene Noten.
+ *
+ * Die Aufnahme liegt an anderer Stelle oder gehört zu dieser Seite (`media`). Die Songs, aus denen
+ * sie entstanden ist, stehen unter `credits`.
+ */
 final readonly class Link implements Described
 {
     /**

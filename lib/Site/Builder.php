@@ -13,6 +13,13 @@ use Chiptune\Format\SetParser;
 use Chiptune\Format\Song;
 use Tempest\Markdown\Markdown;
 
+/**
+ * Baut die ganze Seite.
+ *
+ * Er holt die Quellen, lässt die `Library` alle Dateien einlesen, verknüpft die Alben, rendert
+ * alles mit dem `Renderer` und schreibt Seiten und Assets. Ein Fehler in einer strikten Quelle
+ * bricht den Bau ab, bei den anderen wird die Datei übersprungen.
+ */
 final class Builder
 {
     private const MARKER = '.chiptune-site';
@@ -123,6 +130,7 @@ final class Builder
 
         Filesystem::write($this->public . '/index.html', $renderer->library([...$entries, ...$albumEntries]));
         Filesystem::write($this->public . '/404.html', $renderer->notFound());
+        Filesystem::write($this->public . '/+code/index.html', $renderer->code(new CodeDocs($this->root)->areas()));
 
         foreach (array_map(strval(...), array_keys($authors)) as $prefix) {
             $ownAlbums = array_values(array_filter($albumEntries, fn(Entry $entry): bool => $entry->prefix === $prefix));

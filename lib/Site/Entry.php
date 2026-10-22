@@ -10,6 +10,12 @@ use Chiptune\Format\Session;
 use Chiptune\Format\Set;
 use Chiptune\Format\Song;
 
+/**
+ * Eine Seite der Bibliothek: eine Datei (Song, Set, Session oder Link) mit ihrer Stelle in der Site.
+ *
+ * Dazu gehören Präfix und Slug, das Album mit Navigation, der Strudel-Stand und die zugehörigen
+ * Sessions und Links.
+ */
 final readonly class Entry
 {
     /**

@@ -864,3 +864,43 @@ main > .projects + .projects { margin-top: 1.5rem; }
 .rel-action { margin-top: auto; padding-top: 0.6rem; }
 .rel-action audio { width: min(100%, 32rem); }
 @media (max-width: 40rem) { .rel-page.has-cover { grid-template-columns: minmax(0, 1fr); } }
+
+html:has(body.code-page) { background: #f3eee2; }
+body.code-page {
+  color-scheme: light;
+  --wall: #f3eee2;
+  --panel: #fbf8f0;
+  --panel-solid: #fbf8f0;
+  --panel-raised: #e9e2d0;
+  --line: #d8cfb8;
+  --ink: #2a2235;
+  --text: #3a3144;
+  --cream: #17111f;
+  --ink-soft: #5c5270;
+  --dim: #7a708c;
+  --green: #1f7a37;
+  --pink: #c4144f;
+  --cyan: #0b6f90;
+  --violet: #5b35d6;
+  --lime: #4f5f00;
+  background: var(--wall);
+}
+body.code-page::after { display: none; }
+
+.code-page main { max-width: 64rem; }
+.doc-toc h2 { margin: 1.5rem 0 0.25rem; font-size: 1rem; color: var(--cream); }
+.doc-toc p { margin: 0 0 0.5rem; color: var(--ink-soft); font-size: 0.85rem; }
+.doc-index { margin: 0 0 1rem; padding: 0; list-style: none; columns: 2 24rem; font-size: 0.85rem; }
+.doc-index li { break-inside: avoid; margin-bottom: 0.2rem; }
+.doc-index span { color: var(--ink-soft); }
+.doc-area > h2 { margin: 2.5rem 0 0.5rem; padding-top: 1rem; border-top: 1px dashed var(--line); color: var(--cream); font-size: 1.25rem; }
+.doc { margin: 0 0 1.75rem; padding: 0.9rem 1.1rem; background: var(--panel); border-left: 0.25rem solid var(--violet); scroll-margin-top: 1rem; }
+.doc h3 { margin: 0; color: var(--cream); font-size: 1.1rem; }
+.doc p { margin: 0.4rem 0; }
+.doc-name { color: var(--ink-soft); font-size: 0.8rem; }
+.doc code { padding: 0.05em 0.35em; background: var(--panel-raised); color: var(--lime); font-size: 0.9em; }
+.doc-table { margin: 0.8rem 0 0.2rem; }
+table.doc-table { margin: 0 0 0.6rem; border-collapse: collapse; font-size: 0.85rem; }
+table.doc-table th, table.doc-table td { padding: 0.15rem 1.2rem 0.15rem 0; text-align: left; vertical-align: top; }
+table.doc-table th { color: var(--ink-soft); font-weight: 600; }
+.doc-methods { margin: 0.2rem 0 0; padding-left: 1.1rem; font-size: 0.85rem; }

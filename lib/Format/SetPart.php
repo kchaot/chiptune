@@ -4,6 +4,12 @@ declare(strict_types=1);
 
 namespace Chiptune\Format;
 
+/**
+ * Ein Abschnitt eines Sets: ein Song oder ein Ausschnitt davon, der `repeat`-mal gespielt wird.
+ *
+ * Der Ausschnitt reicht von Step `start` bis `stop` und beginnt im Song bei Takt `startBar`. Tempo,
+ * Raster und Tracks des Songs stehen als Kopie dabei, damit das Set ohne den Song auskommt.
+ */
 final readonly class SetPart
 {
     /**
