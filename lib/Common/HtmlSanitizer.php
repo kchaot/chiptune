@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Chiptune;
+namespace Chiptune\Common;
 
 use Dom\Element;
 use Dom\HTMLDocument;
@@ -10,14 +10,65 @@ use Dom\HTMLDocument;
 final class HtmlSanitizer
 {
     private const ALLOWED = [
-        'a', 'b', 'blockquote', 'br', 'code', 'del', 'div', 'em', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
-        'hr', 'i', 'li', 'ol', 'p', 'pre', 'span', 'strong', 'table', 'tbody', 'td', 'th', 'thead', 'tr', 'ul',
+        'a',
+        'b',
+        'blockquote',
+        'br',
+        'code',
+        'del',
+        'div',
+        'em',
+        'h1',
+        'h2',
+        'h3',
+        'h4',
+        'h5',
+        'h6',
+        'hr',
+        'i',
+        'li',
+        'ol',
+        'p',
+        'pre',
+        'span',
+        'strong',
+        'table',
+        'tbody',
+        'td',
+        'th',
+        'thead',
+        'tr',
+        'ul',
     ];
 
     private const DROP_WITH_CONTENT = [
-        'applet', 'audio', 'base', 'button', 'canvas', 'embed', 'form', 'frame', 'frameset', 'head', 'iframe',
-        'img', 'input', 'link', 'math', 'meta', 'noscript', 'object', 'script', 'select', 'source', 'style',
-        'svg', 'template', 'textarea', 'title', 'video',
+        'applet',
+        'audio',
+        'base',
+        'button',
+        'canvas',
+        'embed',
+        'form',
+        'frame',
+        'frameset',
+        'head',
+        'iframe',
+        'img',
+        'input',
+        'link',
+        'math',
+        'meta',
+        'noscript',
+        'object',
+        'script',
+        'select',
+        'source',
+        'style',
+        'svg',
+        'template',
+        'textarea',
+        'title',
+        'video',
     ];
 
     public function clean(string $html): string
@@ -32,7 +83,8 @@ final class HtmlSanitizer
             'UTF-8',
         );
 
-        $body = $document->body;
+        $body = $document->body ?? throw new \LogicException('HTML-Dokument ohne body.');
+        /** @var list<\Dom\Element> $elements */
         $elements = iterator_to_array($body->querySelectorAll('*'), false);
 
         foreach (array_reverse($elements) as $element) {
@@ -52,7 +104,7 @@ final class HtmlSanitizer
             return;
         }
 
-        if (! in_array($tag, self::ALLOWED, true)) {
+        if (!in_array($tag, self::ALLOWED, true)) {
             $this->unwrap($element);
 
             return;

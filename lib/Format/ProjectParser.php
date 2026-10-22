@@ -2,15 +2,17 @@
 
 declare(strict_types=1);
 
-namespace Chiptune;
+namespace Chiptune\Format;
 
+use Chiptune\Common\BuildError;
+use Chiptune\Common\HtmlSanitizer;
 use Tempest\Markdown\Markdown;
 use Tempest\Markdown\ParsedMarkdown;
 
 final class ProjectParser
 {
     public const FORMAT = 1;
-    public const MAX_BYTES = 65536;
+    public const MAX_BYTES = 65_536;
     public const MAX_TRACKS = 16;
     public const MAX_STEPS = 4096;
     public const MAX_LAYERS = 8;
@@ -41,16 +43,10 @@ final class ProjectParser
     }
 
     /**
-     * @param (\Closure(string): array{prefix: string, slug: string, project: array<string, mixed>})|null $resolve
+     * @param (\Closure(string): array{prefix: string, slug: string, project: Song})|null $resolve
      * @param string $owner
-     * @return array{
-     *     format: int, title: string, artist: string, tags: list<string>, bpm: float,
-     *     stepsPerBeat: int, stepsPerBar: int, stepSeconds: float, loop: bool, steps: int, bars: float,
-     *     tracks: list<array<string, mixed>>, warnings: list<string>, notesHtml: string,
-     *     remix: bool|null, credits: list<array{prefix: string, slug: string, title: string}>
-     * }
      */
-    public function parse(string $source, string $fallbackTitle = 'Untitled', ?\Closure $resolve = null, string $owner = ''): array
+    public function parse(string $source, string $fallbackTitle = 'Untitled', ?\Closure $resolve = null, string $owner = ''): Song
     {
         if (strlen($source) > self::MAX_BYTES) {
             throw new BuildError(sprintf('Die Datei ist größer als %d KB.', self::MAX_BYTES / 1024));
@@ -76,17 +72,19 @@ final class ProjectParser
             throw new BuildError(sprintf('Mehr als %d Tracks.', self::MAX_TRACKS));
         }
 
+        /** @var array<string, mixed> $meta */
+
         $meta = $head->frontmatter ?? [];
         $format = $meta['format'] ?? self::FORMAT;
 
         if ($format !== self::FORMAT) {
-            throw new BuildError('Nicht unterstütztes format: ' . json_encode($format) . '. Unterstützt wird format: ' . self::FORMAT . '.');
+            throw new BuildError('Nicht unterstütztes format: ' . (string) json_encode($format) . '. Unterstützt wird format: ' . self::FORMAT . '.');
         }
 
         $bpm = $this->number($meta, 'bpm', 120, 20, 300);
         $grid = (int) $this->number($meta, 'grid', 16, 4, 64);
 
-        if ($grid % 4 !== 0) {
+        if (($grid % 4) !== 0) {
             throw new BuildError('Project: „grid“ muss durch 4 teilbar sein (zum Beispiel 8, 16 oder 32).');
         }
 
@@ -95,7 +93,7 @@ final class ProjectParser
 
         $remix = $meta['remix'] ?? null;
 
-        if ($remix !== null && ! is_bool($remix)) {
+        if ($remix !== null && !is_bool($remix)) {
             throw new BuildError('Project: „remix“ muss true oder false sein.');
         }
 
@@ -111,25 +109,33 @@ final class ProjectParser
 
     /**
      * @param array<string, mixed> $meta
-     * @param list<array<string, mixed>> $tracks
+     * @param list<Track> $tracks
      * @param array<string, array{prefix: string, slug: string, title: string}> $credits
-     * @param array<string, mixed> $extra
-     * @return array<string, mixed>
+     * @param list<SongLayer> $layers
      */
-    private function assemble(array $meta, ?ParsedMarkdown $head, array $tracks, float $bpm, int $stepsPerBeat, string $fallbackTitle, ?bool $remix, array $credits, array $extra = []): array
-    {
+    private function assemble(
+        array $meta,
+        ?ParsedMarkdown $head,
+        array $tracks,
+        float $bpm,
+        int $stepsPerBeat,
+        string $fallbackTitle,
+        ?bool $remix,
+        array $credits,
+        array $layers = [],
+    ): Song {
         $stepsPerBar = $stepsPerBeat * 4;
-        $steps = max(array_column($tracks, 'steps'));
+        $steps = max(array_map(fn(Track $track): int => $track->steps, $tracks));
 
         $warnings = [];
 
         foreach ($tracks as $track) {
-            if (! isset($extra['layers']) && $track['steps'] !== $steps) {
-                $warnings[] = "Track „{$track['name']}“ hat {$track['steps']} Steps, der längste {$steps}.";
+            if ($layers === [] && $track->steps !== $steps) {
+                $warnings[] = "Track „{$track->name}“ hat {$track->steps} Steps, der längste {$steps}.";
             }
         }
 
-        if ($steps % $stepsPerBar !== 0) {
+        if (($steps % $stepsPerBar) !== 0) {
             $warnings[] = "Die Länge von {$steps} Steps ist kein ganzes Vielfaches von {$stepsPerBar} Steps pro Bar.";
         }
 
@@ -139,31 +145,34 @@ final class ProjectParser
             throw new BuildError('Project: „loop“ muss true oder false sein.');
         }
 
-        return [
-            'kind' => 'project',
-            'format' => self::FORMAT,
-            ...$this->describe($meta, $fallbackTitle),
-            'bpm' => $bpm,
-            'stepsPerBeat' => $stepsPerBeat,
-            'stepsPerBar' => $stepsPerBar,
-            'stepSeconds' => 60 / $bpm / $stepsPerBeat,
-            'loop' => $loop,
-            'steps' => $steps,
-            'bars' => $steps / $stepsPerBar,
-            'tracks' => $tracks,
-            'warnings' => $warnings,
-            'notesHtml' => $this->sanitizer->clean($head->html ?? ''),
-            'media' => $this->media($meta),
-            'remix' => $remix,
-            'credits' => array_values($credits),
-        ] + $extra;
+        $info = $this->describe($meta, $fallbackTitle);
+
+        return new Song(
+            title: $info['title'],
+            artist: $info['artist'],
+            group: $info['group'],
+            tags: $info['tags'],
+            bpm: $bpm,
+            stepsPerBeat: $stepsPerBeat,
+            stepsPerBar: $stepsPerBar,
+            stepSeconds: (60 / $bpm) / $stepsPerBeat,
+            loop: $loop,
+            steps: $steps,
+            bars: $steps / $stepsPerBar,
+            tracks: $tracks,
+            warnings: $warnings,
+            notesHtml: $this->sanitizer->clean($head->html ?? ''),
+            media: $this->media($meta),
+            remix: $remix,
+            credits: array_values($credits),
+            layers: $layers,
+        );
     }
 
     /**
-     * @param \Closure(string): array{prefix: string, slug: string, project: array<string, mixed>} $resolve
-     * @return array<string, mixed>
+     * @param \Closure(string): array{prefix: string, slug: string, project: Song} $resolve
      */
-    public function parseLayer(string $source, string $fallbackTitle, \Closure $resolve, string $owner): array
+    public function parseLayer(string $source, string $fallbackTitle, \Closure $resolve, string $owner): Song
     {
         if (strlen($source) > self::MAX_BYTES) {
             throw new BuildError(sprintf('Die Datei ist größer als %d KB.', self::MAX_BYTES / 1024));
@@ -181,10 +190,12 @@ final class ProjectParser
             $head = array_shift($chunks);
         }
 
+        /** @var array<string, mixed> $meta */
+
         $meta = $head->frontmatter ?? [];
 
         if (($meta['format'] ?? self::FORMAT) !== self::FORMAT) {
-            throw new BuildError('Nicht unterstütztes format: ' . json_encode($meta['format']) . '. Unterstützt wird format: ' . self::FORMAT . '.');
+            throw new BuildError('Nicht unterstütztes format: ' . (string) json_encode($meta['format']) . '. Unterstützt wird format: ' . self::FORMAT . '.');
         }
 
         if ($chunks === []) {
@@ -197,56 +208,69 @@ final class ProjectParser
 
         $remix = $meta['remix'] ?? null;
 
-        if ($remix !== null && ! is_bool($remix)) {
+        if ($remix !== null && !is_bool($remix)) {
             throw new BuildError('Layer: „remix“ muss true oder false sein.');
         }
 
+        /** @var list<array{ref: string, prefix: string, slug: string, source: Song, name: string, tracks: list<string>, at: int, bars: mixed, transpose: int, repeat: int|'fill', where: string, description: string, length: int, start: int}> $layers */
         $layers = [];
 
         foreach ($chunks as $index => $chunk) {
             $ref = trim((string) $chunk->name);
             $where = 'Layer ' . ($index + 1) . " („{$ref}“)";
 
+            $m = [];
             if (preg_match('/^([a-z0-9][a-z0-9-]*)\/([a-z0-9][a-z0-9-]*(?:\/[a-z0-9][a-z0-9-]*)?)$/', $ref, $m) !== 1) {
                 throw new BuildError("{$where}: Der Marker muss die Form <!-- layer: prefix/slug --> haben.");
             }
+
+            /** @var array<string, mixed> $fm */
 
             $fm = $chunk->frontmatter;
             $unknown = array_diff(array_keys($fm), ['at', 'bars', 'repeat', 'transpose', 'tracks', 'name']);
 
             if ($unknown !== []) {
-                throw new BuildError("{$where}: unbekannter Schlüssel „" . implode('“, „', array_map('strval', $unknown)) . '“ (erlaubt: at, bars, repeat, transpose, tracks, name).');
+                throw new BuildError(
+                    "{$where}: unbekannter Schlüssel „" . implode('“, „', array_map('strval', $unknown)) . '“ (erlaubt: at, bars, repeat, transpose, tracks, name).',
+                );
             }
 
             $source = $resolve($ref)['project'];
 
-            if ($m[1] !== $owner && ($source['remix'] ?? null) !== true) {
+            if ($m[1] !== $owner && $source->remix !== true) {
                 throw new BuildError("{$where}: „{$ref}“ erlaubt kein Remixen. Der Autor müsste „remix: true“ in sein Project schreiben.");
             }
 
-            $name = $fm['name'] ?? $source['title'];
+            $name = $fm['name'] ?? $source->title;
 
-            if (! is_string($name) || $name === '' || mb_strlen($name) > 32 || preg_match('/[\x00-\x1F\x7F<>&"]/', $name) === 1) {
+            if (!is_string($name) || $name === '' || mb_strlen($name) > 32 || preg_match('/[\x00-\x1F\x7F<>&"]/', $name) === 1) {
                 throw new BuildError("{$where}: „name“ hat 1 bis 32 Zeichen ohne < > & \".");
             }
 
-            $names = array_column($source['tracks'], 'name');
+            $names = array_map(fn(Track $track): string => $track->name, $source->tracks);
             $selected = $names;
 
             if (array_key_exists('tracks', $fm)) {
                 $selected = $fm['tracks'];
 
-                if (! is_array($selected) || $selected === [] || ! array_is_list($selected)) {
+                if (!is_array($selected) || $selected === [] || !array_is_list($selected)) {
                     throw new BuildError("{$where}: „tracks“ muss eine Liste von Track-Namen sein.");
                 }
 
                 foreach ($selected as $wanted) {
-                    if (! is_string($wanted) || ! in_array($wanted, $names, true)) {
-                        throw new BuildError("{$where}: „{$ref}“ hat keinen Track „" . (is_string($wanted) ? $wanted : json_encode($wanted)) . '“ (vorhanden: ' . implode(', ', $names) . ').');
+                    if (!is_string($wanted) || !in_array($wanted, $names, true)) {
+                        throw new BuildError(
+                            "{$where}: „{$ref}“ hat keinen Track „"
+                            . (is_string($wanted) ? $wanted : (string) json_encode($wanted))
+                            . '“ (vorhanden: '
+                            . implode(', ', $names)
+                            . ').',
+                        );
                     }
                 }
             }
 
+            /** @var list<string> $selected */
             $repeat = $fm['repeat'] ?? 1;
 
             if ($repeat !== 'fill') {
@@ -266,15 +290,17 @@ final class ProjectParser
                 'repeat' => $repeat,
                 'where' => $where,
                 'description' => $this->sanitizer->clean($chunk->html),
+                'length' => 0,
+                'start' => 0,
             ];
         }
 
-        $bpm = $this->number($meta, 'bpm', (float) $layers[0]['source']['bpm'], 20, 300);
+        $bpm = $this->number($meta, 'bpm', (float) $layers[0]['source']->bpm, 20, 300);
 
         if (isset($meta['grid'])) {
             $grid = (int) $this->number($meta, 'grid', 16, 4, 64);
 
-            if ($grid % 4 !== 0) {
+            if (($grid % 4) !== 0) {
                 throw new BuildError('Layer: „grid“ muss durch 4 teilbar sein (zum Beispiel 8, 16 oder 32).');
             }
 
@@ -283,12 +309,16 @@ final class ProjectParser
             $stepsPerBeat = 1;
 
             foreach ($layers as $layer) {
-                $other = $layer['source']['stepsPerBeat'];
+                $other = $layer['source']->stepsPerBeat;
                 $stepsPerBeat = intdiv($stepsPerBeat * $other, $this->gcd($stepsPerBeat, $other));
             }
 
-            if ($stepsPerBeat * 4 > 64) {
-                throw new BuildError('Die Raster der Layer (grid ' . implode(', ', array_map(fn (array $l): string => (string) ($l['source']['stepsPerBeat'] * 4), $layers)) . ') ergeben zusammen mehr als grid 64. Ein Layer müsste ein anderes Raster bekommen.');
+            if (($stepsPerBeat * 4) > 64) {
+                throw new BuildError(
+                    'Die Raster der Layer (grid '
+                    . implode(', ', array_map(fn(array $l): string => (string) ($l['source']->stepsPerBeat * 4), $layers))
+                    . ') ergeben zusammen mehr als grid 64. Ein Layer müsste ein anderes Raster bekommen.',
+                );
             }
         }
 
@@ -300,17 +330,19 @@ final class ProjectParser
             if ($layer['bars'] !== null) {
                 [$a, $b] = $this->range($layer['bars'], "{$layer['where']}: „bars“");
 
-                if ($b * $src['stepsPerBar'] > $src['steps']) {
-                    throw new BuildError("{$layer['where']}: Der Ausschnitt reicht bis Bar {$b}, „{$layer['ref']}“ hat nur {$src['bars']} Bars.");
+                if (($b * $src->stepsPerBar) > $src->steps) {
+                    throw new BuildError("{$layer['where']}: Der Ausschnitt reicht bis Bar {$b}, „{$layer['ref']}“ hat nur {$src->bars} Bars.");
                 }
 
                 $length = ($b - $a + 1) * $dstBar;
             } else {
-                if (($src['steps'] * $stepsPerBeat) % $src['stepsPerBeat'] !== 0) {
-                    throw new BuildError("{$layer['where']}: Das Raster von „{$layer['ref']}“ (grid " . ($src['stepsPerBeat'] * 4) . ") passt nicht auf grid {$dstBar} dieses Layers.");
+                if ((($src->steps * $stepsPerBeat) % $src->stepsPerBeat) !== 0) {
+                    throw new BuildError(
+                        "{$layer['where']}: Das Raster von „{$layer['ref']}“ (grid " . ($src->stepsPerBeat * 4) . ") passt nicht auf grid {$dstBar} dieses Layers.",
+                    );
                 }
 
-                $length = intdiv($src['steps'] * $stepsPerBeat, $src['stepsPerBeat']);
+                $length = intdiv($src->steps * $stepsPerBeat, $src->stepsPerBeat);
             }
 
             $layers[$i]['length'] = $length;
@@ -320,8 +352,10 @@ final class ProjectParser
         $total = 0;
 
         foreach ($layers as $layer) {
-            if ($layer['repeat'] !== 'fill') {
-                $total = max($total, $layer['start'] + $layer['length'] * $layer['repeat']);
+            $fixed = $layer['repeat'];
+
+            if ($fixed !== 'fill') {
+                $total = max($total, $layer['start'] + ($layer['length'] * $fixed));
             }
         }
 
@@ -333,24 +367,22 @@ final class ProjectParser
         $credits = [];
 
         foreach ($layers as $layer) {
-            $repeat = $layer['repeat'] === 'fill'
-                ? max(1, (int) ceil(($total - $layer['start']) / $layer['length']))
-                : $layer['repeat'];
+            $repeat = $layer['repeat'] === 'fill' ? max(1, (int) ceil(($total - $layer['start']) / $layer['length'])) : $layer['repeat'];
 
-            $group = [
-                'title' => $layer['name'],
-                'ref' => $layer['ref'],
-                'bpm' => $layer['source']['bpm'],
-                'at' => $layer['at'],
-                'description' => $layer['description'],
-            ];
+            $group = new TrackGroup(
+                title: $layer['name'],
+                ref: $layer['ref'],
+                bpm: $layer['source']->bpm,
+                at: $layer['at'],
+                description: $layer['description'],
+            );
 
             foreach ($layer['tracks'] as $trackName) {
                 $isDrums = false;
 
-                foreach ($layer['source']['tracks'] as $candidate) {
-                    if ($candidate['name'] === $trackName) {
-                        $isDrums = $candidate['instrument'] === 'drums';
+                foreach ($layer['source']->tracks as $candidate) {
+                    if ($candidate->name === $trackName) {
+                        $isDrums = $candidate->isDrums();
                     }
                 }
 
@@ -360,27 +392,27 @@ final class ProjectParser
                     $clip['bars'] = $layer['bars'];
                 }
 
-                if ($layer['transpose'] !== 0 && ! $isDrums) {
+                if ($layer['transpose'] !== 0 && !$isDrums) {
                     $clip['transpose'] = $layer['transpose'];
                 }
 
                 $result = $this->clips([$clip], "{$layer['where']}, Track „{$trackName}“", $stepsPerBeat, $resolve, $owner, $credits);
-                $first = $result['first'];
+                $first = $result['first'] ?? throw new \LogicException("{$layer['where']}: Track „{$trackName}“ ohne Quelle.");
                 $events = $result['events'];
-                usort($events, fn (array $a, array $b): int => $a['t'] <=> $b['t']);
+                usort($events, fn(array $a, array $b): int => $a['t'] <=> $b['t']);
 
-                $tracks[] = [
-                    'name' => $trackName,
-                    'instrument' => $first['instrument'],
-                    'volume' => $first['volume'],
-                    'gate' => $first['gate'],
-                    'pw' => $first['pw'],
-                    'steps' => $result['end'],
-                    'events' => $events,
-                    'refs' => $result['bands'],
-                    'group' => $group,
-                    'notesHtml' => $first['notesHtml'],
-                ];
+                $tracks[] = new Track(
+                    name: $trackName,
+                    instrument: $first->instrument,
+                    volume: $first->volume,
+                    gate: $first->gate,
+                    pw: $first->pw,
+                    steps: $result['end'],
+                    events: $events,
+                    refs: $result['bands'],
+                    notesHtml: $first->notesHtml,
+                    group: $group,
+                );
             }
         }
 
@@ -388,9 +420,9 @@ final class ProjectParser
             throw new BuildError(sprintf('Mehr als %d Tracks insgesamt. Mit „tracks:“ lässt sich pro Layer eine Auswahl treffen.', self::MAX_LAYER_TRACKS));
         }
 
-        $layerInfo = array_map(fn (array $l): array => ['title' => $l['name'], 'ref' => $l['ref'], 'bpm' => $l['source']['bpm'], 'at' => $l['at']], $layers);
+        $layerInfo = array_values(array_map(fn(array $l): SongLayer => new SongLayer($l['name'], $l['ref'], $l['source']->bpm, $l['at']), $layers));
 
-        return $this->assemble($meta, $head, $tracks, $bpm, $stepsPerBeat, $fallbackTitle, $remix, $credits, ['layers' => $layerInfo]);
+        return $this->assemble($meta, $head, $tracks, $bpm, $stepsPerBeat, $fallbackTitle, $remix, $credits, $layerInfo);
     }
 
     private function gcd(int $a, int $b): int
@@ -398,15 +430,14 @@ final class ProjectParser
         return $b === 0 ? $a : $this->gcd($b, $a % $b);
     }
 
-
     /**
-     * @param (\Closure(string): array{prefix: string, slug: string, project: array<string, mixed>})|null $resolve
+     * @param (\Closure(string): array{prefix: string, slug: string, project: Song})|null $resolve
      * @param array<string, array{prefix: string, slug: string, title: string}> $credits
-     * @return array<string, mixed>
      */
-    private function parseTrack(ParsedMarkdown $chunk, int $stepsPerBeat, ?\Closure $resolve, string $owner, array &$credits): array
+    private function parseTrack(ParsedMarkdown $chunk, int $stepsPerBeat, ?\Closure $resolve, string $owner, array &$credits): Track
     {
         $name = trim((string) $chunk->name);
+        /** @var array<string, mixed> $fm */
         $fm = $chunk->frontmatter;
         $where = "Track „{$name}“";
 
@@ -425,13 +456,18 @@ final class ProjectParser
 
         if ($hasClips) {
             ['events' => $clipEvents, 'end' => $clipEnd, 'first' => $inherit, 'drums' => $sourceKinds, 'bands' => $bands] = $this->clips(
-                $fm['clips'], $where, $stepsPerBeat, $resolve, $owner, $credits,
+                $fm['clips'],
+                $where,
+                $stepsPerBeat,
+                $resolve,
+                $owner,
+                $credits,
             );
         }
 
-        $instrument = $fm['instrument'] ?? $inherit['instrument'] ?? 'square';
+        $instrument = $fm['instrument'] ?? $inherit->instrument ?? 'square';
 
-        if (! is_string($instrument) || ! in_array($instrument, self::INSTRUMENTS, true)) {
+        if (!is_string($instrument) || !in_array($instrument, self::INSTRUMENTS, true)) {
             throw new BuildError("{$where}: unbekanntes instrument (erlaubt: " . implode(', ', self::INSTRUMENTS) . ').');
         }
 
@@ -447,7 +483,7 @@ final class ProjectParser
         $step = 0;
         $last = null;
 
-        foreach ($grid === null ? [] : preg_split('/\s+/', trim($grid), -1, PREG_SPLIT_NO_EMPTY) as $token) {
+        foreach ($grid === null ? [] : (preg_split('/\s+/', trim($grid), -1, PREG_SPLIT_NO_EMPTY) ?: []) as $token) {
             if ($token === '|') {
                 continue;
             }
@@ -475,14 +511,13 @@ final class ProjectParser
             }
 
             if ($isDrums) {
-                if (! in_array($token, self::DRUMS, true)) {
+                if (!in_array($token, self::DRUMS, true)) {
                     throw new BuildError("{$where}, Step {$step}: unbekannter Drum-Befehl „{$token}“ (erlaubt: " . implode(', ', self::DRUMS) . ').');
                 }
 
                 $events[] = ['t' => $step, 'len' => 1, 'd' => $token];
             } else {
-                $frequency = $this->frequency($token)
-                    ?? throw new BuildError("{$where}, Step {$step}: unbekanntes Token „{$token}“.");
+                $frequency = $this->frequency($token) ?? throw new BuildError("{$where}, Step {$step}: unbekanntes Token „{$token}“.");
 
                 $events[] = ['t' => $step, 'len' => 1, 'f' => round($frequency, 3)];
             }
@@ -491,31 +526,31 @@ final class ProjectParser
             $step++;
         }
 
+        /** @var list<array{t: int, len: int, d?: string, f?: float}> $events */
         $events = array_merge($clipEvents, $events);
-        usort($events, fn (array $a, array $b): int => $a['t'] <=> $b['t']);
+        usort($events, fn(array $a, array $b): int => $a['t'] <=> $b['t']);
 
-        $defaults = $inherit ?? [];
-
-        return [
-            'name' => $name,
-            'instrument' => $instrument,
-            'volume' => $this->number($fm, 'volume', (float) ($defaults['volume'] ?? ($isDrums ? 0.3 : 0.2)), 0, 1, $where),
-            'gate' => $this->number($fm, 'gate', (float) ($defaults['gate'] ?? 0.9), 0.05, 1, $where),
-            'pw' => $this->number($fm, 'pw', (float) ($defaults['pw'] ?? 0.25), 0.05, 0.5, $where),
-            'steps' => max($step, $clipEnd),
-            'events' => $events,
-            'refs' => $bands,
-            'notesHtml' => $this->sanitizer->clean($description),
-        ];
+        return new Track(
+            name: $name,
+            instrument: $instrument,
+            volume: $this->number($fm, 'volume', $inherit->volume ?? ($isDrums ? 0.3 : 0.2), 0, 1, $where),
+            gate: $this->number($fm, 'gate', $inherit->gate ?? 0.9, 0.05, 1, $where),
+            pw: $this->number($fm, 'pw', $inherit->pw ?? 0.25, 0.05, 0.5, $where),
+            steps: max($step, $clipEnd),
+            events: $events,
+            refs: $bands,
+            notesHtml: $this->sanitizer->clean($description),
+        );
     }
 
     /**
+     * @param (\Closure(string): array{prefix: string, slug: string, project: Song})|null $resolve
      * @param array<string, array{prefix: string, slug: string, title: string}> $credits
-     * @return array{events: list<array<string, mixed>>, end: int, first: array<string, mixed>|null, drums: list<bool>, bands: list<array<string, mixed>>}
+     * @return array{events: list<array{t: int, len: int, d?: string, f?: float}>, end: int, first: Track|null, drums: list<bool>, bands: list<array{ref: string, title: string, track: string, start: int, len: int}>}
      */
     private function clips(mixed $clips, string $where, int $dstSpb, ?\Closure $resolve, string $owner, array &$credits): array
     {
-        if (! is_array($clips) || $clips === [] || ! array_is_list($clips) || count($clips) > 16) {
+        if (!is_array($clips) || $clips === [] || !array_is_list($clips) || count($clips) > 16) {
             throw new BuildError("{$where}: „clips“ muss eine Liste mit 1 bis 16 Einträgen sein.");
         }
 
@@ -534,19 +569,22 @@ final class ProjectParser
         foreach ($clips as $number => $clip) {
             $label = $where . ', Clip ' . ($number + 1);
 
-            if (! is_array($clip) || array_is_list($clip) && $clip !== []) {
+            if (!is_array($clip) || array_is_list($clip) && $clip !== []) {
                 throw new BuildError("{$label}: Ein Clip braucht Schlüssel wie from, bars und at.");
             }
 
             $unknown = array_diff(array_keys($clip), ['from', 'bars', 'steps', 'at', 'at_step', 'transpose', 'repeat']);
 
             if ($unknown !== []) {
-                throw new BuildError("{$label}: unbekannter Schlüssel „" . implode('“, „', array_map('strval', $unknown)) . '“ (erlaubt: from, bars, steps, at, at_step, transpose, repeat).');
+                throw new BuildError(
+                    "{$label}: unbekannter Schlüssel „" . implode('“, „', array_map('strval', $unknown)) . '“ (erlaubt: from, bars, steps, at, at_step, transpose, repeat).',
+                );
             }
 
             $from = $clip['from'] ?? null;
 
-            if (! is_string($from) || preg_match('/^([a-z0-9][a-z0-9-]*)\/([a-z0-9][a-z0-9-]*(?:\/[a-z0-9][a-z0-9-]*)?)#(.{1,32})$/', trim($from), $m) !== 1) {
+            $m = [];
+            if (!is_string($from) || preg_match('/^([a-z0-9][a-z0-9-]*)\/([a-z0-9][a-z0-9-]*(?:\/[a-z0-9][a-z0-9-]*)?)#(.{1,32})$/', trim($from), $m) !== 1) {
                 throw new BuildError("{$label}: „from“ muss die Form prefix/slug#track haben.");
             }
 
@@ -555,14 +593,14 @@ final class ProjectParser
             $resolved = $resolve("{$prefix}/{$slug}");
             $source = $resolved['project'];
 
-            if ($prefix !== $owner && ($source['remix'] ?? null) !== true) {
+            if ($prefix !== $owner && $source->remix !== true) {
                 throw new BuildError("{$label}: „{$prefix}/{$slug}“ erlaubt kein Remixen. Der Autor müsste „remix: true“ in sein Project schreiben.");
             }
 
             $sourceTrack = null;
 
-            foreach ($source['tracks'] as $candidate) {
-                if ($candidate['name'] === $trackName) {
+            foreach ($source->tracks as $candidate) {
+                if ($candidate->name === $trackName) {
                     $sourceTrack = $candidate;
 
                     break;
@@ -570,12 +608,16 @@ final class ProjectParser
             }
 
             if ($sourceTrack === null) {
-                throw new BuildError("{$label}: „{$prefix}/{$slug}“ hat keinen Track „{$trackName}“ (vorhanden: " . implode(', ', array_column($source['tracks'], 'name')) . ').');
+                throw new BuildError(
+                    "{$label}: „{$prefix}/{$slug}“ hat keinen Track „{$trackName}“ (vorhanden: "
+                    . implode(', ', array_map(fn(Track $track): string => $track->name, $source->tracks))
+                    . ').',
+                );
             }
 
-            $srcSpb = $source['stepsPerBeat'];
-            $srcBar = $source['stepsPerBar'];
-            $srcSteps = $source['steps'];
+            $srcSpb = $source->stepsPerBeat;
+            $srcBar = $source->stepsPerBar;
+            $srcSteps = $source->steps;
 
             if (isset($clip['bars'], $clip['steps'])) {
                 throw new BuildError("{$label}: „bars“ und „steps“ schließen sich aus.");
@@ -592,11 +634,17 @@ final class ProjectParser
             }
 
             if ($stop > $srcSteps) {
-                throw new BuildError("{$label}: Der Ausschnitt reicht bis Step {$stop}, „{$prefix}/{$slug}“ hat nur {$srcSteps} Steps ({$source['bars']} Bars).");
+                throw new BuildError("{$label}: Der Ausschnitt reicht bis Step {$stop}, „{$prefix}/{$slug}“ hat nur {$srcSteps} Steps ({$source->bars} Bars).");
             }
 
-            if ((($stop - $start) * $dstSpb) % $srcSpb !== 0) {
-                throw new BuildError("{$label}: Der Ausschnitt passt nicht in das Raster dieses Projects (Quelle grid " . ($srcSpb * 4) . ', hier grid ' . ($dstSpb * 4) . '). Mit ganzen Bars geht es immer auf.');
+            if (((($stop - $start) * $dstSpb) % $srcSpb) !== 0) {
+                throw new BuildError(
+                    "{$label}: Der Ausschnitt passt nicht in das Raster dieses Projects (Quelle grid "
+                    . ($srcSpb * 4)
+                    . ', hier grid '
+                    . ($dstSpb * 4)
+                    . '). Mit ganzen Bars geht es immer auf.',
+                );
             }
 
             $length = intdiv(($stop - $start) * $dstSpb, $srcSpb);
@@ -615,20 +663,20 @@ final class ProjectParser
 
             $repeat = isset($clip['repeat']) ? $this->integer($clip['repeat'], "{$label}: „repeat“", 1, 64) : 1;
             $transpose = isset($clip['transpose']) ? $this->integer($clip['transpose'], "{$label}: „transpose“", -36, 36) : 0;
-            $isDrums = $sourceTrack['instrument'] === 'drums';
+            $isDrums = $sourceTrack->isDrums();
 
             if ($isDrums && $transpose !== 0) {
                 throw new BuildError("{$label}: „transpose“ gibt es nur für Noten-Tracks.");
             }
 
-            if ($at + $length * $repeat > self::MAX_STEPS) {
+            if (($at + ($length * $repeat)) > self::MAX_STEPS) {
                 throw new BuildError("{$label}: Das Ergebnis wäre länger als " . self::MAX_STEPS . ' Steps.');
             }
 
             for ($r = 0; $r < $repeat; $r++) {
-                $base = $at + $r * $length;
+                $base = $at + ($r * $length);
 
-                foreach ($sourceTrack['events'] as $event) {
+                foreach ($sourceTrack->events as $event) {
                     if ($event['t'] < $start || $event['t'] >= $stop) {
                         continue;
                     }
@@ -636,7 +684,7 @@ final class ProjectParser
                     $offset = ($event['t'] - $start) * $dstSpb;
                     $len = min($event['len'], $stop - $event['t']) * $dstSpb;
 
-                    if ($offset % $srcSpb !== 0 || $len % $srcSpb !== 0) {
+                    if (($offset % $srcSpb) !== 0 || ($len % $srcSpb) !== 0) {
                         throw new BuildError("{$label}: Das Raster der Quelle (grid " . ($srcSpb * 4) . ') passt nicht auf grid ' . ($dstSpb * 4) . ' dieses Projects.');
                     }
 
@@ -645,19 +693,19 @@ final class ProjectParser
                     $copy['len'] = max(1, intdiv($len, $srcSpb));
 
                     if (isset($copy['f']) && $transpose !== 0) {
-                        $copy['f'] = round($copy['f'] * 2 ** ($transpose / 12), 3);
+                        $copy['f'] = round($copy['f'] * (2 ** ($transpose / 12)), 3);
                     }
 
                     $events[] = $copy;
                 }
             }
 
-            $cursor = $at + $length * $repeat;
+            $cursor = $at + ($length * $repeat);
             $end = max($end, $cursor);
             $first ??= $sourceTrack;
             $drums[] = $isDrums;
-            $bands[] = ['ref' => "{$prefix}/{$slug}", 'title' => $source['title'], 'track' => $trackName, 'start' => $at, 'len' => $length * $repeat];
-            $credits["{$prefix}/{$slug}"] = ['prefix' => $prefix, 'slug' => $slug, 'title' => $source['title']];
+            $bands[] = ['ref' => "{$prefix}/{$slug}", 'title' => $source->title, 'track' => $trackName, 'start' => $at, 'len' => $length * $repeat];
+            $credits["{$prefix}/{$slug}"] = ['prefix' => $prefix, 'slug' => $slug, 'title' => $source->title];
         }
 
         return ['events' => $events, 'end' => $end, 'first' => $first, 'drums' => $drums, 'bands' => $bands];
@@ -670,7 +718,8 @@ final class ProjectParser
             $value = (string) $value;
         }
 
-        if (! is_string($value) || preg_match('/^\s*(\d{1,5})\s*(?:-\s*(\d{1,5}))?\s*$/', $value, $m) !== 1) {
+        $m = [];
+        if (!is_string($value) || preg_match('/^\s*(\d{1,5})\s*(?:-\s*(\d{1,5}))?\s*$/', $value, $m) !== 1) {
             throw new BuildError("{$where} muss eine Zahl oder ein Bereich wie 3-6 sein.");
         }
 
@@ -686,7 +735,7 @@ final class ProjectParser
 
     private function integer(mixed $value, string $where, int $min, int $max): int
     {
-        if (! is_int($value) || $value < $min || $value > $max) {
+        if (!is_int($value) || $value < $min || $value > $max) {
             throw new BuildError("{$where} muss eine ganze Zahl von {$min} bis {$max} sein.");
         }
 
@@ -699,14 +748,17 @@ final class ProjectParser
     private function splitTrack(ParsedMarkdown $chunk, string $name, bool $allowMissing): array
     {
         $pattern = '~<pre class="language-grid">(.*?)</pre>~s';
-        $count = preg_match_all($pattern, $chunk->html, $matches);
+        $matches = [];
+        $count = (int) preg_match_all($pattern, $chunk->html, $matches);
 
         if ($count === 0 && $allowMissing) {
             return [null, $chunk->html];
         }
 
         if ($count === 0) {
-            throw new BuildError("Track „{$name}“: kein Code-Block mit der Sprache grid gefunden. Die Noten stehen in einem Block, der mit ```grid beginnt, oder der Track hat clips.");
+            throw new BuildError(
+                "Track „{$name}“: kein Code-Block mit der Sprache grid gefunden. Die Noten stehen in einem Block, der mit ```grid beginnt, oder der Track hat clips.",
+            );
         }
 
         if ($count > 1) {
@@ -720,6 +772,7 @@ final class ProjectParser
 
     private function frequency(string $token): ?float
     {
+        $m = [];
         if (preg_match('/^([A-G])(#|b)?(-?\d)$/', $token, $m) !== 1) {
             return null;
         }
@@ -730,9 +783,9 @@ final class ProjectParser
             default => 0,
         };
 
-        $midi = 12 * ((int) $m[3] + 1) + self::SEMITONES[$m[1]] + $accidental;
+        $midi = (12 * ((int) $m[3] + 1)) + self::SEMITONES[$m[1]] + $accidental;
 
-        return 440.0 * 2 ** (($midi - 69) / 12);
+        return 440.0 * (2 ** (($midi - 69) / 12));
     }
 
     /**
@@ -751,11 +804,10 @@ final class ProjectParser
 
     /**
      * @param array<string, mixed> $meta
-     * @return array<string, mixed>
      */
-    public function media(array $meta): array
+    public function media(array $meta): Media
     {
-        $media = [];
+        $urls = [];
         $release = $meta['release'] ?? null;
         $details = [];
 
@@ -763,13 +815,16 @@ final class ProjectParser
             $unknown = array_diff(array_keys($release), ['url', 'cover', 'title', 'date', 'label', 'catalog', 'license', 'credits']);
 
             if ($unknown !== []) {
-                throw new BuildError('Project: „release“ kennt nur url, cover, title, date, label, catalog, license und credits (unbekannt: ' . implode(', ', array_map('strval', $unknown)) . ').');
+                throw new BuildError(
+                    'Project: „release“ kennt nur url, cover, title, date, label, catalog, license und credits (unbekannt: ' . implode(', ', array_map('strval', $unknown)) . ').',
+                );
             }
 
-            if (! isset($release['url'])) {
+            if (!isset($release['url'])) {
                 throw new BuildError('Project: „release“ braucht eine „url“.');
             }
 
+            /** @var array<string, mixed> $release */
             $details = $release;
             $release = $release['url'];
         }
@@ -781,43 +836,54 @@ final class ProjectParser
 
             $name = $key === 'hq' ? 'hq' : ($key === 'release' ? 'release' : 'release: cover');
 
-            if (! is_string($url) || strlen($url) > 300 || preg_match('~^https://(?=[a-z0-9.-]{3,100}(?::\d{1,5})?(?:/|$))[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)+(?::\d{1,5})?(?:/[^\s<>"\'\\\\\x00-\x1F\x7F]*)?$~', $url) !== 1) {
+            if (
+                !is_string($url)
+                || strlen($url) > 300
+                || preg_match(
+                    '~^https://(?=[a-z0-9.-]{3,100}(?::\d{1,5})?(?:/|$))[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)+(?::\d{1,5})?(?:/[^\s<>"\'\\\\\x00-\x1F\x7F]*)?$~',
+                    $url,
+                ) !== 1
+            ) {
                 throw new BuildError("Project: „{$name}“ muss eine https-Adresse mit Kleinbuchstaben im Hostnamen sein (höchstens 300 Zeichen, ohne Leerzeichen).");
             }
 
-            $media[$key] = $url;
+            $urls[$key] = $url;
         }
 
         $info = $this->releaseInfo($details);
-
-        if ($info !== []) {
-            $media['info'] = $info;
-        }
+        $hqOffset = null;
 
         if (isset($meta['hq-offset'])) {
-            if (! isset($media['hq'])) {
+            if (!isset($urls['hq'])) {
                 throw new BuildError('Project: „hq-offset“ gehört zu „hq“.');
             }
 
-            $media['hqOffset'] = $this->number($meta, 'hq-offset', 0, -10, 10);
+            $hqOffset = $this->number($meta, 'hq-offset', 0, -10, 10);
         }
 
-        return $media;
+        return new Media(
+            hq: $urls['hq'] ?? null,
+            hqOffset: $hqOffset,
+            release: $urls['release'] ?? null,
+            cover: $urls['cover'] ?? null,
+            info: $info,
+        );
     }
 
     /**
      * @param array<string, mixed> $details
-     * @return array<string, mixed>
      */
-    private function releaseInfo(array $details): array
+    private function releaseInfo(array $details): ReleaseInfo
     {
-        $info = [];
+        $texts = [];
 
         foreach (['title' => 120, 'label' => 80, 'catalog' => 40, 'license' => 60] as $key => $max) {
             if (isset($details[$key])) {
-                $info[$key] = $this->text($details, $key, $max);
+                $texts[$key] = $this->text($details, $key, $max);
             }
         }
+
+        $formatted = null;
 
         if (isset($details['date'])) {
             $date = $details['date'];
@@ -826,24 +892,26 @@ final class ProjectParser
                 $date = gmdate('Y-m-d', $date);
             }
 
-            if (! is_string($date) || preg_match('/^\d{4}(-\d{2}(-\d{2})?)?$/', $date) !== 1) {
+            if (!is_string($date) || preg_match('/^\d{4}(-\d{2}(-\d{2})?)?$/', $date) !== 1) {
                 throw new BuildError('Project: „release: date“ muss JJJJ, JJJJ-MM oder JJJJ-MM-TT sein.');
             }
 
-            $info['date'] = $date;
+            $formatted = $date;
         }
+
+        $roles = [];
 
         if (isset($details['credits'])) {
             $credits = $details['credits'];
 
-            if (! is_array($credits) || array_is_list($credits) || count($credits) > 12) {
+            if (!is_array($credits) || array_is_list($credits) || count($credits) > 12) {
                 throw new BuildError('Project: „release: credits“ muss eine Zuordnung Rolle: Name sein (höchstens 12 Rollen).');
             }
 
             foreach ($credits as $role => $names) {
                 $names = is_array($names) ? $names : [$names];
 
-                if (! is_string($role) || $names === [] || count($names) > 6 || ! array_is_list($names)) {
+                if (!is_string($role) || $names === [] || count($names) > 6 || !array_is_list($names)) {
                     throw new BuildError('Project: „release: credits“ braucht je Rolle einen Namen oder eine Liste mit höchstens 6 Namen.');
                 }
 
@@ -854,16 +922,23 @@ final class ProjectParser
                 }
 
                 foreach ($names as $name) {
-                    if (! is_string($name) || trim($name) === '' || mb_strlen($name) > 80) {
+                    if (!is_string($name) || trim($name) === '' || mb_strlen($name) > 80) {
                         throw new BuildError("Project: „release: credits“, Rolle „{$role}“: jeder Name ist Text mit höchstens 80 Zeichen.");
                     }
 
-                    $info['credits'][$role][] = trim((string) preg_replace('/\s+/u', ' ', $name));
+                    $roles[$role][] = trim((string) preg_replace('/\s+/u', ' ', $name));
                 }
             }
         }
 
-        return $info;
+        return new ReleaseInfo(
+            title: $texts['title'] ?? null,
+            label: $texts['label'] ?? null,
+            catalog: $texts['catalog'] ?? null,
+            license: $texts['license'] ?? null,
+            date: $formatted,
+            credits: $roles,
+        );
     }
 
     /** @param array<string, mixed> $meta */
@@ -871,7 +946,7 @@ final class ProjectParser
     {
         $value = $meta[$key] ?? $default;
 
-        if (! is_int($value) && ! is_float($value)) {
+        if (!is_int($value) && !is_float($value)) {
             throw new BuildError("{$where}: „{$key}“ muss eine Zahl sein.");
         }
 
@@ -891,7 +966,7 @@ final class ProjectParser
             $value = (string) $value;
         }
 
-        if (! is_string($value)) {
+        if (!is_string($value)) {
             throw new BuildError("Project: „{$key}“ muss Text sein.");
         }
 
@@ -907,7 +982,7 @@ final class ProjectParser
     /** @return list<string> */
     private function tags(mixed $tags): array
     {
-        if (! is_array($tags) || count($tags) > 6) {
+        if (!is_array($tags) || count($tags) > 6) {
             throw new BuildError('Project: „tags“ muss eine Liste mit höchstens 6 Einträgen sein.');
         }
 
@@ -916,7 +991,7 @@ final class ProjectParser
         foreach ($tags as $tag) {
             $tag = is_int($tag) ? (string) $tag : $tag;
 
-            if (! is_string($tag) || preg_match('/^[\p{L}\p{N}][\p{L}\p{N} -]{0,23}$/u', $tag) !== 1) {
+            if (!is_string($tag) || preg_match('/^[\p{L}\p{N}][\p{L}\p{N} -]{0,23}$/u', $tag) !== 1) {
                 throw new BuildError('Project: ungültiger Tag. Erlaubt sind Buchstaben, Ziffern, Leerzeichen und Bindestrich, höchstens 24 Zeichen.');
             }
 

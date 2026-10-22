@@ -2,14 +2,16 @@
 
 declare(strict_types=1);
 
-namespace Chiptune;
+namespace Chiptune\Format;
 
+use Chiptune\Common\BuildError;
+use Chiptune\Common\HtmlSanitizer;
 use Tempest\Markdown\Markdown;
 
 final class SetParser
 {
     public const FORMAT = 1;
-    public const MAX_BYTES = 65536;
+    public const MAX_BYTES = 65_536;
     public const MAX_PARTS = 32;
 
     public function __construct(
@@ -19,10 +21,9 @@ final class SetParser
     ) {}
 
     /**
-     * @param \Closure(string): array{prefix: string, slug: string, project: array<string, mixed>} $resolve
-     * @return array<string, mixed>
+     * @param \Closure(string): array{prefix: string, slug: string, project: Song} $resolve
      */
-    public function parse(string $source, string $fallbackTitle, \Closure $resolve): array
+    public function parse(string $source, string $fallbackTitle, \Closure $resolve): Set
     {
         if (strlen($source) > self::MAX_BYTES) {
             throw new BuildError(sprintf('Die Datei ist größer als %d KB.', self::MAX_BYTES / 1024));
@@ -40,10 +41,12 @@ final class SetParser
             $head = array_shift($chunks);
         }
 
+        /** @var array<string, mixed> $meta */
+
         $meta = $head->frontmatter ?? [];
 
         if (($meta['format'] ?? self::FORMAT) !== self::FORMAT) {
-            throw new BuildError('Nicht unterstütztes format: ' . json_encode($meta['format']) . '. Unterstützt wird format: ' . self::FORMAT . '.');
+            throw new BuildError('Nicht unterstütztes format: ' . (string) json_encode($meta['format']) . '. Unterstützt wird format: ' . self::FORMAT . '.');
         }
 
         if ($chunks === []) {
@@ -68,12 +71,14 @@ final class SetParser
             $ref = trim((string) $chunk->name);
             $where = 'Part ' . ($index + 1) . " („{$ref}“)";
 
+            $m = [];
             if (preg_match('/^([a-z0-9][a-z0-9-]*)\/([a-z0-9][a-z0-9-]*(?:\/[a-z0-9][a-z0-9-]*)?)$/', $ref, $m) !== 1) {
                 throw new BuildError("{$where}: Der Marker muss die Form <!-- part: prefix/slug --> haben.");
             }
 
             $resolved = $resolve($ref);
             $project = $resolved['project'];
+            /** @var array<string, mixed> $fm */
             $fm = $chunk->frontmatter;
 
             $unknown = array_diff(array_keys($fm), ['bars', 'repeat']);
@@ -84,19 +89,20 @@ final class SetParser
 
             $repeat = $fm['repeat'] ?? 1;
 
-            if (! is_int($repeat) || $repeat < 1 || $repeat > 16) {
+            if (!is_int($repeat) || $repeat < 1 || $repeat > 16) {
                 throw new BuildError("{$where}: „repeat“ muss eine ganze Zahl von 1 bis 16 sein.");
             }
 
-            $bar = $project['stepsPerBar'];
+            $bar = $project->stepsPerBar;
             $startBar = 1;
             $start = 0;
-            $stop = $project['steps'];
+            $stop = $project->steps;
 
             if (isset($fm['bars'])) {
                 $value = is_int($fm['bars']) ? (string) $fm['bars'] : $fm['bars'];
 
-                if (! is_string($value) || preg_match('/^\s*(\d{1,4})\s*(?:-\s*(\d{1,4}))?\s*$/', $value, $r) !== 1) {
+                $r = [];
+                if (!is_string($value) || preg_match('/^\s*(\d{1,4})\s*(?:-\s*(\d{1,4}))?\s*$/', $value, $r) !== 1) {
                     throw new BuildError("{$where}: „bars“ muss eine Zahl oder ein Bereich wie 1-8 sein.");
                 }
 
@@ -110,46 +116,48 @@ final class SetParser
                 $start = ($startBar - 1) * $bar;
                 $stop = $endBar * $bar;
 
-                if ($stop > $project['steps']) {
-                    throw new BuildError("{$where}: „bars“ reicht bis Bar {$endBar}, das Project hat {$project['bars']} Bars.");
+                if ($stop > $project->steps) {
+                    throw new BuildError("{$where}: „bars“ reicht bis Bar {$endBar}, das Project hat {$project->bars} Bars.");
                 }
             }
 
-            $run = ($stop - $start) * $project['stepSeconds'];
+            $run = ($stop - $start) * $project->stepSeconds;
             $duration += $run * $repeat;
 
-            $parts[] = [
-                'ref' => $ref,
-                'prefix' => $resolved['prefix'],
-                'slug' => $resolved['slug'],
-                'title' => $project['title'],
-                'artist' => $project['artist'],
-                'bpm' => $project['bpm'],
-                'stepsPerBar' => $project['stepsPerBar'],
-                'stepsPerBeat' => $project['stepsPerBeat'],
-                'stepSeconds' => $project['stepSeconds'],
-                'steps' => $project['steps'],
-                'start' => $start,
-                'stop' => $stop,
-                'startBar' => $startBar,
-                'repeat' => $repeat,
-                'tracks' => $project['tracks'],
-                'notesHtml' => $this->sanitizer->clean($chunk->html),
-            ];
+            $parts[] = new SetPart(
+                ref: $ref,
+                prefix: $resolved['prefix'],
+                slug: $resolved['slug'],
+                title: $project->title,
+                artist: $project->artist,
+                bpm: $project->bpm,
+                stepsPerBar: $project->stepsPerBar,
+                stepsPerBeat: $project->stepsPerBeat,
+                stepSeconds: $project->stepSeconds,
+                steps: $project->steps,
+                start: $start,
+                stop: $stop,
+                startBar: $startBar,
+                repeat: $repeat,
+                tracks: $project->tracks,
+                notesHtml: $this->sanitizer->clean($chunk->html),
+            );
 
-            $credits[$ref] = ['prefix' => $resolved['prefix'], 'slug' => $resolved['slug'], 'title' => $project['title']];
+            $credits[$ref] = ['prefix' => $resolved['prefix'], 'slug' => $resolved['slug'], 'title' => $project->title];
         }
 
-        return [
-            'kind' => 'set',
-            'format' => self::FORMAT,
-            ...$this->projects->describe($meta, $fallbackTitle),
-            'loop' => $loop,
-            'parts' => $parts,
-            'duration' => $duration,
-            'warnings' => [],
-            'notesHtml' => $this->sanitizer->clean($head->html ?? ''),
-            'credits' => array_values($credits),
-        ];
+        $info = $this->projects->describe($meta, $fallbackTitle);
+
+        return new Set(
+            title: $info['title'],
+            artist: $info['artist'],
+            group: $info['group'],
+            tags: $info['tags'],
+            loop: $loop,
+            parts: $parts,
+            duration: $duration,
+            notesHtml: $this->sanitizer->clean($head->html ?? ''),
+            credits: array_values($credits),
+        );
     }
 }

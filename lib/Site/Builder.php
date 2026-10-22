@@ -2,8 +2,15 @@
 
 declare(strict_types=1);
 
-namespace Chiptune;
+namespace Chiptune\Site;
 
+use Chiptune\Common\BuildError;
+use Chiptune\Common\HtmlSanitizer;
+use Chiptune\Format\Link;
+use Chiptune\Format\Media;
+use Chiptune\Format\ProjectParser;
+use Chiptune\Format\SetParser;
+use Chiptune\Format\Song;
 use Tempest\Markdown\Markdown;
 
 final class Builder
@@ -44,30 +51,37 @@ final class Builder
                 continue;
             }
 
-            foreach ($loaded['data']['warnings'] as $warning) {
+            $data = $loaded['data'];
+
+            foreach ($data->warnings as $warning) {
                 fwrite(STDERR, "Warnung in {$label}: {$warning}\n");
             }
 
-            if (in_array($loaded['kind'], ['project', 'link'], true) && ($loaded['data']['media'] ?? []) !== []) {
-                $loaded['data']['media'] = $this->checkedMedia($loaded['data']['media'], $file['media'], $file['strict'], $label, $errors);
+            if ($data instanceof Link) {
+                if (!$data->media->isEmpty()) {
+                    $data = $data->withMedia($this->checkedMedia($data->media, $file['media'], $file['strict'], $label, $errors));
+                }
+            } elseif ($data instanceof Song && !$data->media->isEmpty()) {
+                $data = $data->withMedia($this->checkedMedia($data->media, $file['media'], $file['strict'], $label, $errors));
             }
 
-            if ($file['album'] !== null && ($loaded['data']['group'] ?? '') !== '') {
+            if ($file['album'] !== null && $data->group !== '') {
                 fwrite(STDERR, "Warnung in {$label}: „group“ gilt nur für Songs ohne Album und wird ignoriert.\n");
             }
 
-            $entries[] = [
-                'prefix' => $file['prefix'],
-                'slug' => $file['slug'],
-                'album' => $file['album'],
-                'source' => $file['file'],
-                'kind' => $loaded['kind'],
-                'project' => $loaded['data'],
-                'strudel' => $loaded['kind'] === 'project' ? $this->handStrudel($file['file'], $loaded['data'], $label) : null,
-            ];
+            $kind = EntryKind::from($loaded['kind']);
+            $entries[] = new Entry(
+                prefix: $file['prefix'],
+                slug: $file['slug'],
+                album: $file['album'],
+                source: $file['file'],
+                kind: $kind,
+                project: $data,
+                strudel: $data instanceof Song ? $this->handStrudel($file['file'], $data, $label) : null,
+            );
         }
 
-        usort($entries, fn (array $a, array $b): int => strcasecmp($a['project']['title'], $b['project']['title']));
+        usort($entries, fn(Entry $a, Entry $b): int => strcasecmp($a->title(), $b->title()));
 
         $albumEntries = [];
 
@@ -91,7 +105,7 @@ final class Builder
             return 1;
         }
 
-        usort($albumEntries, fn (array $a, array $b): int => strcasecmp($a['project']['title'], $b['project']['title']));
+        usort($albumEntries, fn(Entry $a, Entry $b): int => strcasecmp($a->title(), $b->title()));
         $entries = $this->linkAlbums($entries, $albumEntries);
 
         $authors = array_intersect_key($collected['authors'], array_flip(array_column($entries, 'prefix')));
@@ -111,58 +125,58 @@ final class Builder
         Filesystem::write($this->public . '/404.html', $renderer->notFound());
 
         foreach (array_map(strval(...), array_keys($authors)) as $prefix) {
-            $ownAlbums = array_values(array_filter($albumEntries, fn (array $entry): bool => $entry['prefix'] === $prefix));
-            $singles = array_values(array_filter($entries, fn (array $entry): bool => $entry['prefix'] === $prefix && $entry['album'] === null));
+            $ownAlbums = array_values(array_filter($albumEntries, fn(Entry $entry): bool => $entry->prefix === $prefix));
+            $singles = array_values(array_filter($entries, fn(Entry $entry): bool => $entry->prefix === $prefix && $entry->album === null));
             Filesystem::write("{$this->public}/{$prefix}/index.html", $renderer->library([...$ownAlbums, ...$singles], $prefix));
         }
 
         foreach ($albumEntries as $entry) {
-            Filesystem::write("{$this->public}/{$entry['prefix']}/{$entry['slug']}/index.html", $renderer->set($entry));
+            Filesystem::write("{$this->public}/{$entry->prefix}/{$entry->slug}/index.html", $renderer->set($entry));
         }
 
         foreach ($entries as $entry) {
-            if ($entry['kind'] === 'link' && ! isset($entry['project']['media']['releaseOwn'])) {
+            if ($entry->kind === EntryKind::Link && !$entry->link()->media->releaseOwn) {
                 continue;
             }
 
-            $directory = "{$this->public}/{$entry['prefix']}/{$entry['slug']}";
-            Filesystem::write("{$directory}/index.html", match ($entry['kind']) {
-                'set' => $renderer->set($entry),
-                'session' => $renderer->session($entry),
-                'link' => $renderer->link($entry),
+            $directory = "{$this->public}/{$entry->prefix}/{$entry->slug}";
+            Filesystem::write("{$directory}/index.html", match ($entry->kind) {
+                EntryKind::Set => $renderer->set($entry),
+                EntryKind::Session => $renderer->session($entry),
+                EntryKind::Link => $renderer->link($entry),
                 default => $renderer->project($entry),
             });
-            Filesystem::write("{$directory}/source.md", (string) file_get_contents($entry['source']));
+            Filesystem::write("{$directory}/source.md", (string) file_get_contents((string) $entry->source));
         }
 
         $catalog = [];
         $albumTitles = [];
 
         foreach ($albumEntries as $albumEntry) {
-            $albumTitles[$albumEntry['prefix'] . '/' . $albumEntry['slug']] = (string) $albumEntry['project']['title'];
+            $albumTitles[$albumEntry->prefix . '/' . $albumEntry->slug] = $albumEntry->title();
         }
 
         foreach ($entries as $entry) {
-            if ($entry['kind'] !== 'project') {
+            if ($entry->kind !== EntryKind::Project) {
                 continue;
             }
 
-            $id = Renderer::mixId($entry['prefix'], $entry['slug']);
-            Filesystem::write("{$this->public}/+mixer/data/{$id}.json", json_encode($renderer->projectPayload($entry['project']), Renderer::JSON_FLAGS));
+            $id = Renderer::mixId($entry->prefix, $entry->slug);
+            Filesystem::write("{$this->public}/+mixer/data/{$id}.json", (string) json_encode($renderer->projectPayload($entry->song()), Renderer::JSON_FLAGS));
             $catalog[] = [
                 'id' => $id,
-                'title' => $entry['project']['title'],
-                'artist' => (string) $entry['project']['artist'],
-                'bpm' => $entry['project']['bpm'],
-                'bars' => $entry['project']['bars'],
-                'source' => (string) ($authors[$entry['prefix']]['title'] ?? $entry['prefix']),
-                'sourceId' => (string) $entry['prefix'],
-                'album' => $entry['album'] === null ? '' : ($albumTitles[$entry['prefix'] . '/' . $entry['album']] ?? (string) $entry['album']),
-                'albumId' => $entry['album'] === null ? '' : $entry['prefix'] . '/' . $entry['album'],
-                'group' => $entry['album'] === null ? (string) ($entry['project']['group'] ?? '') : '',
-                'groupId' => $entry['album'] === null && ($entry['project']['group'] ?? '') !== '' ? $entry['prefix'] . '/' . mb_strtolower((string) $entry['project']['group']) : '',
-                'tags' => array_values(array_map('strval', (array) ($entry['project']['tags'] ?? []))),
-                'href' => $site['base_path'] . "{$entry['prefix']}/{$entry['slug']}/",
+                'title' => $entry->title(),
+                'artist' => $entry->artist(),
+                'bpm' => $entry->song()->bpm,
+                'bars' => $entry->song()->bars,
+                'source' => (string) ($authors[$entry->prefix]['title'] ?? $entry->prefix),
+                'sourceId' => (string) $entry->prefix,
+                'album' => $entry->album === null ? '' : $albumTitles[$entry->prefix . '/' . $entry->album] ?? (string) $entry->album,
+                'albumId' => $entry->album === null ? '' : $entry->prefix . '/' . $entry->album,
+                'group' => $entry->album === null ? $entry->group() : '',
+                'groupId' => $entry->album === null && $entry->group() !== '' ? $entry->prefix . '/' . mb_strtolower($entry->group()) : '',
+                'tags' => array_values(array_map('strval', $entry->tags())),
+                'href' => $site['base_path'] . "{$entry->prefix}/{$entry->slug}/",
                 'data' => "data/{$id}.json",
             ];
         }
@@ -176,7 +190,7 @@ final class Builder
 
         if (is_file($htaccess)) {
             $origin = $site['assets_origin'] === '' ? '' : ' ' . $site['assets_origin'];
-            $hosts = implode(' ', array_map(fn (string $host): string => "https://{$host}", $collected['media']));
+            $hosts = implode(' ', array_map(fn(string $host): string => "https://{$host}", $collected['media']));
             $mediaSrc = $collected['media'] === [] ? '' : " media-src 'self' {$hosts};";
             $imgHosts = $collected['media'] === [] ? '' : " {$hosts}";
             Filesystem::write($this->public . '/.htaccess', str_replace(
@@ -186,20 +200,28 @@ final class Builder
             ));
         }
 
-        $setCount = count(array_filter($entries, fn (array $entry): bool => $entry['kind'] === 'set'));
-        $sessionCount = count(array_filter($entries, fn (array $entry): bool => $entry['kind'] === 'session'));
-        $linkCount = count(array_filter($entries, fn (array $entry): bool => $entry['kind'] === 'link'));
-        fwrite(STDOUT, sprintf("%d Projects, %d Sets, %d Sessions, %d Links und %d Alben von %d Autoren gebaut: %s\n", count($entries) - $setCount - $sessionCount - $linkCount, $setCount, $sessionCount, $linkCount, count($albumEntries), count($authors), $this->public));
+        $setCount = count(array_filter($entries, fn(Entry $entry): bool => $entry->kind === EntryKind::Set));
+        $sessionCount = count(array_filter($entries, fn(Entry $entry): bool => $entry->kind === EntryKind::Session));
+        $linkCount = count(array_filter($entries, fn(Entry $entry): bool => $entry->kind === EntryKind::Link));
+        fwrite(STDOUT, sprintf(
+            "%d Projects, %d Sets, %d Sessions, %d Links und %d Alben von %d Autoren gebaut: %s\n",
+            count($entries) - $setCount - $sessionCount - $linkCount,
+            $setCount,
+            $sessionCount,
+            $linkCount,
+            count($albumEntries),
+            count($authors),
+            $this->public,
+        ));
 
         return 0;
     }
 
     /**
      * @param array{source: string, prefix: string, slug: string, file: string|null, strict: bool, items: list<string>} $album
-     * @param list<array<string, mixed>> $entries
-     * @return array<string, mixed>
+     * @param list<Entry> $entries
      */
-    private function buildAlbum(array $album, array $entries, Library $library, SetParser $sets): array
+    private function buildAlbum(array $album, array $entries, Library $library, SetParser $sets): Entry
     {
         $meta = [];
         $html = '';
@@ -207,13 +229,14 @@ final class Builder
         if ($album['file'] !== null) {
             $content = (string) file_get_contents($album['file']);
 
-            if (strlen($content) > 32768) {
+            if (strlen($content) > 32_768) {
                 throw new BuildError('_album.md ist größer als 32 KB.');
             }
 
-            $parsed = (new Markdown(null))->parse($content);
+            $parsed = new Markdown(null)->parse($content);
+            /** @var array<string, mixed> $meta */
             $meta = $parsed->frontmatter;
-            $html = (new HtmlSanitizer())->clean($parsed->html);
+            $html = new HtmlSanitizer()->clean($parsed->html);
         }
 
         $unknown = array_diff(array_keys($meta), ['title', 'artist', 'tags', 'tracks', 'loop']);
@@ -225,8 +248,8 @@ final class Builder
         $available = [];
 
         foreach ($entries as $entry) {
-            if ($entry['prefix'] === $album['prefix'] && $entry['album'] === $album['slug'] && $entry['kind'] === 'project') {
-                $available[substr($entry['slug'], strlen($album['slug']) + 1)] = $entry['prefix'] . '/' . $entry['slug'];
+            if ($entry->prefix === $album['prefix'] && $entry->album === $album['slug'] && $entry->kind === EntryKind::Project) {
+                $available[substr($entry->slug, strlen($album['slug']) + 1)] = $entry->prefix . '/' . $entry->slug;
             }
         }
 
@@ -234,15 +257,15 @@ final class Builder
         $order = [];
 
         if (isset($meta['tracks'])) {
-            if (! is_array($meta['tracks']) || ! array_is_list($meta['tracks'])) {
+            if (!is_array($meta['tracks']) || !array_is_list($meta['tracks'])) {
                 throw new BuildError('_album.md: „tracks“ muss eine Liste von Dateinamen ohne .md sein.');
             }
 
             foreach ($meta['tracks'] as $name) {
                 $name = is_int($name) ? (string) $name : $name;
 
-                if (! is_string($name) || ! isset($available[$name])) {
-                    throw new BuildError('_album.md: „tracks“ nennt „' . (is_string($name) ? $name : json_encode($name)) . '“, das ist kein Project in diesem Album.');
+                if (!is_string($name) || !isset($available[$name])) {
+                    throw new BuildError('_album.md: „tracks“ nennt „' . (is_string($name) ? $name : (string) json_encode($name)) . '“, das ist kein Project in diesem Album.');
                 }
 
                 $order[$name] = $available[$name];
@@ -269,48 +292,58 @@ final class Builder
             $source .= "<!-- part: {$ref} -->\n\n";
         }
 
-        $data = $sets->parse($source, $album['slug'], fn (string $ref): array => $library->project($ref));
-        $data['notesHtml'] = $html;
+        $data = $sets->parse($source, $album['slug'], $library->project(...));
+        $data = $data->withNotesHtml($html);
 
-        return [
-            'prefix' => $album['prefix'],
-            'slug' => $album['slug'],
-            'album' => $album['slug'],
-            'source' => null,
-            'kind' => 'album',
-            'project' => $data,
-            'order' => array_map(strval(...), array_keys($order)),
-            'sessions' => array_values(array_filter($entries, fn (array $entry): bool => $entry['prefix'] === $album['prefix'] && $entry['album'] === $album['slug'] && $entry['kind'] === 'session')),
-            'links' => array_values(array_filter($entries, fn (array $entry): bool => $entry['prefix'] === $album['prefix'] && $entry['album'] === $album['slug'] && $entry['kind'] === 'link')),
-        ];
+        return new Entry(
+            prefix: $album['prefix'],
+            slug: $album['slug'],
+            album: $album['slug'],
+            source: null,
+            kind: EntryKind::Album,
+            project: $data,
+            order: array_map(strval(...), array_keys($order)),
+            sessions: array_values(array_filter(
+                $entries,
+                fn(Entry $entry): bool => $entry->prefix === $album['prefix'] && $entry->album === $album['slug'] && $entry->kind === EntryKind::Session,
+            )),
+            links: array_values(array_filter(
+                $entries,
+                fn(Entry $entry): bool => $entry->prefix === $album['prefix'] && $entry->album === $album['slug'] && $entry->kind === EntryKind::Link,
+            )),
+        );
     }
 
     /**
-     * @param list<array<string, mixed>> $entries
-     * @param list<array<string, mixed>> $albums
-     * @return list<array<string, mixed>>
+     * @param list<Entry> $entries
+     * @param list<Entry> $albums
+     * @return list<Entry>
      */
     private function linkAlbums(array $entries, array $albums): array
     {
         $titles = [];
 
         foreach ($entries as $entry) {
-            $titles[$entry['prefix'] . '/' . $entry['slug']] = $entry['project']['title'];
+            $titles[$entry->prefix . '/' . $entry->slug] = $entry->title();
         }
 
         $navigation = [];
 
         foreach ($albums as $album) {
-            $order = $album['order'];
+            $order = $album->order;
 
             foreach ($order as $index => $name) {
-                $link = fn (?string $other): ?array => $other === null ? null : [
-                    'slug' => "{$album['slug']}/{$other}",
-                    'title' => $titles["{$album['prefix']}/{$album['slug']}/{$other}"] ?? $other,
-                ];
+                $link = fn(?string $other): ?array => (
+                    $other === null
+                        ? null
+                        : [
+                            'slug' => "{$album->slug}/{$other}",
+                            'title' => $titles["{$album->prefix}/{$album->slug}/{$other}"] ?? $other,
+                        ]
+                );
 
-                $navigation["{$album['prefix']}/{$album['slug']}/{$name}"] = [
-                    'album' => ['slug' => $album['slug'], 'title' => $album['project']['title']],
+                $navigation["{$album->prefix}/{$album->slug}/{$name}"] = [
+                    'album' => ['slug' => $album->slug, 'title' => $album->title()],
                     'number' => $index + 1,
                     'total' => count($order),
                     'prev' => $link($order[$index - 1] ?? null),
@@ -319,11 +352,7 @@ final class Builder
             }
         }
 
-        return array_map(function (array $entry) use ($navigation): array {
-            $entry['nav'] = $navigation[$entry['prefix'] . '/' . $entry['slug']] ?? null;
-
-            return $entry;
-        }, $entries);
+        return array_map(fn(Entry $entry): Entry => $entry->withNav($navigation[$entry->key()] ?? null), $entries);
     }
 
     /**
@@ -338,38 +367,46 @@ final class Builder
 
         $basePath = $config['base_path'] ?? '/';
 
-        if (! is_string($basePath) || preg_match('#^/([A-Za-z0-9_~-][A-Za-z0-9_.~-]*/)*$#', $basePath) !== 1 || str_contains($basePath, '..')) {
+        if (!is_string($basePath) || preg_match('#^/([A-Za-z0-9_~-][A-Za-z0-9_.~-]*/)*$#', $basePath) !== 1 || str_contains($basePath, '..')) {
             throw new BuildError('site.json: „base_path“ muss mit / beginnen und enden, zum Beispiel / oder /~kchaot/chiptune/.');
         }
 
         $base = $config['assets_base'] ?? $basePath . '_cdn/';
         $local = is_string($base) && preg_match('#^/(?!/)[A-Za-z0-9_~./-]*/$#', $base) === 1;
+        $match = [];
+        // @mago-expect analysis:redundant-type-comparison
         $external = is_string($base) && preg_match('#^(https://[a-z0-9.-]+(?::\d{1,5})?)(?:/[A-Za-z0-9_~./-]*)?/$#', $base, $match) === 1;
 
-        if ((! $local && ! $external) || str_contains((string) $base, '..')) {
+        if (!$local && !$external || str_contains((string) $base, '..')) {
             throw new BuildError('site.json: „assets_base“ muss ein Pfad wie /_cdn/ oder eine https-Adresse sein und mit / enden.');
         }
 
         $prompt = $config['prompt'] ?? '';
 
-        if (! is_string($prompt) || mb_strlen($prompt) > 60 || preg_match('/[\x00-\x1F\x7F]/', $prompt) === 1) {
+        if (!is_string($prompt) || mb_strlen($prompt) > 60 || preg_match('/[\x00-\x1F\x7F]/', $prompt) === 1) {
             throw new BuildError('site.json: „prompt“ muss ein Text bis 60 Zeichen sein (Hostname, zum Beispiel chiptune.kchaot.de).');
         }
 
         $outro = $config['outro'] ?? '';
 
-        if (! is_string($outro) || mb_strlen($outro) > 80 || preg_match('/[\x00-\x1F\x7F]/', $outro) === 1) {
+        if (!is_string($outro) || mb_strlen($outro) > 80 || preg_match('/[\x00-\x1F\x7F]/', $outro) === 1) {
             throw new BuildError('site.json: „outro“ muss ein Text bis 80 Zeichen sein.');
         }
 
         $parent = $config['parent'] ?? null;
 
         if ($parent !== null) {
-            $title = is_array($parent) ? ($parent['title'] ?? null) : null;
-            $url = is_array($parent) ? ($parent['url'] ?? null) : null;
+            $title = is_array($parent) ? $parent['title'] ?? null : null;
+            $url = is_array($parent) ? $parent['url'] ?? null : null;
 
-            if (! is_string($title) || trim($title) === '' || mb_strlen($title) > 40 || ! is_string($url)
-                || preg_match('~^https?://[^\s<>"\']{1,200}$~', $url) !== 1 || str_contains($url, '\\')) {
+            if (
+                !is_string($title)
+                || trim($title) === ''
+                || mb_strlen($title) > 40
+                || !is_string($url)
+                || preg_match('~^https?://[^\s<>"\']{1,200}$~', $url) !== 1
+                || str_contains($url, '\\')
+            ) {
                 throw new BuildError('site.json: „parent“ braucht „title“ (bis 40 Zeichen) und „url“ (http:// oder https://).');
             }
 
@@ -379,30 +416,28 @@ final class Builder
         return [
             'title' => (string) ($config['title'] ?? 'Chiptune'),
             'tagline' => (string) ($config['tagline'] ?? ''),
-            'noindex' => (bool) ($config['noindex'] ?? false),
+            'noindex' => $config['noindex'] ?? false ? true : false,
             'prompt' => $prompt,
             'outro' => $outro,
             'base_path' => $basePath,
             'parent' => $parent,
-            'assets_base' => $base,
+            'assets_base' => (string) $base,
             'assets_origin' => $external ? $match[1] : '',
         ];
     }
 
     /**
-     * @param array<string, mixed> $media
      * @param list<string> $allowed
      * @param list<string> $errors
-     * @return array<string, mixed>
      */
-    private function checkedMedia(array $media, array $allowed, bool $strict, string $label, array &$errors): array
+    private function checkedMedia(Media $media, array $allowed, bool $strict, string $label, array &$errors): Media
     {
         foreach (['hq', 'cover'] as $key) {
-            if (! isset($media[$key])) {
+            if ($media->{$key} === null) {
                 continue;
             }
 
-            $host = (string) parse_url((string) $media[$key], PHP_URL_HOST);
+            $host = Url::host($media->{$key});
 
             if (in_array($host, $allowed, true)) {
                 continue;
@@ -416,18 +451,14 @@ final class Builder
                 fwrite(STDERR, "Warnung in {$label}: {$message} Der Link wird ignoriert.\n");
             }
 
-            unset($media[$key]);
+            $media = $key === 'hq' ? $media->withoutHq() : $media->withoutCover();
         }
 
-        if (! isset($media['hq'])) {
-            unset($media['hqOffset']);
+        if ($media->release !== null && in_array(Url::host($media->release), $allowed, true)) {
+            $media = $media->asOwnRelease();
         }
 
-        if (isset($media['release']) && in_array((string) parse_url((string) $media['release'], PHP_URL_HOST), $allowed, true)) {
-            $media['releaseOwn'] = true;
-        }
-
-        if ((isset($media['cover']) || isset($media['info'])) && ! isset($media['releaseOwn'])) {
+        if (($media->cover !== null || !$media->info->isEmpty()) && !$media->releaseOwn) {
             $message = 'Die Angaben in „release“ (cover, title, date, label, catalog, license, credits) werden nur bei einer selbst veröffentlichten Audiodatei angezeigt (Host unter „media“ in sources.json freigegeben).';
 
             if ($strict) {
@@ -436,7 +467,7 @@ final class Builder
                 fwrite(STDERR, "Warnung in {$label}: {$message} Die Angaben werden ignoriert.\n");
             }
 
-            unset($media['cover'], $media['info']);
+            $media = $media->withoutReleaseDetails();
         }
 
         return $media;
@@ -456,32 +487,32 @@ final class Builder
         $content = (string) file_get_contents($file);
 
         try {
-            if (strlen($content) > 32768) {
+            if (strlen($content) > 32_768) {
                 throw new BuildError('Die Datei ist größer als 32 KB.');
             }
 
-            $parsed = (new Markdown(null))->parse($content);
+            $parsed = new Markdown(null)->parse($content);
             $tagline = $parsed->frontmatter['tagline'] ?? '';
 
-            if (! is_string($tagline) || mb_strlen($tagline) > 80 || preg_match('/[\x00-\x1F\x7F]/', $tagline) === 1) {
+            if (!is_string($tagline) || mb_strlen($tagline) > 80 || preg_match('/[\x00-\x1F\x7F]/', $tagline) === 1) {
                 throw new BuildError('„tagline“ muss ein Text bis 80 Zeichen sein.');
             }
 
             $author = $parsed->frontmatter['author'] ?? '';
 
-            if (! is_string($author) || mb_strlen($author) > 60 || preg_match('/[\x00-\x1F\x7F<>&"]/', $author) === 1) {
+            if (!is_string($author) || mb_strlen($author) > 60 || preg_match('/[\x00-\x1F\x7F<>&"]/', $author) === 1) {
                 throw new BuildError('„author“ muss ein Text bis 60 Zeichen ohne < > & " sein.');
             }
 
             $url = $parsed->frontmatter['url'] ?? '';
 
-            if (! is_string($url) || ($url !== '' && (preg_match('~^https?://[^\s<>"\']{1,200}$~', $url) !== 1 || str_contains($url, '\\')))) {
+            if (!is_string($url) || $url !== '' && (preg_match('~^https?://[^\s<>"\']{1,200}$~', $url) !== 1 || str_contains($url, '\\'))) {
                 throw new BuildError('„url“ muss mit http:// oder https:// beginnen.');
             }
 
             return [
                 'tagline' => trim($tagline),
-                'html' => (new HtmlSanitizer())->clean($parsed->html),
+                'html' => new HtmlSanitizer()->clean($parsed->html),
                 'author' => trim($author),
                 'url' => $url,
             ];
@@ -492,11 +523,11 @@ final class Builder
         }
     }
 
-    private function handStrudel(string $markdownFile, array $project, string $label): ?string
+    private function handStrudel(string $markdownFile, Song $project, string $label): ?string
     {
         $path = substr($markdownFile, 0, -3) . '.strudel';
 
-        if (! is_file($path) || is_link($path)) {
+        if (!is_file($path) || is_link($path)) {
             return null;
         }
 
@@ -504,7 +535,7 @@ final class Builder
         $text = str_replace("\r\n", "\n", (string) file_get_contents($path));
         $stand = Renderer::strudelStand($project);
 
-        if (strlen($text) > 65536) {
+        if (strlen($text) > 65_536) {
             fwrite(STDERR, "Warnung in {$label}: {$name} ist größer als 64 KB und wird ignoriert.\n");
 
             return null;
@@ -514,6 +545,7 @@ final class Builder
         $lines = explode("\n", $text);
         $found = null;
 
+        $match = [];
         while ($lines !== [] && preg_match('~^// (Quelle|Stand):[ \t]*(.*?)[ \t]*$~', $lines[0], $match) === 1) {
             if ($match[1] === 'Stand') {
                 $found = $match[2];
@@ -548,7 +580,7 @@ final class Builder
         $pages = [];
 
         foreach (is_dir($directory) ? (scandir($directory) ?: []) : [] as $entry) {
-            if (! str_ends_with($entry, '.md') || ! is_file("{$directory}/{$entry}") || is_link("{$directory}/{$entry}")) {
+            if (!str_ends_with($entry, '.md') || !is_file("{$directory}/{$entry}") || is_link("{$directory}/{$entry}")) {
                 continue;
             }
 
@@ -560,16 +592,20 @@ final class Builder
 
             $content = (string) file_get_contents("{$directory}/{$entry}");
 
-            if (strlen($content) > 32768) {
+            if (strlen($content) > 32_768) {
                 throw new BuildError("var/pages/{$entry}: Die Datei ist größer als 32 KB.");
             }
 
             $blocks = [];
-            $content = (string) preg_replace_callback('/^~~~[^\n]*\n(.*?)\n~~~[ \t]*$/ms', function (array $match) use (&$blocks): string {
-                $blocks[] = '<pre><code>' . htmlspecialchars($match[1], ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . '</code></pre>';
+            $content = (string) preg_replace_callback(
+                '/^~~~[^\n]*\n(.*?)\n~~~[ \t]*$/ms',
+                function (array $match) use (&$blocks): string {
+                    $blocks[] = '<pre><code>' . htmlspecialchars($match[1], ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . '</code></pre>';
 
-                return 'CODEBLOCKPLACEHOLDER' . (count($blocks) - 1) . 'END';
-            }, $content);
+                    return 'CODEBLOCKPLACEHOLDER' . (count($blocks) - 1) . 'END';
+                },
+                $content,
+            );
 
             $render = function (string $html) use (&$blocks, $sanitizer): string {
                 foreach ($blocks as $index => $block) {
@@ -585,7 +621,7 @@ final class Builder
                 $chunks[] = $chunk;
             }
 
-            $head = array_shift($chunks);
+            $head = array_shift($chunks) ?? throw new BuildError("var/pages/{$entry}: Die Seite ist leer.");
             $tabs = [];
 
             if (count($chunks) > 6) {
@@ -604,7 +640,7 @@ final class Builder
                     throw new BuildError("var/pages/{$entry}: Der Reiter „{$tabSlug}“ kommt doppelt vor.");
                 }
 
-                if (! is_string($tabTitle) || trim($tabTitle) === '' || mb_strlen($tabTitle) > 30) {
+                if (!is_string($tabTitle) || trim($tabTitle) === '' || mb_strlen($tabTitle) > 30) {
                     throw new BuildError("var/pages/{$entry}: Reiter „{$tabSlug}“ braucht ein „title“ bis 30 Zeichen.");
                 }
 
@@ -614,22 +650,22 @@ final class Builder
             $title = $head->frontmatter['title'] ?? ucfirst($slug);
             $order = $head->frontmatter['order'] ?? 100;
 
-            if (! is_string($title) || trim($title) === '' || mb_strlen($title) > 40 || ! is_int($order)) {
+            if (!is_string($title) || trim($title) === '' || mb_strlen($title) > 40 || !is_int($order)) {
                 throw new BuildError("var/pages/{$entry}: „title“ muss ein Text bis 40 Zeichen und „order“ eine ganze Zahl sein.");
             }
 
             $pages[] = ['slug' => $slug, 'title' => trim($title), 'order' => $order, 'html' => $render($head->html), 'tabs' => array_values($tabs)];
         }
 
-        usort($pages, fn (array $a, array $b): int => [$a['order'], $a['slug']] <=> [$b['order'], $b['slug']]);
+        usort($pages, fn(array $a, array $b): int => [$a['order'], $a['slug']] <=> [$b['order'], $b['slug']]);
 
-        return array_map(fn (array $page): array => ['slug' => $page['slug'], 'title' => $page['title'], 'html' => $page['html'], 'tabs' => $page['tabs']], $pages);
+        return array_map(fn(array $page): array => ['slug' => $page['slug'], 'title' => $page['title'], 'html' => $page['html'], 'tabs' => $page['tabs']], $pages);
     }
 
     /** @return array<string, mixed> */
     private function readJson(string $path): array
     {
-        if (! is_file($path)) {
+        if (!is_file($path)) {
             throw new BuildError(basename($path) . ' fehlt.');
         }
 
@@ -639,9 +675,11 @@ final class Builder
             throw new BuildError(basename($path) . ' ist kein gültiges JSON: ' . $exception->getMessage());
         }
 
-        if (! is_array($data)) {
+        if (!is_array($data)) {
             throw new BuildError(basename($path) . ' muss ein JSON-Objekt enthalten.');
         }
+
+        /** @var array<string, mixed> $data */
 
         return $data;
     }
@@ -656,7 +694,7 @@ final class Builder
 
         Filesystem::removeDirectory($dist);
 
-        if (! mkdir($dist, 0775, true) && ! is_dir($dist)) {
+        if (!mkdir($dist, 0o775, true) && !is_dir($dist)) {
             throw new BuildError("Ausgabeordner konnte nicht angelegt werden: {$dist}");
         }
     }
@@ -683,16 +721,16 @@ final class Builder
         foreach (['css' => 'style', 'js' => 'player'] as $extension => $name) {
             $source = "{$this->root}/var/resources/{$name}.{$extension}";
 
-            if (! is_file($source)) {
+            if (!is_file($source)) {
                 throw new BuildError("var/resources/{$name}.{$extension} fehlt.");
             }
 
             $content = (string) file_get_contents($source);
 
             if ($extension === 'css') {
-                $content = (new \MatthiasMullie\Minify\CSS(strtr($content, $fonts)))->minify();
+                $content = new \MatthiasMullie\Minify\CSS(strtr($content, $fonts))->minify();
             } else {
-                $content = (new \MatthiasMullie\Minify\JS($content))->minify();
+                $content = new \MatthiasMullie\Minify\JS($content)->minify();
             }
 
             $file = "{$name}." . substr(sha1($content), 0, 10) . ".{$extension}";

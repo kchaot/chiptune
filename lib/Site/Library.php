@@ -2,14 +2,22 @@
 
 declare(strict_types=1);
 
-namespace Chiptune;
+namespace Chiptune\Site;
+
+use Chiptune\Common\BuildError;
+use Chiptune\Format\Described;
+use Chiptune\Format\LinkParser;
+use Chiptune\Format\ProjectParser;
+use Chiptune\Format\SessionParser;
+use Chiptune\Format\SetParser;
+use Chiptune\Format\Song;
 
 final class Library
 {
-    /** @var array<string, array{prefix: string, slug: string, file: string}> */
+    /** @var array<string, array{source: string, prefix: string, slug: string, album: string|null, file: string, strict: bool, media: list<string>}> */
     private array $files = [];
 
-    /** @var array<string, array{kind: string, prefix: string, slug: string, data: array<string, mixed>}> */
+    /** @var array<string, array{kind: string, prefix: string, slug: string, data: Described}> */
     private array $loaded = [];
 
     /** @var array<string, string> */
@@ -18,7 +26,7 @@ final class Library
     /** @var list<string> */
     private array $stack = [];
 
-    /** @param list<array{prefix: string, slug: string, file: string}> $files */
+    /** @param list<array{source: string, prefix: string, slug: string, album: string|null, file: string, strict: bool, media: list<string>}> $files */
     public function __construct(
         array $files,
         private readonly ProjectParser $projects,
@@ -31,7 +39,7 @@ final class Library
         }
     }
 
-    /** @return array{kind: string, prefix: string, slug: string, data: array<string, mixed>} */
+    /** @return array{kind: string, prefix: string, slug: string, data: Described} */
     public function load(string $key): array
     {
         if (isset($this->loaded[$key])) {
@@ -52,7 +60,7 @@ final class Library
 
         try {
             $source = (string) file_get_contents($file['file']);
-            $resolve = fn (string $ref): array => $this->project($ref);
+            $resolve = $this->project(...);
 
             $fileKind = $this->projects->kind($source);
 
@@ -84,7 +92,7 @@ final class Library
     }
 
     /**
-     * @return array{prefix: string, slug: string, project: array<string, mixed>}
+     * @return array{prefix: string, slug: string, project: Song}
      */
     public function project(string $ref): array
     {
@@ -98,10 +106,19 @@ final class Library
             throw new BuildError("Verweis auf „{$ref}“ nicht möglich: {$error->getMessage()}");
         }
 
-        if ($entry['kind'] !== 'project') {
-            throw new BuildError("„{$ref}“ ist ein " . match ($entry['kind']) { 'session' => 'Session', 'link' => 'Link', default => 'Set' } . '. Verweisen kann man nur auf Projects.');
+        $song = $entry['data'];
+
+        if (!$song instanceof Song) {
+            throw new BuildError(
+                "„{$ref}“ ist ein " . match ($entry['kind']) {
+                    'session' => 'Session',
+                    'link' => 'Link',
+                    default => 'Set',
+                }
+                . '. Verweisen kann man nur auf Projects.',
+            );
         }
 
-        return ['prefix' => $entry['prefix'], 'slug' => $entry['slug'], 'project' => $entry['data']];
+        return ['prefix' => $entry['prefix'], 'slug' => $entry['slug'], 'project' => $song];
     }
 }

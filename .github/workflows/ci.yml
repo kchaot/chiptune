@@ -12,6 +12,8 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - uses: shivammathur/setup-php@v2
         with:
@@ -24,3 +26,7 @@ jobs:
 
       - name: Seite bauen
         run: php bin/build.php
+
+      - name: Ausgabe mit dem Zielzweig vergleichen (nur Information)
+        continue-on-error: true
+        run: php bin/compare.php origin/${{ github.base_ref }}
