@@ -9,6 +9,13 @@ use Chiptune\Common\HtmlSanitizer;
 use Tempest\Markdown\Markdown;
 use Tempest\Markdown\ParsedMarkdown;
 
+/**
+ * Liest Songs und Layer-Songs aus Markdown.
+ *
+ * Die Datei besteht aus einem Kopf (Titel, Tempo, Raster) und je einem Block pro Track mit
+ * Einstellungen und Noten. Bei einem Layer-Song steht pro Block ein Layer. Das Ergebnis ist ein
+ * `Song`. Die Grenzen (`MAX_*`) werden geprüft, Fehler als `BuildError` gemeldet.
+ */
 final class ProjectParser
 {
     public const FORMAT = 1;

@@ -8,6 +8,13 @@ use Chiptune\Common\BuildError;
 use Chiptune\Common\HtmlSanitizer;
 use Tempest\Markdown\Markdown;
 
+/**
+ * Liest Links aus Markdown.
+ *
+ * Der Kopf braucht `release` (die https-Adresse der Aufnahme) und kann mit `from` nennen, aus
+ * welchen Songs sie entstanden ist. Dabei wird geprüft, ob deren Autoren Remixe erlauben. Das
+ * Ergebnis ist ein `Link`.
+ */
 final class LinkParser
 {
     public const FORMAT = 1;

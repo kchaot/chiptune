@@ -13,6 +13,13 @@ use Chiptune\Format\SetParser;
 use Chiptune\Format\Song;
 use Tempest\Markdown\Markdown;
 
+/**
+ * Baut die ganze Seite.
+ *
+ * Er holt die Quellen, lässt die `Library` alle Dateien einlesen, verknüpft die Alben, rendert
+ * alles mit dem `Renderer` und schreibt Seiten und Assets. Ein Fehler in einer strikten Quelle
+ * bricht den Bau ab, bei den anderen wird die Datei übersprungen.
+ */
 final class Builder
 {
     private const MARKER = '.chiptune-site';

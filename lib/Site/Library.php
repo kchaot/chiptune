@@ -12,6 +12,12 @@ use Chiptune\Format\SessionParser;
 use Chiptune\Format\SetParser;
 use Chiptune\Format\Song;
 
+/**
+ * Lädt Dateien nach Schlüssel (`prefix/slug`) und wählt den passenden Parser.
+ *
+ * Ergebnisse werden gemerkt. Verweise zwischen Dateien löst `project()` auf, Zyklen werden erkannt,
+ * und eine kaputte Datei wird nur einmal gemeldet.
+ */
 final class Library
 {
     /** @var array<string, array{source: string, prefix: string, slug: string, album: string|null, file: string, strict: bool, media: list<string>}> */

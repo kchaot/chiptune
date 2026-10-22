@@ -4,6 +4,12 @@ declare(strict_types=1);
 
 namespace Chiptune\Format;
 
+/**
+ * Eine Session hält den Startzustand des Mixers fest.
+ *
+ * Dazu gehören zwei Songs (Deck A und B), der Takt von Deck A, auf dem Deck B einsteigt (`start`),
+ * Auto-Sync (`auto`) und die Stellung des Crossfaders (`fader`, 0 = nur Deck A, 100 = nur Deck B).
+ */
 final readonly class Session implements Described
 {
     /**

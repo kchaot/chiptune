@@ -4,6 +4,11 @@ declare(strict_types=1);
 
 namespace Chiptune\Format;
 
+/**
+ * Ein Set oder Album: mehrere Songs hintereinander, mit Gesamtdauer.
+ *
+ * Jeder Abschnitt ist ein `SetPart`. Mit `loop` beginnt das Set am Ende von vorn.
+ */
 final readonly class Set implements Described
 {
     /**

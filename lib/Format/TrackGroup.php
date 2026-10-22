@@ -4,6 +4,12 @@ declare(strict_types=1);
 
 namespace Chiptune\Format;
 
+/**
+ * Fasst die Tracks zusammen, die ein Layer-Song aus demselben Quell-Song übernommen hat.
+ *
+ * Sie trägt Titel und Verweis des Quell-Songs, dessen ursprüngliches Tempo, den Takt (`at`),
+ * ab dem der Layer einsteigt, und den Begleittext aus der Datei.
+ */
 final readonly class TrackGroup
 {
     public function __construct(

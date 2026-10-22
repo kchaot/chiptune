@@ -23,6 +23,8 @@
         "analyse": "mago analyze",
         "build": "php bin/build.php --local-only",
         "compare": "php bin/compare.php",
+        "docs": "php bin/docs.php",
+        "docs:check": "php bin/docs.php --check",
         "qa": [
             "@fmt:check",
             "@lint",

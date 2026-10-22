@@ -4,6 +4,14 @@ declare(strict_types=1);
 
 namespace Chiptune\Format;
 
+/**
+ * Ein Song: Tracks mit Noten auf einem festen Raster.
+ *
+ * Das Raster hat `stepsPerBeat` Steps pro Schlag und vier Schläge pro Bar, ein Step dauert
+ * `stepSeconds` Sekunden. Ein Song entsteht aus Noten, die direkt in der Datei stehen, oder als
+ * Layer-Song aus Tracks anderer Songs (`layers`). Mit `remix` erlaubt der Autor anderen, Material
+ * aus dem Song zu übernehmen.
+ */
 final readonly class Song implements Described
 {
     /**

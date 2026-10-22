@@ -8,6 +8,12 @@ use Chiptune\Common\BuildError;
 use Chiptune\Common\HtmlSanitizer;
 use Tempest\Markdown\Markdown;
 
+/**
+ * Liest Sets und Alben aus Markdown.
+ *
+ * Die Datei ist eine Liste von Abschnitten, die je auf einen Song verweisen, wahlweise mit
+ * Ausschnitt (`bars`) und Wiederholungen (`repeat`). Das Ergebnis ist ein `Set`.
+ */
 final class SetParser
 {
     public const FORMAT = 1;

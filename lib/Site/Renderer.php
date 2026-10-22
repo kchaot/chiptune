@@ -11,6 +11,12 @@ use Chiptune\Format\SetPart;
 use Chiptune\Format\Song;
 use Chiptune\Format\Track;
 
+/**
+ * Erzeugt alle HTML-Seiten und die JSON-Daten für den Player.
+ *
+ * Dazu gehören Bibliothek, Song, Set, Session, Link, Mixer und die Fehlerseite. Der Renderer
+ * bekommt fertige Value Objects und kennt das Markdown nicht mehr.
+ */
 final class Renderer
 {
     private const DRUM_ORDER = ['k', 'c', 's', 'o', 'h'];
