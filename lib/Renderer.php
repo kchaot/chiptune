@@ -10,9 +10,9 @@ final class Renderer
     public const JSON_FLAGS = JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_THROW_ON_ERROR;
 
     /**
-     * @param array{title: string, tagline: string, noindex: bool, prompt?: string, outro?: string, base_path?: string, parent?: array{title: string, url: string}|null} $site
+     * @param array{title: string, tagline: string, noindex: bool, prompt?: string, outro?: string, base_path?: string, parent?: array{title: string, url: string}|null, assets_base?: string, assets_origin?: string} $site
      * @param array{css: array{url: string, integrity: string}, js: array{url: string, integrity: string}} $assets
-     * @param array<string, array{title: string, url: string, tagline?: string, html?: string}> $authors
+     * @param array<string, array{title: string, url: string, profile?: string|null, author?: string, tagline?: string, html?: string}> $authors
      * @param list<array{slug: string, title: string, html: string, tabs: list<array{slug: string, title: string, html: string}>}> $pages
      */
     public function __construct(
@@ -42,7 +42,7 @@ final class Renderer
             $heading = $this->e($author['title']);
             $name = $this->e((string) ($author['author'] ?? ''));
             $url = (string) ($author['url'] ?? '');
-            $link = $url === '' ? '' : '<a href="' . $this->e($url) . '" rel="noopener noreferrer">' . $this->e(preg_replace('~^https?://~', '', $url)) . '</a>';
+            $link = $url === '' ? '' : '<a href="' . $this->e($url) . '" rel="noopener noreferrer">' . $this->e((string) preg_replace('~^https?://~', '', $url)) . '</a>';
             $lead = $name !== '' && $link !== '' ? "{$name} | {$link}" : $name . $link;
             $title = $author['title'] . ' – ' . $this->site['title'];
             $tagline = $author['tagline'] ?? '';
@@ -71,7 +71,6 @@ final class Renderer
 
     private function libraryItem(Entry $entry, ?string $prefix): string
     {
-        $project = $entry->project;
         $href = $this->url($entry->prefix . '/' . $entry->slug . '/');
         $title = $this->e($entry->title());
         $artist = $this->artistLine($entry->artist(), $entry->prefix, 'span');
@@ -82,6 +81,7 @@ final class Renderer
         $tags = implode('', array_map(fn(string $tag): string => '<li>' . $this->e($tag) . '</li>', $entry->tags()));
         $tags = $tags === '' ? '' : '<ul class="tags">' . $tags . '</ul>';
         if ($entry->kind === EntryKind::Link) {
+            $project = $entry->link();
             $media = $project->media;
             $info = $media->info;
             $own = $media->releaseOwn;
@@ -98,10 +98,12 @@ final class Renderer
             $author .= $from;
             $rel = $own ? '' : ' rel="noopener noreferrer"';
         } elseif ($entry->kind === EntryKind::Session) {
+            $project = $entry->session();
             $facts = '<span>A: <b>' . $this->e($project->a->title) . '</b></span> <span>B: <b>' . $this->e($project->b->title) . '</b></span>';
             $thumbnail = '';
             $badge = '<span class="badge">Session</span> ';
         } elseif (in_array($entry->kind, [EntryKind::Set, EntryKind::Album], true)) {
+            $project = $entry->set();
             $isAlbum = $entry->kind === EntryKind::Album;
             $parts = count($project->parts);
             $length = $this->duration($project->duration);
@@ -233,8 +235,9 @@ final class Renderer
                 ($withHq > 0 ? '<li class="chip" title="Projekte mit HQ-Version"><b>' . $withHq . '</b> HQ</li>' : '')
                 . ($withRelease > 0 ? '<li class="chip" title="Projekte mit Veröffentlichung"><b>' . $withRelease . '</b> VÖ</li>' : '');
             $tags = $chips . $tags;
-            $tags = $tags === '' ? '' : '<ul class="tags">' . $tags . '</ul>';
-            $tagline = ($author['tagline'] ?? '') === '' ? '' : '<p class="tagline">' . $this->e($author['tagline']) . '</p>';
+            $tags = '<ul class="tags">' . $tags . '</ul>';
+            $taglineText = $author['tagline'] ?? '';
+            $tagline = $taglineText === '' ? '' : '<p class="tagline">' . $this->e($taglineText) . '</p>';
             $href = $this->url($prefix . '/');
             $title = $this->e($author['title']);
 
@@ -320,7 +323,8 @@ final class Renderer
      */
     private function head(?string $prefix, string $command, bool $linkHost = true, bool $linkPrefix = true): string
     {
-        $host = ($this->site['prompt'] ?? '') !== '' ? $this->site['prompt'] : $this->site['title'];
+        $prompt = $this->site['prompt'] ?? '';
+        $host = $prompt !== '' ? $prompt : $this->site['title'];
         $hostHtml = $linkHost ? '<a class="p-user" href="' . $this->url('') . '">' . $this->e($host) . '</a>' : '<span class="p-user">' . $this->e($host) . '</span>';
         $path = '';
 
@@ -458,7 +462,7 @@ final class Renderer
     }
 
     /**
-     * @param list<array{id: string, title: string, artist: string, source: string, sourceId: string, album: string, albumId: string, tags: list<string>, bpm: float|int, bars: float|int, href: string, data: string}> $catalog
+     * @param list<array{id: string, title: string, artist: string, source: string, sourceId: string, album: string, albumId: string, tags: list<string>, bpm: float|int, bars: float|int, group: string, groupId: string, href: string, data: string}> $catalog
      */
     public function mix(array $catalog): string
     {
@@ -641,9 +645,6 @@ final class Renderer
     }
 
     /**
-     * @param list<array{prefix: string, slug: string, title: string}> $credits
-     */
-    /**
      * @param array{album: array{slug: string, title: string}, number: int, total: int, prev: array{slug: string, title: string}|null, next: array{slug: string, title: string}|null}|null $nav
      */
     private function albumNav(?array $nav, string $prefix): string
@@ -652,23 +653,9 @@ final class Renderer
             return '';
         }
 
-        $link = fn(?array $target, string $class, string $label): string => $target === null
-            ? '<span class="' . $class . ' off"></span>'
-            : '<a class="'
-                . $class
-                . '" href="'
-                . $this->url($prefix . '/' . $target['slug'] . '/')
-                . '" rel="'
-                . ($class === 'prev' ? 'prev' : 'next')
-                . '">'
-                . $label
-                . ' <b>'
-                . $this->e($target['title'])
-                . '</b></a>';
-
         return (
             '<nav class="album-nav" aria-label="Album">'
-            . $link($nav['prev'], 'prev', '←')
+            . $this->albumNavLink($nav['prev'], 'prev', '←', $prefix)
             . '<a class="where" href="'
             . $this->url($prefix . '/' . $nav['album']['slug'] . '/')
             . '">'
@@ -678,11 +665,38 @@ final class Renderer
             . ' von '
             . $nav['total']
             . '</a>'
-            . $link($nav['next'], 'next', '→')
+            . $this->albumNavLink($nav['next'], 'next', '→', $prefix)
             . '</nav>'
         );
     }
 
+    /**
+     * @param array{slug: string, title: string}|null $target
+     */
+    private function albumNavLink(?array $target, string $class, string $label, string $prefix): string
+    {
+        if ($target === null) {
+            return '<span class="' . $class . ' off"></span>';
+        }
+
+        return (
+            '<a class="'
+            . $class
+            . '" href="'
+            . $this->url($prefix . '/' . $target['slug'] . '/')
+            . '" rel="'
+            . ($class === 'prev' ? 'prev' : 'next')
+            . '">'
+            . $label
+            . ' <b>'
+            . $this->e($target['title'])
+            . '</b></a>'
+        );
+    }
+
+    /**
+     * @param list<array{prefix: string, slug: string, title: string}> $credits
+     */
     private function credits(array $credits): string
     {
         if ($credits === []) {

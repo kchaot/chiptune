@@ -113,6 +113,7 @@ function hashes(string $directory): array
 
     $files = new RecursiveIteratorIterator(new RecursiveDirectoryIterator($directory, FilesystemIterator::SKIP_DOTS));
 
+    /** @var SplFileInfo $file */
     foreach ($files as $file) {
         if ($file->isFile()) {
             $result[substr($file->getPathname(), strlen($directory) + 1)] = sha1_file($file->getPathname()) ?: '';

@@ -39,6 +39,8 @@ final class SetParser
             $head = array_shift($chunks);
         }
 
+        /** @var array<string, mixed> $meta */
+
         $meta = $head->frontmatter ?? [];
 
         if (($meta['format'] ?? self::FORMAT) !== self::FORMAT) {
@@ -73,6 +75,7 @@ final class SetParser
 
             $resolved = $resolve($ref);
             $project = $resolved['project'];
+            /** @var array<string, mixed> $fm */
             $fm = $chunk->frontmatter;
 
             $unknown = array_diff(array_keys($fm), ['bars', 'repeat']);

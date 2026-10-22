@@ -31,6 +31,7 @@ final class SessionParser
         }
 
         $parsed = $this->markdown->parse($source);
+        /** @var array<string, mixed> $meta */
         $meta = $parsed->frontmatter;
 
         if (($meta['format'] ?? self::FORMAT) !== self::FORMAT) {

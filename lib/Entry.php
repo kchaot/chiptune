@@ -7,7 +7,7 @@ namespace Chiptune;
 final readonly class Entry
 {
     /**
-     * @param array<string, mixed>|null $nav
+     * @param array{album: array{slug: string, title: string}, number: int, total: int, prev: array{slug: string, title: string}|null, next: array{slug: string, title: string}|null}|null $nav
      * @param list<string> $order
      * @param list<self> $sessions
      * @param list<self> $links
@@ -26,7 +26,7 @@ final readonly class Entry
         public array $links = [],
     ) {}
 
-    /** @param array<string, mixed>|null $nav */
+    /** @param array{album: array{slug: string, title: string}, number: int, total: int, prev: array{slug: string, title: string}|null, next: array{slug: string, title: string}|null}|null $nav */
     public function withNav(?array $nav): self
     {
         return clone($this, ['nav' => $nav]);

@@ -7,8 +7,8 @@ namespace Chiptune;
 final readonly class Track
 {
     /**
-     * @param list<array<string, mixed>> $events
-     * @param list<array<string, mixed>> $refs
+     * @param list<array{t: int, len: int, d?: string, f?: float}> $events
+     * @param list<array{ref: string, title: string, track: string, start: int, len: int}> $refs
      */
     public function __construct(
         public string $name,

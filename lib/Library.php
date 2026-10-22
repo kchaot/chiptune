@@ -6,7 +6,7 @@ namespace Chiptune;
 
 final class Library
 {
-    /** @var array<string, array{prefix: string, slug: string, file: string}> */
+    /** @var array<string, array{source: string, prefix: string, slug: string, album: string|null, file: string, strict: bool, media: list<string>}> */
     private array $files = [];
 
     /** @var array<string, array{kind: string, prefix: string, slug: string, data: Described}> */
@@ -18,7 +18,7 @@ final class Library
     /** @var list<string> */
     private array $stack = [];
 
-    /** @param list<array{prefix: string, slug: string, file: string}> $files */
+    /** @param list<array{source: string, prefix: string, slug: string, album: string|null, file: string, strict: bool, media: list<string>}> $files */
     public function __construct(
         array $files,
         private readonly ProjectParser $projects,

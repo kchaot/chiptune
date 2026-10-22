@@ -83,7 +83,8 @@ final class HtmlSanitizer
             'UTF-8',
         );
 
-        $body = $document->body;
+        $body = $document->body ?? throw new \LogicException('HTML-Dokument ohne body.');
+        /** @var list<\Dom\Element> $elements */
         $elements = iterator_to_array($body->querySelectorAll('*'), false);
 
         foreach (array_reverse($elements) as $element) {

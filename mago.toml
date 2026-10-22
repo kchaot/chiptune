@@ -2,6 +2,7 @@ php-version = "8.5.12"
 
 [source]
 paths = ["lib", "bin"]
+includes = ["opt/packagist/tempest", "opt/packagist/matthiasmullie"]
 
 [formatter]
 print-width = 180
@@ -29,3 +30,6 @@ prefer-early-continue = { enabled = false }
 no-shorthand-ternary = { enabled = false }
 no-nested-ternary = { enabled = false }
 function-name = { enabled = false }
+
+[analyzer]
+ignore = ["mixed-assignment", "redundant-cast"]

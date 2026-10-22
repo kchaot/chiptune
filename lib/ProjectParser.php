@@ -41,7 +41,7 @@ final class ProjectParser
     }
 
     /**
-     * @param (\Closure(string): array{prefix: string, slug: string, project: array<string, mixed>})|null $resolve
+     * @param (\Closure(string): array{prefix: string, slug: string, project: Song})|null $resolve
      * @param string $owner
      */
     public function parse(string $source, string $fallbackTitle = 'Untitled', ?\Closure $resolve = null, string $owner = ''): Song
@@ -69,6 +69,8 @@ final class ProjectParser
         if (count($chunks) > self::MAX_TRACKS) {
             throw new BuildError(sprintf('Mehr als %d Tracks.', self::MAX_TRACKS));
         }
+
+        /** @var array<string, mixed> $meta */
 
         $meta = $head->frontmatter ?? [];
         $format = $meta['format'] ?? self::FORMAT;
@@ -186,6 +188,8 @@ final class ProjectParser
             $head = array_shift($chunks);
         }
 
+        /** @var array<string, mixed> $meta */
+
         $meta = $head->frontmatter ?? [];
 
         if (($meta['format'] ?? self::FORMAT) !== self::FORMAT) {
@@ -206,6 +210,7 @@ final class ProjectParser
             throw new BuildError('Layer: „remix“ muss true oder false sein.');
         }
 
+        /** @var list<array{ref: string, prefix: string, slug: string, source: Song, name: string, tracks: list<string>, at: int, bars: mixed, transpose: int, repeat: int|string, where: string, description: string, length?: int, start?: int}> $layers */
         $layers = [];
 
         foreach ($chunks as $index => $chunk) {
@@ -215,6 +220,8 @@ final class ProjectParser
             if (preg_match('/^([a-z0-9][a-z0-9-]*)\/([a-z0-9][a-z0-9-]*(?:\/[a-z0-9][a-z0-9-]*)?)$/', $ref, $m) !== 1) {
                 throw new BuildError("{$where}: Der Marker muss die Form <!-- layer: prefix/slug --> haben.");
             }
+
+            /** @var array<string, mixed> $fm */
 
             $fm = $chunk->frontmatter;
             $unknown = array_diff(array_keys($fm), ['at', 'bars', 'repeat', 'transpose', 'tracks', 'name']);
@@ -256,6 +263,7 @@ final class ProjectParser
                 }
             }
 
+            /** @var list<string> $selected */
             $repeat = $fm['repeat'] ?? 1;
 
             if ($repeat !== 'fill') {
@@ -378,7 +386,7 @@ final class ProjectParser
                 }
 
                 $result = $this->clips([$clip], "{$layer['where']}, Track „{$trackName}“", $stepsPerBeat, $resolve, $owner, $credits);
-                $first = $result['first'];
+                $first = $result['first'] ?? throw new \LogicException("{$layer['where']}: Track „{$trackName}“ ohne Quelle.");
                 $events = $result['events'];
                 usort($events, fn(array $a, array $b): int => $a['t'] <=> $b['t']);
 
@@ -412,12 +420,13 @@ final class ProjectParser
     }
 
     /**
-     * @param (\Closure(string): array{prefix: string, slug: string, project: array<string, mixed>})|null $resolve
+     * @param (\Closure(string): array{prefix: string, slug: string, project: Song})|null $resolve
      * @param array<string, array{prefix: string, slug: string, title: string}> $credits
      */
     private function parseTrack(ParsedMarkdown $chunk, int $stepsPerBeat, ?\Closure $resolve, string $owner, array &$credits): Track
     {
         $name = trim((string) $chunk->name);
+        /** @var array<string, mixed> $fm */
         $fm = $chunk->frontmatter;
         $where = "Track „{$name}“";
 
@@ -506,6 +515,7 @@ final class ProjectParser
             $step++;
         }
 
+        /** @var list<array{t: int, len: int, d?: string, f?: float}> $events */
         $events = array_merge($clipEvents, $events);
         usort($events, fn(array $a, array $b): int => $a['t'] <=> $b['t']);
 
@@ -523,8 +533,9 @@ final class ProjectParser
     }
 
     /**
+     * @param (\Closure(string): array{prefix: string, slug: string, project: Song})|null $resolve
      * @param array<string, array{prefix: string, slug: string, title: string}> $credits
-     * @return array{events: list<array<string, mixed>>, end: int, first: Track|null, drums: list<bool>, bands: list<array<string, mixed>>}
+     * @return array{events: list<array{t: int, len: int, d?: string, f?: float}>, end: int, first: Track|null, drums: list<bool>, bands: list<array{ref: string, title: string, track: string, start: int, len: int}>}
      */
     private function clips(mixed $clips, string $where, int $dstSpb, ?\Closure $resolve, string $owner, array &$credits): array
     {
@@ -798,6 +809,7 @@ final class ProjectParser
                 throw new BuildError('Project: „release“ braucht eine „url“.');
             }
 
+            /** @var array<string, mixed> $release */
             $details = $release;
             $release = $release['url'];
         }

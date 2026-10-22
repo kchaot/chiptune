@@ -155,7 +155,7 @@ final class Builder
             }
 
             $id = Renderer::mixId($entry->prefix, $entry->slug);
-            Filesystem::write("{$this->public}/+mixer/data/{$id}.json", json_encode($renderer->projectPayload($entry->song()), Renderer::JSON_FLAGS));
+            Filesystem::write("{$this->public}/+mixer/data/{$id}.json", (string) json_encode($renderer->projectPayload($entry->song()), Renderer::JSON_FLAGS));
             $catalog[] = [
                 'id' => $id,
                 'title' => $entry->title(),
@@ -227,6 +227,7 @@ final class Builder
             }
 
             $parsed = new Markdown(null)->parse($content);
+            /** @var array<string, mixed> $meta */
             $meta = $parsed->frontmatter;
             $html = new HtmlSanitizer()->clean($parsed->html);
         }
@@ -411,7 +412,7 @@ final class Builder
             'outro' => $outro,
             'base_path' => $basePath,
             'parent' => $parent,
-            'assets_base' => $base,
+            'assets_base' => (string) $base,
             'assets_origin' => $external ? $match[1] : '',
         ];
     }
@@ -610,7 +611,7 @@ final class Builder
                 $chunks[] = $chunk;
             }
 
-            $head = array_shift($chunks);
+            $head = array_shift($chunks) ?? throw new BuildError("var/pages/{$entry}: Die Seite ist leer.");
             $tabs = [];
 
             if (count($chunks) > 6) {
@@ -667,6 +668,8 @@ final class Builder
         if (!is_array($data)) {
             throw new BuildError(basename($path) . ' muss ein JSON-Objekt enthalten.');
         }
+
+        /** @var array<string, mixed> $data */
 
         return $data;
     }

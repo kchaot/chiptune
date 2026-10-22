@@ -17,6 +17,7 @@ final class Filesystem
             \RecursiveIteratorIterator::CHILD_FIRST,
         );
 
+        /** @var \SplFileInfo $item */
         foreach ($items as $item) {
             $path = $item->getPathname();
 

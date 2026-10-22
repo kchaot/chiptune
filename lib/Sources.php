@@ -32,8 +32,10 @@ final class Sources
             throw new BuildError('sources.json: „sources“ muss eine nicht leere Liste sein.');
         }
 
+        /** @var list<mixed> $sources */
         $projects = [];
         $albums = [];
+        /** @var array<string, array{title: string, url: string, profile: string|null}> $authors */
         $authors = [];
         $seenNames = [];
         $mediaHosts = [];
@@ -44,6 +46,8 @@ final class Sources
             if (!is_array($source)) {
                 throw new BuildError("{$label}: Ein Eintrag muss ein Objekt sein.");
             }
+
+            /** @var array<string, mixed> $source */
 
             $name = $source['name'] ?? null;
 
@@ -248,17 +252,20 @@ final class Sources
             throw new BuildError('Cache-Ordner konnte nicht angelegt werden.');
         }
 
+        $pipes = [];
         $process = proc_open(
             ['git', 'clone', '--quiet', '--depth', '1', '--branch', $ref, '--', $url, $target],
             [1 => ['pipe', 'w'], 2 => ['pipe', 'w']],
             $pipes,
             null,
-            array_merge(getenv(), ['GIT_TERMINAL_PROMPT' => '0']),
+            [...getenv(), 'GIT_TERMINAL_PROMPT' => '0'],
         );
 
         if (!is_resource($process)) {
             throw new BuildError('git konnte nicht gestartet werden.');
         }
+
+        /** @var array{1: resource, 2: resource} $pipes */
 
         stream_get_contents($pipes[1]);
         $error = trim((string) stream_get_contents($pipes[2]));
