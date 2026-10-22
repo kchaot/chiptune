@@ -76,7 +76,7 @@ final class ProjectParser
         $format = $meta['format'] ?? self::FORMAT;
 
         if ($format !== self::FORMAT) {
-            throw new BuildError('Nicht unterstütztes format: ' . json_encode($format) . '. Unterstützt wird format: ' . self::FORMAT . '.');
+            throw new BuildError('Nicht unterstütztes format: ' . (string) json_encode($format) . '. Unterstützt wird format: ' . self::FORMAT . '.');
         }
 
         $bpm = $this->number($meta, 'bpm', 120, 20, 300);
@@ -193,7 +193,7 @@ final class ProjectParser
         $meta = $head->frontmatter ?? [];
 
         if (($meta['format'] ?? self::FORMAT) !== self::FORMAT) {
-            throw new BuildError('Nicht unterstütztes format: ' . json_encode($meta['format']) . '. Unterstützt wird format: ' . self::FORMAT . '.');
+            throw new BuildError('Nicht unterstütztes format: ' . (string) json_encode($meta['format']) . '. Unterstützt wird format: ' . self::FORMAT . '.');
         }
 
         if ($chunks === []) {
@@ -210,13 +210,14 @@ final class ProjectParser
             throw new BuildError('Layer: „remix“ muss true oder false sein.');
         }
 
-        /** @var list<array{ref: string, prefix: string, slug: string, source: Song, name: string, tracks: list<string>, at: int, bars: mixed, transpose: int, repeat: int|string, where: string, description: string, length?: int, start?: int}> $layers */
+        /** @var list<array{ref: string, prefix: string, slug: string, source: Song, name: string, tracks: list<string>, at: int, bars: mixed, transpose: int, repeat: int|'fill', where: string, description: string, length: int, start: int}> $layers */
         $layers = [];
 
         foreach ($chunks as $index => $chunk) {
             $ref = trim((string) $chunk->name);
             $where = 'Layer ' . ($index + 1) . " („{$ref}“)";
 
+            $m = [];
             if (preg_match('/^([a-z0-9][a-z0-9-]*)\/([a-z0-9][a-z0-9-]*(?:\/[a-z0-9][a-z0-9-]*)?)$/', $ref, $m) !== 1) {
                 throw new BuildError("{$where}: Der Marker muss die Form <!-- layer: prefix/slug --> haben.");
             }
@@ -257,7 +258,11 @@ final class ProjectParser
                 foreach ($selected as $wanted) {
                     if (!is_string($wanted) || !in_array($wanted, $names, true)) {
                         throw new BuildError(
-                            "{$where}: „{$ref}“ hat keinen Track „" . (is_string($wanted) ? $wanted : json_encode($wanted)) . '“ (vorhanden: ' . implode(', ', $names) . ').',
+                            "{$where}: „{$ref}“ hat keinen Track „"
+                            . (is_string($wanted) ? $wanted : (string) json_encode($wanted))
+                            . '“ (vorhanden: '
+                            . implode(', ', $names)
+                            . ').',
                         );
                     }
                 }
@@ -283,6 +288,8 @@ final class ProjectParser
                 'repeat' => $repeat,
                 'where' => $where,
                 'description' => $this->sanitizer->clean($chunk->html),
+                'length' => 0,
+                'start' => 0,
             ];
         }
 
@@ -343,8 +350,10 @@ final class ProjectParser
         $total = 0;
 
         foreach ($layers as $layer) {
-            if ($layer['repeat'] !== 'fill') {
-                $total = max($total, $layer['start'] + ($layer['length'] * $layer['repeat']));
+            $fixed = $layer['repeat'];
+
+            if ($fixed !== 'fill') {
+                $total = max($total, $layer['start'] + ($layer['length'] * $fixed));
             }
         }
 
@@ -472,7 +481,7 @@ final class ProjectParser
         $step = 0;
         $last = null;
 
-        foreach ($grid === null ? [] : preg_split('/\s+/', trim($grid), -1, PREG_SPLIT_NO_EMPTY) as $token) {
+        foreach ($grid === null ? [] : (preg_split('/\s+/', trim($grid), -1, PREG_SPLIT_NO_EMPTY) ?: []) as $token) {
             if ($token === '|') {
                 continue;
             }
@@ -572,6 +581,7 @@ final class ProjectParser
 
             $from = $clip['from'] ?? null;
 
+            $m = [];
             if (!is_string($from) || preg_match('/^([a-z0-9][a-z0-9-]*)\/([a-z0-9][a-z0-9-]*(?:\/[a-z0-9][a-z0-9-]*)?)#(.{1,32})$/', trim($from), $m) !== 1) {
                 throw new BuildError("{$label}: „from“ muss die Form prefix/slug#track haben.");
             }
@@ -706,6 +716,7 @@ final class ProjectParser
             $value = (string) $value;
         }
 
+        $m = [];
         if (!is_string($value) || preg_match('/^\s*(\d{1,5})\s*(?:-\s*(\d{1,5}))?\s*$/', $value, $m) !== 1) {
             throw new BuildError("{$where} muss eine Zahl oder ein Bereich wie 3-6 sein.");
         }
@@ -735,7 +746,8 @@ final class ProjectParser
     private function splitTrack(ParsedMarkdown $chunk, string $name, bool $allowMissing): array
     {
         $pattern = '~<pre class="language-grid">(.*?)</pre>~s';
-        $count = preg_match_all($pattern, $chunk->html, $matches);
+        $matches = [];
+        $count = (int) preg_match_all($pattern, $chunk->html, $matches);
 
         if ($count === 0 && $allowMissing) {
             return [null, $chunk->html];
@@ -758,6 +770,7 @@ final class ProjectParser
 
     private function frequency(string $token): ?float
     {
+        $m = [];
         if (preg_match('/^([A-G])(#|b)?(-?\d)$/', $token, $m) !== 1) {
             return null;
         }

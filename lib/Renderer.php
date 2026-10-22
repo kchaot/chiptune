@@ -794,6 +794,7 @@ final class Renderer
 
     private function dateText(string $value): string
     {
+        $m = [];
         if (preg_match('/^(\d{4})(?:-(\d{2})(?:-(\d{2}))?)?$/', $value, $m) !== 1) {
             return '';
         }
@@ -1087,10 +1088,15 @@ final class Renderer
                 $part = $kinds === [] ? $row : $row / count($kinds);
 
                 foreach ($track->events as $event) {
-                    $svg .= $this->rect($event['t'], $top + (array_search($event['d'], $kinds, true) * $part), $event['len'], max($part - ($part < $row ? 0.5 : 0), 0.5));
+                    $svg .= $this->rect(
+                        $event['t'],
+                        $top + ((int) array_search($event['d'] ?? '', $kinds, true) * $part),
+                        $event['len'],
+                        max($part - ($part < $row ? 0.5 : 0), 0.5),
+                    );
                 }
             } else {
-                $midis = array_map(fn(array $event): float => 69 + (12 * log($event['f'] / 440, 2)), $track->events);
+                $midis = array_map(fn(array $event): float => 69 + (12 * log(($event['f'] ?? 440.0) / 440, 2)), $track->events);
                 $low = $midis === [] ? 0 : min($midis);
                 $span = $midis === [] ? 1 : max($midis) - $low;
 

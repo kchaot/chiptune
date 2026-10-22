@@ -44,7 +44,7 @@ final class SetParser
         $meta = $head->frontmatter ?? [];
 
         if (($meta['format'] ?? self::FORMAT) !== self::FORMAT) {
-            throw new BuildError('Nicht unterstütztes format: ' . json_encode($meta['format']) . '. Unterstützt wird format: ' . self::FORMAT . '.');
+            throw new BuildError('Nicht unterstütztes format: ' . (string) json_encode($meta['format']) . '. Unterstützt wird format: ' . self::FORMAT . '.');
         }
 
         if ($chunks === []) {
@@ -69,6 +69,7 @@ final class SetParser
             $ref = trim((string) $chunk->name);
             $where = 'Part ' . ($index + 1) . " („{$ref}“)";
 
+            $m = [];
             if (preg_match('/^([a-z0-9][a-z0-9-]*)\/([a-z0-9][a-z0-9-]*(?:\/[a-z0-9][a-z0-9-]*)?)$/', $ref, $m) !== 1) {
                 throw new BuildError("{$where}: Der Marker muss die Form <!-- part: prefix/slug --> haben.");
             }
@@ -98,6 +99,7 @@ final class SetParser
             if (isset($fm['bars'])) {
                 $value = is_int($fm['bars']) ? (string) $fm['bars'] : $fm['bars'];
 
+                $r = [];
                 if (!is_string($value) || preg_match('/^\s*(\d{1,4})\s*(?:-\s*(\d{1,4}))?\s*$/', $value, $r) !== 1) {
                     throw new BuildError("{$where}: „bars“ muss eine Zahl oder ein Bereich wie 1-8 sein.");
                 }

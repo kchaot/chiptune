@@ -94,6 +94,7 @@ exit(1);
 
 function run(string $command, string $error): void
 {
+    $code = 0;
     passthru($command, $code);
 
     if ($code !== 0) {

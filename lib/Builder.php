@@ -258,7 +258,7 @@ final class Builder
                 $name = is_int($name) ? (string) $name : $name;
 
                 if (!is_string($name) || !isset($available[$name])) {
-                    throw new BuildError('_album.md: „tracks“ nennt „' . (is_string($name) ? $name : json_encode($name)) . '“, das ist kein Project in diesem Album.');
+                    throw new BuildError('_album.md: „tracks“ nennt „' . (is_string($name) ? $name : (string) json_encode($name)) . '“, das ist kein Project in diesem Album.');
                 }
 
                 $order[$name] = $available[$name];
@@ -366,6 +366,8 @@ final class Builder
 
         $base = $config['assets_base'] ?? $basePath . '_cdn/';
         $local = is_string($base) && preg_match('#^/(?!/)[A-Za-z0-9_~./-]*/$#', $base) === 1;
+        $match = [];
+        // @mago-expect analysis:redundant-type-comparison
         $external = is_string($base) && preg_match('#^(https://[a-z0-9.-]+(?::\d{1,5})?)(?:/[A-Za-z0-9_~./-]*)?/$#', $base, $match) === 1;
 
         if (!$local && !$external || str_contains((string) $base, '..')) {
@@ -407,7 +409,7 @@ final class Builder
         return [
             'title' => (string) ($config['title'] ?? 'Chiptune'),
             'tagline' => (string) ($config['tagline'] ?? ''),
-            'noindex' => (bool) ($config['noindex'] ?? false),
+            'noindex' => $config['noindex'] ?? false ? true : false,
             'prompt' => $prompt,
             'outro' => $outro,
             'base_path' => $basePath,
@@ -536,6 +538,7 @@ final class Builder
         $lines = explode("\n", $text);
         $found = null;
 
+        $match = [];
         while ($lines !== [] && preg_match('~^// (Quelle|Stand):[ \t]*(.*?)[ \t]*$~', $lines[0], $match) === 1) {
             if ($match[1] === 'Stand') {
                 $found = $match[2];

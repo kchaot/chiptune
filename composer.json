@@ -26,6 +26,7 @@
         "qa": [
             "@fmt:check",
             "@lint",
+            "@analyse",
             "@build"
         ]
     },

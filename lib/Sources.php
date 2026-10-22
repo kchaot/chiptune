@@ -237,7 +237,7 @@ final class Sources
 
         $directory = realpath($checkout . ($path === '' ? '' : '/' . $path));
 
-        if ($directory === false || !is_dir($directory) || !str_starts_with($directory, realpath($checkout) . '')) {
+        if ($directory === false || !is_dir($directory) || !str_starts_with($directory, (string) realpath($checkout))) {
             throw new BuildError("Quelle „{$name}“: Ordner „{$path}“ im Repo {$repo} nicht gefunden.");
         }
 
