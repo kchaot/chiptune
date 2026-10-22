@@ -46,7 +46,7 @@ final class Builder
 
             $data = $loaded['data'];
 
-            foreach ($data instanceof Described ? $data->warnings : $data['warnings'] as $warning) {
+            foreach ($data->warnings as $warning) {
                 fwrite(STDERR, "Warnung in {$label}: {$warning}\n");
             }
 
@@ -54,11 +54,11 @@ final class Builder
                 if (!$data->media->isEmpty()) {
                     $data = $data->withMedia($this->checkedMedia($data->media, $file['media'], $file['strict'], $label, $errors));
                 }
-            } elseif ($loaded['kind'] === 'project' && isset($data['media']) && !$data['media']->isEmpty()) {
-                $data['media'] = $this->checkedMedia($data['media'], $file['media'], $file['strict'], $label, $errors);
+            } elseif ($data instanceof Song && !$data->media->isEmpty()) {
+                $data = $data->withMedia($this->checkedMedia($data->media, $file['media'], $file['strict'], $label, $errors));
             }
 
-            if ($file['album'] !== null && ($data instanceof Described ? $data->group : $data['group'] ?? '') !== '') {
+            if ($file['album'] !== null && $data->group !== '') {
                 fwrite(STDERR, "Warnung in {$label}: „group“ gilt nur für Songs ohne Album und wird ignoriert.\n");
             }
 
@@ -70,7 +70,7 @@ final class Builder
                 source: $file['file'],
                 kind: $kind,
                 project: $data,
-                strudel: $kind === EntryKind::Project ? $this->handStrudel($file['file'], $data, $label) : null,
+                strudel: $data instanceof Song ? $this->handStrudel($file['file'], $data, $label) : null,
             );
         }
 
@@ -155,13 +155,13 @@ final class Builder
             }
 
             $id = Renderer::mixId($entry->prefix, $entry->slug);
-            Filesystem::write("{$this->public}/+mixer/data/{$id}.json", json_encode($renderer->projectPayload($entry->project), Renderer::JSON_FLAGS));
+            Filesystem::write("{$this->public}/+mixer/data/{$id}.json", json_encode($renderer->projectPayload($entry->song()), Renderer::JSON_FLAGS));
             $catalog[] = [
                 'id' => $id,
                 'title' => $entry->title(),
                 'artist' => $entry->artist(),
-                'bpm' => $entry->project['bpm'],
-                'bars' => $entry->project['bars'],
+                'bpm' => $entry->song()->bpm,
+                'bars' => $entry->song()->bars,
                 'source' => (string) ($authors[$entry->prefix]['title'] ?? $entry->prefix),
                 'sourceId' => (string) $entry->prefix,
                 'album' => $entry->album === null ? '' : $albumTitles[$entry->prefix . '/' . $entry->album] ?? (string) $entry->album,
@@ -513,7 +513,7 @@ final class Builder
         }
     }
 
-    private function handStrudel(string $markdownFile, array $project, string $label): ?string
+    private function handStrudel(string $markdownFile, Song $project, string $label): ?string
     {
         $path = substr($markdownFile, 0, -3) . '.strudel';
 

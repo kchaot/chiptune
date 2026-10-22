@@ -110,14 +110,15 @@ final class Renderer
             $thumbnail = $this->setThumbnail($project);
             $badge = '<span class="badge">' . ($isAlbum ? 'Album' : 'Set') . '</span> ';
         } else {
-            $bpm = $this->number($project['bpm']);
-            $bars = $this->number($project['bars']);
-            $tracks = count($project['tracks']);
-            $length = $this->duration($project['steps'] * $project['stepSeconds']);
+            $song = $entry->song();
+            $bpm = $this->number($song->bpm);
+            $bars = $this->number($song->bars);
+            $tracks = count($song->tracks);
+            $length = $this->duration($song->steps * $song->stepSeconds);
             $facts = "<span><b>{$bpm}</b> BPM</span> <span><b>{$bars}</b> Bars</span> <span><b>{$tracks}</b> Tracks</span> <span><b>{$length}</b> Länge</span>";
-            $thumbnail = $this->thumbnail($project);
-            $badge = $this->projectBadge($project);
-            $facts .= $this->mediaMarks($project);
+            $thumbnail = $this->thumbnail($song->tracks, $song->steps);
+            $badge = $this->projectBadge($song);
+            $facts .= $this->mediaMarks($song);
         }
 
         $noThumb = $thumbnail === '' ? ' no-thumb' : '';
@@ -198,8 +199,8 @@ final class Renderer
             $sessions = count(array_filter($own, fn(Entry $entry): bool => $entry->kind === EntryKind::Session));
             $links = count(array_filter($own, fn(Entry $entry): bool => $entry->kind === EntryKind::Link));
             $projects = count($own) - $sets - $albums - $sessions - $links;
-            $withHq = count(array_filter($own, fn(Entry $entry): bool => $entry->kind === EntryKind::Project && $entry->project['media']->hq !== null));
-            $withRelease = count(array_filter($own, fn(Entry $entry): bool => $entry->kind === EntryKind::Project && $entry->project['media']->release !== null));
+            $withHq = count(array_filter($own, fn(Entry $entry): bool => $entry->kind === EntryKind::Project && $entry->song()->media->hq !== null));
+            $withRelease = count(array_filter($own, fn(Entry $entry): bool => $entry->kind === EntryKind::Project && $entry->song()->media->release !== null));
             $facts = '<span><b>' . $projects . '</b> ' . ($projects === 1 ? 'Project' : 'Projects') . '</span>';
 
             if ($albums > 0) {
@@ -360,27 +361,24 @@ final class Renderer
         return $this->authors[$prefix]['title'] ?? $prefix;
     }
 
-    private function projectBadge(array $project): string
+    private function projectBadge(Song $project): string
     {
-        if (!empty($project['layers'])) {
+        if ($project->layers !== []) {
             return '<span class="badge">Layer</span> ';
         }
 
-        return ($project['credits'] ?? []) === [] ? '' : '<span class="badge">Remix</span> ';
+        return $project->credits === [] ? '' : '<span class="badge">Remix</span> ';
     }
 
-    /**
-     * @param array<string, mixed> $project
-     */
-    private function layersPanel(array $project): string
+    private function layersPanel(Song $project): string
     {
-        if (empty($project['layers'])) {
+        if ($project->layers === []) {
             return '';
         }
 
         $descriptions = [];
 
-        foreach ($project['tracks'] as $track) {
+        foreach ($project->tracks as $track) {
             if ($track->group !== null && !isset($descriptions[$track->group->ref])) {
                 $descriptions[$track->group->ref] = $track->group->description;
             }
@@ -388,18 +386,16 @@ final class Renderer
 
         $items = '';
 
-        foreach ($project['layers'] as $index => $layer) {
-            $href = $this->url($layer['ref'] . '/');
-            $original = abs($layer['bpm'] - $project['bpm']) < 0.05
-                ? $this->number($layer['bpm']) . ' BPM'
-                : $this->number($layer['bpm']) . ' -> ' . $this->number($project['bpm']) . ' BPM';
-            $text = $descriptions[$layer['ref']] ?? '';
+        foreach ($project->layers as $index => $layer) {
+            $href = $this->url($layer->ref . '/');
+            $original = abs($layer->bpm - $project->bpm) < 0.05 ? $this->number($layer->bpm) . ' BPM' : $this->number($layer->bpm) . ' -> ' . $this->number($project->bpm) . ' BPM';
+            $text = $descriptions[$layer->ref] ?? '';
             $items .= sprintf(
                 "\n      <li class=\"layer t%d\"><p><a href=\"%s\">%s</a> <span class=\"layer-facts\">steigt ein bei Bar %d, %s</span></p>%s</li>",
                 $index % 8,
                 $href,
-                $this->e($layer['title']),
-                $layer['at'],
+                $this->e($layer->title),
+                $layer->at,
                 $original,
                 $text === '' ? '' : '<div class="notes">' . $text . '</div>',
             );
@@ -408,37 +404,34 @@ final class Renderer
         return '<section class="layers"><h2 class="sub">Layer</h2><ol>' . $items . "\n    </ol></section>";
     }
 
-    /**
-     * @param array<string, mixed> $project
-     * @return array<string, mixed>
-     */
-    public static function strudelStand(array $project): string
+    public static function strudelStand(Song $project): string
     {
         $data = [
-            $project['bpm'],
-            $project['stepsPerBeat'],
-            $project['steps'],
-            array_map(fn(Track $track): array => [$track->name, $track->instrument, $track->volume, $track->gate, $track->events], $project['tracks']),
+            $project->bpm,
+            $project->stepsPerBeat,
+            $project->steps,
+            array_map(fn(Track $track): array => [$track->name, $track->instrument, $track->volume, $track->gate, $track->events], $project->tracks),
         ];
 
         return substr(sha1(json_encode($data, JSON_THROW_ON_ERROR)), 0, 8);
     }
 
-    public function projectPayload(array $project): array
+    /**
+     * @return array<string, mixed>
+     */
+    public function projectPayload(Song $project): array
     {
         return [
-            'title' => $project['title'],
-            'artist' => $project['artist'],
-            'bpm' => $project['bpm'],
+            'title' => $project->title,
+            'artist' => $project->artist,
+            'bpm' => $project->bpm,
             'stand' => self::strudelStand($project),
-            'stepsPerBeat' => $project['stepsPerBeat'],
-            'stepsPerBar' => $project['stepsPerBar'],
-            'stepSeconds' => $project['stepSeconds'],
-            'loop' => $project['loop'],
-            'steps' => $project['steps'],
-            'media' => (object) (
-                ($project['media'] ?? new Media())->toArray() + (isset($project['media']->release) ? ['releaseLabel' => $this->releaseLabel($project['media']->release)] : [])
-            ),
+            'stepsPerBeat' => $project->stepsPerBeat,
+            'stepsPerBar' => $project->stepsPerBar,
+            'stepSeconds' => $project->stepSeconds,
+            'loop' => $project->loop,
+            'steps' => $project->steps,
+            'media' => (object) ($project->media->toArray() + (isset($project->media->release) ? ['releaseLabel' => $this->releaseLabel($project->media->release)] : [])),
             'tracks' => array_map(function (Track $track): array {
                 $data = [
                     'name' => $track->name,
@@ -460,7 +453,7 @@ final class Renderer
                 }
 
                 return $data + ['notes' => $track->notesHtml !== ''];
-            }, $project['tracks']),
+            }, $project->tracks),
         ];
     }
 
@@ -489,25 +482,25 @@ final class Renderer
 
     public function project(Entry $entry): string
     {
-        $project = $entry->project;
-        $title = $this->e($project['title']);
-        $artist = $this->artistLine($project['artist'], $entry->prefix, 'p');
-        $tags = implode('', array_map(fn(string $tag): string => '<li>' . $this->e($tag) . '</li>', $project['tags']));
+        $project = $entry->song();
+        $title = $this->e($project->title);
+        $artist = $this->artistLine($project->artist, $entry->prefix, 'p');
+        $tags = implode('', array_map(fn(string $tag): string => '<li>' . $this->e($tag) . '</li>', $project->tags));
         $tags = $tags === '' ? '' : '<ul class="tags">' . $tags . '</ul>';
-        $notes = $project['notesHtml'] === '' ? '' : '<section class="aside wide"><div class="notes">' . $project['notesHtml'] . '</div></section>';
+        $notes = $project->notesHtml === '' ? '' : '<section class="aside wide"><div class="notes">' . $project->notesHtml . '</div></section>';
         $head = $this->head($entry->prefix . ($entry->album !== null ? '/' . $entry->album : ''), 'play ' . basename($entry->slug));
-        $credits = $this->credits($project['credits'] ?? []);
+        $credits = $this->credits($project->credits);
         $albumNav = $this->albumNav($entry->nav, $entry->prefix);
-        $thumbnail = $this->thumbnail($project);
+        $thumbnail = $this->thumbnail($project->tracks, $project->steps);
 
         $payload = json_encode($this->projectPayload($project) + ($entry->strudel !== null ? ['strudel' => $entry->strudel] : []), self::JSON_FLAGS);
 
-        $trackNotes = $this->trackNotes($project['tracks']);
+        $trackNotes = $this->trackNotes($project->tracks);
         $layersPanel = $this->layersPanel($project);
         $badge = $this->projectBadge($project);
-        $mediaLinks = $this->mediaLinks($project['media'] ?? new Media());
+        $mediaLinks = $this->mediaLinks($project->media);
 
-        return $this->page($project['title'] . ' – ' . $this->site['title'], 'project-page', <<<HTML
+        return $this->page($project->title . ' – ' . $this->site['title'], 'project-page', <<<HTML
               <script type="application/json" id="project">{$payload}</script>
               {$head}
               <main>
@@ -559,12 +552,9 @@ final class Renderer
         return null;
     }
 
-    /**
-     * @param array<string, mixed> $project
-     */
-    private function mediaMarks(array $project): string
+    private function mediaMarks(Song $project): string
     {
-        $media = $project['media'] ?? new Media();
+        $media = $project->media;
         $marks = '';
 
         if ($media->hq !== null) {
@@ -959,7 +949,7 @@ final class Renderer
             $bars = $from === $to ? "Bar {$from}" : "Bars {$from}–{$to}";
             $repeat = $part->repeat > 1 ? ' <span>× <b>' . $part->repeat . '</b></span>' : '';
             $length = $this->duration(($part->stop - $part->start) * $part->stepSeconds * $part->repeat);
-            $thumb = $this->thumbnail(['tracks' => $part->tracks, 'steps' => $part->steps], [$part->start, $part->stop]);
+            $thumb = $this->thumbnail($part->tracks, $part->steps, [$part->start, $part->stop]);
             $text = $part->notesHtml === '' ? '' : '<div class="notes inner">' . $part->notesHtml . '</div>';
 
             $items .= <<<HTML
@@ -1041,10 +1031,13 @@ final class Renderer
             HTML);
     }
 
-    public function thumbnail(array $project, ?array $window = null): string
+    /**
+     * @param list<Track> $tracks
+     * @param array{int, int}|null $window
+     */
+    public function thumbnail(array $tracks, int $steps, ?array $window = null): string
     {
-        $tracks = $project['tracks'];
-        [$from, $to] = $window ?? [0, $project['steps']];
+        [$from, $to] = $window ?? [0, $steps];
 
         return sprintf(
             '<svg class="thumb" viewBox="%d 0 %d %d" height="%d" preserveAspectRatio="none" shape-rendering="crispEdges" aria-hidden="true" focusable="false">%s</svg>',

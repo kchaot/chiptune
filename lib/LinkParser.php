@@ -19,7 +19,7 @@ final class LinkParser
     ) {}
 
     /**
-     * @param \Closure(string): array{prefix: string, slug: string, project: array<string, mixed>} $resolve
+     * @param \Closure(string): array{prefix: string, slug: string, project: Song} $resolve
      */
     public function parse(string $source, string $fallbackTitle, \Closure $resolve, string $owner): Link
     {
@@ -62,11 +62,11 @@ final class LinkParser
             $ref = trim($ref);
             $resolved = $resolve($ref);
 
-            if ($resolved['prefix'] !== $owner && ($resolved['project']['remix'] ?? null) !== true) {
+            if ($resolved['prefix'] !== $owner && $resolved['project']->remix !== true) {
                 throw new BuildError("Link: „{$ref}“ erlaubt kein Remixen. Der Autor müsste „remix: true“ in sein Project schreiben.");
             }
 
-            $credits[$ref] = ['prefix' => $resolved['prefix'], 'slug' => $resolved['slug'], 'title' => $resolved['project']['title']];
+            $credits[$ref] = ['prefix' => $resolved['prefix'], 'slug' => $resolved['slug'], 'title' => $resolved['project']->title];
         }
 
         $head = $this->projects->describe($meta, $fallbackTitle);

@@ -19,7 +19,7 @@ final class SetParser
     ) {}
 
     /**
-     * @param \Closure(string): array{prefix: string, slug: string, project: array<string, mixed>} $resolve
+     * @param \Closure(string): array{prefix: string, slug: string, project: Song} $resolve
      */
     public function parse(string $source, string $fallbackTitle, \Closure $resolve): Set
     {
@@ -87,10 +87,10 @@ final class SetParser
                 throw new BuildError("{$where}: „repeat“ muss eine ganze Zahl von 1 bis 16 sein.");
             }
 
-            $bar = $project['stepsPerBar'];
+            $bar = $project->stepsPerBar;
             $startBar = 1;
             $start = 0;
-            $stop = $project['steps'];
+            $stop = $project->steps;
 
             if (isset($fm['bars'])) {
                 $value = is_int($fm['bars']) ? (string) $fm['bars'] : $fm['bars'];
@@ -109,34 +109,34 @@ final class SetParser
                 $start = ($startBar - 1) * $bar;
                 $stop = $endBar * $bar;
 
-                if ($stop > $project['steps']) {
-                    throw new BuildError("{$where}: „bars“ reicht bis Bar {$endBar}, das Project hat {$project['bars']} Bars.");
+                if ($stop > $project->steps) {
+                    throw new BuildError("{$where}: „bars“ reicht bis Bar {$endBar}, das Project hat {$project->bars} Bars.");
                 }
             }
 
-            $run = ($stop - $start) * $project['stepSeconds'];
+            $run = ($stop - $start) * $project->stepSeconds;
             $duration += $run * $repeat;
 
             $parts[] = new SetPart(
                 ref: $ref,
                 prefix: $resolved['prefix'],
                 slug: $resolved['slug'],
-                title: $project['title'],
-                artist: $project['artist'],
-                bpm: $project['bpm'],
-                stepsPerBar: $project['stepsPerBar'],
-                stepsPerBeat: $project['stepsPerBeat'],
-                stepSeconds: $project['stepSeconds'],
-                steps: $project['steps'],
+                title: $project->title,
+                artist: $project->artist,
+                bpm: $project->bpm,
+                stepsPerBar: $project->stepsPerBar,
+                stepsPerBeat: $project->stepsPerBeat,
+                stepSeconds: $project->stepSeconds,
+                steps: $project->steps,
                 start: $start,
                 stop: $stop,
                 startBar: $startBar,
                 repeat: $repeat,
-                tracks: $project['tracks'],
+                tracks: $project->tracks,
                 notesHtml: $this->sanitizer->clean($chunk->html),
             );
 
-            $credits[$ref] = ['prefix' => $resolved['prefix'], 'slug' => $resolved['slug'], 'title' => $project['title']];
+            $credits[$ref] = ['prefix' => $resolved['prefix'], 'slug' => $resolved['slug'], 'title' => $project->title];
         }
 
         $info = $this->projects->describe($meta, $fallbackTitle);

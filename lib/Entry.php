@@ -7,7 +7,6 @@ namespace Chiptune;
 final readonly class Entry
 {
     /**
-     * @param array<string, mixed>|Described $project
      * @param array<string, mixed>|null $nav
      * @param list<string> $order
      * @param list<self> $sessions
@@ -19,7 +18,7 @@ final readonly class Entry
         public ?string $album,
         public ?string $source,
         public EntryKind $kind,
-        public array|Described $project,
+        public Described $project,
         public ?string $strudel = null,
         public ?array $nav = null,
         public array $order = [],
@@ -35,23 +34,28 @@ final readonly class Entry
 
     public function title(): string
     {
-        return $this->project instanceof Described ? $this->project->title : (string) $this->project['title'];
+        return $this->project->title;
     }
 
     public function artist(): string
     {
-        return $this->project instanceof Described ? $this->project->artist : (string) $this->project['artist'];
+        return $this->project->artist;
     }
 
     public function group(): string
     {
-        return $this->project instanceof Described ? $this->project->group : (string) ($this->project['group'] ?? '');
+        return $this->project->group;
     }
 
     /** @return list<string> */
     public function tags(): array
     {
-        return $this->project instanceof Described ? $this->project->tags : $this->project['tags'];
+        return $this->project->tags;
+    }
+
+    public function song(): Song
+    {
+        return $this->project instanceof Song ? $this->project : throw new \LogicException("Eintrag {$this->key()} ist kein Song.");
     }
 
     public function link(): Link

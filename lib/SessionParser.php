@@ -22,7 +22,7 @@ final class SessionParser
     ) {}
 
     /**
-     * @param \Closure(string): array{prefix: string, slug: string, project: array<string, mixed>} $resolve
+     * @param \Closure(string): array{prefix: string, slug: string, project: Song} $resolve
      */
     public function parse(string $source, string $fallbackTitle, \Closure $resolve): Session
     {
@@ -60,10 +60,10 @@ final class SessionParser
                 ref: trim($ref),
                 prefix: $resolved['prefix'],
                 slug: $resolved['slug'],
-                title: $project['title'],
-                bpm: $project['bpm'],
-                bars: $project['bars'],
-                stepsPerBar: $project['stepsPerBar'],
+                title: $project->title,
+                bpm: $project->bpm,
+                bars: $project->bars,
+                stepsPerBar: $project->stepsPerBar,
             );
         }
 

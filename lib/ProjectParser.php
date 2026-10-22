@@ -43,14 +43,8 @@ final class ProjectParser
     /**
      * @param (\Closure(string): array{prefix: string, slug: string, project: array<string, mixed>})|null $resolve
      * @param string $owner
-     * @return array{
-     *     format: int, title: string, artist: string, tags: list<string>, bpm: float,
-     *     stepsPerBeat: int, stepsPerBar: int, stepSeconds: float, loop: bool, steps: int, bars: float,
-     *     tracks: list<Track>, warnings: list<string>, notesHtml: string,
-     *     remix: bool|null, credits: list<array{prefix: string, slug: string, title: string}>
-     * }
      */
-    public function parse(string $source, string $fallbackTitle = 'Untitled', ?\Closure $resolve = null, string $owner = ''): array
+    public function parse(string $source, string $fallbackTitle = 'Untitled', ?\Closure $resolve = null, string $owner = ''): Song
     {
         if (strlen($source) > self::MAX_BYTES) {
             throw new BuildError(sprintf('Die Datei ist größer als %d KB.', self::MAX_BYTES / 1024));
@@ -113,8 +107,7 @@ final class ProjectParser
      * @param array<string, mixed> $meta
      * @param list<Track> $tracks
      * @param array<string, array{prefix: string, slug: string, title: string}> $credits
-     * @param array<string, mixed> $extra
-     * @return array<string, mixed>
+     * @param list<SongLayer> $layers
      */
     private function assemble(
         array $meta,
@@ -125,15 +118,15 @@ final class ProjectParser
         string $fallbackTitle,
         ?bool $remix,
         array $credits,
-        array $extra = [],
-    ): array {
+        array $layers = [],
+    ): Song {
         $stepsPerBar = $stepsPerBeat * 4;
         $steps = max(array_map(fn(Track $track): int => $track->steps, $tracks));
 
         $warnings = [];
 
         foreach ($tracks as $track) {
-            if (!isset($extra['layers']) && $track->steps !== $steps) {
+            if ($layers === [] && $track->steps !== $steps) {
                 $warnings[] = "Track „{$track->name}“ hat {$track->steps} Steps, der längste {$steps}.";
             }
         }
@@ -148,31 +141,34 @@ final class ProjectParser
             throw new BuildError('Project: „loop“ muss true oder false sein.');
         }
 
-        return [
-            'kind' => 'project',
-            'format' => self::FORMAT,
-            ...$this->describe($meta, $fallbackTitle),
-            'bpm' => $bpm,
-            'stepsPerBeat' => $stepsPerBeat,
-            'stepsPerBar' => $stepsPerBar,
-            'stepSeconds' => (60 / $bpm) / $stepsPerBeat,
-            'loop' => $loop,
-            'steps' => $steps,
-            'bars' => $steps / $stepsPerBar,
-            'tracks' => $tracks,
-            'warnings' => $warnings,
-            'notesHtml' => $this->sanitizer->clean($head->html ?? ''),
-            'media' => $this->media($meta),
-            'remix' => $remix,
-            'credits' => array_values($credits),
-        ] + $extra;
+        $info = $this->describe($meta, $fallbackTitle);
+
+        return new Song(
+            title: $info['title'],
+            artist: $info['artist'],
+            group: $info['group'],
+            tags: $info['tags'],
+            bpm: $bpm,
+            stepsPerBeat: $stepsPerBeat,
+            stepsPerBar: $stepsPerBar,
+            stepSeconds: (60 / $bpm) / $stepsPerBeat,
+            loop: $loop,
+            steps: $steps,
+            bars: $steps / $stepsPerBar,
+            tracks: $tracks,
+            warnings: $warnings,
+            notesHtml: $this->sanitizer->clean($head->html ?? ''),
+            media: $this->media($meta),
+            remix: $remix,
+            credits: array_values($credits),
+            layers: $layers,
+        );
     }
 
     /**
-     * @param \Closure(string): array{prefix: string, slug: string, project: array<string, mixed>} $resolve
-     * @return array<string, mixed>
+     * @param \Closure(string): array{prefix: string, slug: string, project: Song} $resolve
      */
-    public function parseLayer(string $source, string $fallbackTitle, \Closure $resolve, string $owner): array
+    public function parseLayer(string $source, string $fallbackTitle, \Closure $resolve, string $owner): Song
     {
         if (strlen($source) > self::MAX_BYTES) {
             throw new BuildError(sprintf('Die Datei ist größer als %d KB.', self::MAX_BYTES / 1024));
@@ -231,17 +227,17 @@ final class ProjectParser
 
             $source = $resolve($ref)['project'];
 
-            if ($m[1] !== $owner && ($source['remix'] ?? null) !== true) {
+            if ($m[1] !== $owner && $source->remix !== true) {
                 throw new BuildError("{$where}: „{$ref}“ erlaubt kein Remixen. Der Autor müsste „remix: true“ in sein Project schreiben.");
             }
 
-            $name = $fm['name'] ?? $source['title'];
+            $name = $fm['name'] ?? $source->title;
 
             if (!is_string($name) || $name === '' || mb_strlen($name) > 32 || preg_match('/[\x00-\x1F\x7F<>&"]/', $name) === 1) {
                 throw new BuildError("{$where}: „name“ hat 1 bis 32 Zeichen ohne < > & \".");
             }
 
-            $names = array_map(fn(Track $track): string => $track->name, $source['tracks']);
+            $names = array_map(fn(Track $track): string => $track->name, $source->tracks);
             $selected = $names;
 
             if (array_key_exists('tracks', $fm)) {
@@ -282,7 +278,7 @@ final class ProjectParser
             ];
         }
 
-        $bpm = $this->number($meta, 'bpm', (float) $layers[0]['source']['bpm'], 20, 300);
+        $bpm = $this->number($meta, 'bpm', (float) $layers[0]['source']->bpm, 20, 300);
 
         if (isset($meta['grid'])) {
             $grid = (int) $this->number($meta, 'grid', 16, 4, 64);
@@ -296,14 +292,14 @@ final class ProjectParser
             $stepsPerBeat = 1;
 
             foreach ($layers as $layer) {
-                $other = $layer['source']['stepsPerBeat'];
+                $other = $layer['source']->stepsPerBeat;
                 $stepsPerBeat = intdiv($stepsPerBeat * $other, $this->gcd($stepsPerBeat, $other));
             }
 
             if (($stepsPerBeat * 4) > 64) {
                 throw new BuildError(
                     'Die Raster der Layer (grid '
-                    . implode(', ', array_map(fn(array $l): string => (string) ($l['source']['stepsPerBeat'] * 4), $layers))
+                    . implode(', ', array_map(fn(array $l): string => (string) ($l['source']->stepsPerBeat * 4), $layers))
                     . ') ergeben zusammen mehr als grid 64. Ein Layer müsste ein anderes Raster bekommen.',
                 );
             }
@@ -317,19 +313,19 @@ final class ProjectParser
             if ($layer['bars'] !== null) {
                 [$a, $b] = $this->range($layer['bars'], "{$layer['where']}: „bars“");
 
-                if (($b * $src['stepsPerBar']) > $src['steps']) {
-                    throw new BuildError("{$layer['where']}: Der Ausschnitt reicht bis Bar {$b}, „{$layer['ref']}“ hat nur {$src['bars']} Bars.");
+                if (($b * $src->stepsPerBar) > $src->steps) {
+                    throw new BuildError("{$layer['where']}: Der Ausschnitt reicht bis Bar {$b}, „{$layer['ref']}“ hat nur {$src->bars} Bars.");
                 }
 
                 $length = ($b - $a + 1) * $dstBar;
             } else {
-                if ((($src['steps'] * $stepsPerBeat) % $src['stepsPerBeat']) !== 0) {
+                if ((($src->steps * $stepsPerBeat) % $src->stepsPerBeat) !== 0) {
                     throw new BuildError(
-                        "{$layer['where']}: Das Raster von „{$layer['ref']}“ (grid " . ($src['stepsPerBeat'] * 4) . ") passt nicht auf grid {$dstBar} dieses Layers.",
+                        "{$layer['where']}: Das Raster von „{$layer['ref']}“ (grid " . ($src->stepsPerBeat * 4) . ") passt nicht auf grid {$dstBar} dieses Layers.",
                     );
                 }
 
-                $length = intdiv($src['steps'] * $stepsPerBeat, $src['stepsPerBeat']);
+                $length = intdiv($src->steps * $stepsPerBeat, $src->stepsPerBeat);
             }
 
             $layers[$i]['length'] = $length;
@@ -357,7 +353,7 @@ final class ProjectParser
             $group = new TrackGroup(
                 title: $layer['name'],
                 ref: $layer['ref'],
-                bpm: $layer['source']['bpm'],
+                bpm: $layer['source']->bpm,
                 at: $layer['at'],
                 description: $layer['description'],
             );
@@ -365,7 +361,7 @@ final class ProjectParser
             foreach ($layer['tracks'] as $trackName) {
                 $isDrums = false;
 
-                foreach ($layer['source']['tracks'] as $candidate) {
+                foreach ($layer['source']->tracks as $candidate) {
                     if ($candidate->name === $trackName) {
                         $isDrums = $candidate->isDrums();
                     }
@@ -405,9 +401,9 @@ final class ProjectParser
             throw new BuildError(sprintf('Mehr als %d Tracks insgesamt. Mit „tracks:“ lässt sich pro Layer eine Auswahl treffen.', self::MAX_LAYER_TRACKS));
         }
 
-        $layerInfo = array_map(fn(array $l): array => ['title' => $l['name'], 'ref' => $l['ref'], 'bpm' => $l['source']['bpm'], 'at' => $l['at']], $layers);
+        $layerInfo = array_values(array_map(fn(array $l): SongLayer => new SongLayer($l['name'], $l['ref'], $l['source']->bpm, $l['at']), $layers));
 
-        return $this->assemble($meta, $head, $tracks, $bpm, $stepsPerBeat, $fallbackTitle, $remix, $credits, ['layers' => $layerInfo]);
+        return $this->assemble($meta, $head, $tracks, $bpm, $stepsPerBeat, $fallbackTitle, $remix, $credits, $layerInfo);
     }
 
     private function gcd(int $a, int $b): int
@@ -574,13 +570,13 @@ final class ProjectParser
             $resolved = $resolve("{$prefix}/{$slug}");
             $source = $resolved['project'];
 
-            if ($prefix !== $owner && ($source['remix'] ?? null) !== true) {
+            if ($prefix !== $owner && $source->remix !== true) {
                 throw new BuildError("{$label}: „{$prefix}/{$slug}“ erlaubt kein Remixen. Der Autor müsste „remix: true“ in sein Project schreiben.");
             }
 
             $sourceTrack = null;
 
-            foreach ($source['tracks'] as $candidate) {
+            foreach ($source->tracks as $candidate) {
                 if ($candidate->name === $trackName) {
                     $sourceTrack = $candidate;
 
@@ -591,14 +587,14 @@ final class ProjectParser
             if ($sourceTrack === null) {
                 throw new BuildError(
                     "{$label}: „{$prefix}/{$slug}“ hat keinen Track „{$trackName}“ (vorhanden: "
-                    . implode(', ', array_map(fn(Track $track): string => $track->name, $source['tracks']))
+                    . implode(', ', array_map(fn(Track $track): string => $track->name, $source->tracks))
                     . ').',
                 );
             }
 
-            $srcSpb = $source['stepsPerBeat'];
-            $srcBar = $source['stepsPerBar'];
-            $srcSteps = $source['steps'];
+            $srcSpb = $source->stepsPerBeat;
+            $srcBar = $source->stepsPerBar;
+            $srcSteps = $source->steps;
 
             if (isset($clip['bars'], $clip['steps'])) {
                 throw new BuildError("{$label}: „bars“ und „steps“ schließen sich aus.");
@@ -615,7 +611,7 @@ final class ProjectParser
             }
 
             if ($stop > $srcSteps) {
-                throw new BuildError("{$label}: Der Ausschnitt reicht bis Step {$stop}, „{$prefix}/{$slug}“ hat nur {$srcSteps} Steps ({$source['bars']} Bars).");
+                throw new BuildError("{$label}: Der Ausschnitt reicht bis Step {$stop}, „{$prefix}/{$slug}“ hat nur {$srcSteps} Steps ({$source->bars} Bars).");
             }
 
             if (((($stop - $start) * $dstSpb) % $srcSpb) !== 0) {
@@ -685,8 +681,8 @@ final class ProjectParser
             $end = max($end, $cursor);
             $first ??= $sourceTrack;
             $drums[] = $isDrums;
-            $bands[] = ['ref' => "{$prefix}/{$slug}", 'title' => $source['title'], 'track' => $trackName, 'start' => $at, 'len' => $length * $repeat];
-            $credits["{$prefix}/{$slug}"] = ['prefix' => $prefix, 'slug' => $slug, 'title' => $source['title']];
+            $bands[] = ['ref' => "{$prefix}/{$slug}", 'title' => $source->title, 'track' => $trackName, 'start' => $at, 'len' => $length * $repeat];
+            $credits["{$prefix}/{$slug}"] = ['prefix' => $prefix, 'slug' => $slug, 'title' => $source->title];
         }
 
         return ['events' => $events, 'end' => $end, 'first' => $first, 'drums' => $drums, 'bands' => $bands];

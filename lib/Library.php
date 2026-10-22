@@ -9,7 +9,7 @@ final class Library
     /** @var array<string, array{prefix: string, slug: string, file: string}> */
     private array $files = [];
 
-    /** @var array<string, array{kind: string, prefix: string, slug: string, data: array<string, mixed>}> */
+    /** @var array<string, array{kind: string, prefix: string, slug: string, data: Described}> */
     private array $loaded = [];
 
     /** @var array<string, string> */
@@ -31,7 +31,7 @@ final class Library
         }
     }
 
-    /** @return array{kind: string, prefix: string, slug: string, data: array<string, mixed>|Described|Set} */
+    /** @return array{kind: string, prefix: string, slug: string, data: Described} */
     public function load(string $key): array
     {
         if (isset($this->loaded[$key])) {
@@ -84,7 +84,7 @@ final class Library
     }
 
     /**
-     * @return array{prefix: string, slug: string, project: array<string, mixed>}
+     * @return array{prefix: string, slug: string, project: Song}
      */
     public function project(string $ref): array
     {
@@ -98,7 +98,9 @@ final class Library
             throw new BuildError("Verweis auf „{$ref}“ nicht möglich: {$error->getMessage()}");
         }
 
-        if ($entry['kind'] !== 'project') {
+        $song = $entry['data'];
+
+        if (!$song instanceof Song) {
             throw new BuildError(
                 "„{$ref}“ ist ein " . match ($entry['kind']) {
                     'session' => 'Session',
@@ -109,6 +111,6 @@ final class Library
             );
         }
 
-        return ['prefix' => $entry['prefix'], 'slug' => $entry['slug'], 'project' => $entry['data']];
+        return ['prefix' => $entry['prefix'], 'slug' => $entry['slug'], 'project' => $song];
     }
 }
