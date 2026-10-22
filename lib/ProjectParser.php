@@ -781,11 +781,10 @@ final class ProjectParser
 
     /**
      * @param array<string, mixed> $meta
-     * @return array<string, mixed>
      */
-    public function media(array $meta): array
+    public function media(array $meta): Media
     {
-        $media = [];
+        $urls = [];
         $release = $meta['release'] ?? null;
         $details = [];
 
@@ -824,24 +823,27 @@ final class ProjectParser
                 throw new BuildError("Project: „{$name}“ muss eine https-Adresse mit Kleinbuchstaben im Hostnamen sein (höchstens 300 Zeichen, ohne Leerzeichen).");
             }
 
-            $media[$key] = $url;
+            $urls[$key] = $url;
         }
 
         $info = $this->releaseInfo($details);
-
-        if ($info !== []) {
-            $media['info'] = $info;
-        }
+        $hqOffset = null;
 
         if (isset($meta['hq-offset'])) {
-            if (!isset($media['hq'])) {
+            if (!isset($urls['hq'])) {
                 throw new BuildError('Project: „hq-offset“ gehört zu „hq“.');
             }
 
-            $media['hqOffset'] = $this->number($meta, 'hq-offset', 0, -10, 10);
+            $hqOffset = $this->number($meta, 'hq-offset', 0, -10, 10);
         }
 
-        return $media;
+        return new Media(
+            hq: $urls['hq'] ?? null,
+            hqOffset: $hqOffset,
+            release: $urls['release'] ?? null,
+            cover: $urls['cover'] ?? null,
+            info: $info,
+        );
     }
 
     /**

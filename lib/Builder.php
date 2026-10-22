@@ -48,7 +48,7 @@ final class Builder
                 fwrite(STDERR, "Warnung in {$label}: {$warning}\n");
             }
 
-            if (in_array($loaded['kind'], ['project', 'link'], true) && ($loaded['data']['media'] ?? []) !== []) {
+            if (in_array($loaded['kind'], ['project', 'link'], true) && isset($loaded['data']['media']) && !$loaded['data']['media']->isEmpty()) {
                 $loaded['data']['media'] = $this->checkedMedia($loaded['data']['media'], $file['media'], $file['strict'], $label, $errors);
             }
 
@@ -121,7 +121,7 @@ final class Builder
         }
 
         foreach ($entries as $entry) {
-            if ($entry['kind'] === 'link' && !isset($entry['project']['media']['releaseOwn'])) {
+            if ($entry['kind'] === 'link' && !$entry['project']['media']->releaseOwn) {
                 continue;
             }
 
@@ -416,19 +416,17 @@ final class Builder
     }
 
     /**
-     * @param array<string, mixed> $media
      * @param list<string> $allowed
      * @param list<string> $errors
-     * @return array<string, mixed>
      */
-    private function checkedMedia(array $media, array $allowed, bool $strict, string $label, array &$errors): array
+    private function checkedMedia(Media $media, array $allowed, bool $strict, string $label, array &$errors): Media
     {
         foreach (['hq', 'cover'] as $key) {
-            if (!isset($media[$key])) {
+            if ($media->{$key} === null) {
                 continue;
             }
 
-            $host = Url::host((string) $media[$key]);
+            $host = Url::host($media->{$key});
 
             if (in_array($host, $allowed, true)) {
                 continue;
@@ -442,18 +440,14 @@ final class Builder
                 fwrite(STDERR, "Warnung in {$label}: {$message} Der Link wird ignoriert.\n");
             }
 
-            unset($media[$key]);
+            $media = $key === 'hq' ? $media->withoutHq() : $media->withoutCover();
         }
 
-        if (!isset($media['hq'])) {
-            unset($media['hqOffset']);
+        if ($media->release !== null && in_array(Url::host($media->release), $allowed, true)) {
+            $media = $media->asOwnRelease();
         }
 
-        if (isset($media['release']) && in_array(Url::host((string) $media['release']), $allowed, true)) {
-            $media['releaseOwn'] = true;
-        }
-
-        if ((isset($media['cover']) || isset($media['info'])) && !isset($media['releaseOwn'])) {
+        if (($media->cover !== null || $media->info !== []) && !$media->releaseOwn) {
             $message = 'Die Angaben in „release“ (cover, title, date, label, catalog, license, credits) werden nur bei einer selbst veröffentlichten Audiodatei angezeigt (Host unter „media“ in sources.json freigegeben).';
 
             if ($strict) {
@@ -462,7 +456,7 @@ final class Builder
                 fwrite(STDERR, "Warnung in {$label}: {$message} Die Angaben werden ignoriert.\n");
             }
 
-            unset($media['cover'], $media['info']);
+            $media = $media->withoutReleaseDetails();
         }
 
         return $media;
