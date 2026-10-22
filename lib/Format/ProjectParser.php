@@ -2,8 +2,10 @@
 
 declare(strict_types=1);
 
-namespace Chiptune;
+namespace Chiptune\Format;
 
+use Chiptune\Common\BuildError;
+use Chiptune\Common\HtmlSanitizer;
 use Tempest\Markdown\Markdown;
 use Tempest\Markdown\ParsedMarkdown;
 

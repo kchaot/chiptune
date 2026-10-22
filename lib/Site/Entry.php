@@ -2,7 +2,13 @@
 
 declare(strict_types=1);
 
-namespace Chiptune;
+namespace Chiptune\Site;
+
+use Chiptune\Format\Described;
+use Chiptune\Format\Link;
+use Chiptune\Format\Session;
+use Chiptune\Format\Set;
+use Chiptune\Format\Song;
 
 final readonly class Entry
 {

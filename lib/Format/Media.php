@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Chiptune;
+namespace Chiptune\Format;
 
 final readonly class Media
 {

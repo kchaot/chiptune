@@ -2,7 +2,9 @@
 
 declare(strict_types=1);
 
-namespace Chiptune;
+namespace Chiptune\Site;
+
+use Chiptune\Common\BuildError;
 
 final class Filesystem
 {

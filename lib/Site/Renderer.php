@@ -2,7 +2,14 @@
 
 declare(strict_types=1);
 
-namespace Chiptune;
+namespace Chiptune\Site;
+
+use Chiptune\Format\Media;
+use Chiptune\Format\Session;
+use Chiptune\Format\Set;
+use Chiptune\Format\SetPart;
+use Chiptune\Format\Song;
+use Chiptune\Format\Track;
 
 final class Renderer
 {

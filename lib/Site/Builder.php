@@ -2,8 +2,15 @@
 
 declare(strict_types=1);
 
-namespace Chiptune;
+namespace Chiptune\Site;
 
+use Chiptune\Common\BuildError;
+use Chiptune\Common\HtmlSanitizer;
+use Chiptune\Format\Link;
+use Chiptune\Format\Media;
+use Chiptune\Format\ProjectParser;
+use Chiptune\Format\SetParser;
+use Chiptune\Format\Song;
 use Tempest\Markdown\Markdown;
 
 final class Builder

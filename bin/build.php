@@ -3,8 +3,8 @@
 
 declare(strict_types=1);
 
-use Chiptune\Builder;
-use Chiptune\BuildError;
+use Chiptune\Common\BuildError;
+use Chiptune\Site\Builder;
 
 $root = dirname(__DIR__);
 

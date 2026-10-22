@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Chiptune;
+namespace Chiptune\Format;
 
 /**
  * Angaben zur Veröffentlichung eines Songs (Titel, Datum, Label, Katalognummer, Lizenz, Credits).

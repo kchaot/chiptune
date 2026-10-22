@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Chiptune;
+namespace Chiptune\Common;
 
 use Dom\Element;
 use Dom\HTMLDocument;

@@ -2,7 +2,15 @@
 
 declare(strict_types=1);
 
-namespace Chiptune;
+namespace Chiptune\Site;
+
+use Chiptune\Common\BuildError;
+use Chiptune\Format\Described;
+use Chiptune\Format\LinkParser;
+use Chiptune\Format\ProjectParser;
+use Chiptune\Format\SessionParser;
+use Chiptune\Format\SetParser;
+use Chiptune\Format\Song;
 
 final class Library
 {
