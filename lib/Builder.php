@@ -447,7 +447,7 @@ final class Builder
             $media = $media->asOwnRelease();
         }
 
-        if (($media->cover !== null || $media->info !== []) && !$media->releaseOwn) {
+        if (($media->cover !== null || !$media->info->isEmpty()) && !$media->releaseOwn) {
             $message = 'Die Angaben in „release“ (cover, title, date, label, catalog, license, credits) werden nur bei einer selbst veröffentlichten Audiodatei angezeigt (Host unter „media“ in sources.json freigegeben).';
 
             if ($strict) {

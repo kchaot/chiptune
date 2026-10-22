@@ -6,15 +6,12 @@ namespace Chiptune;
 
 final readonly class Media
 {
-    /**
-     * @param array<string, mixed> $info
-     */
     public function __construct(
         public ?string $hq = null,
         public ?float $hqOffset = null,
         public ?string $release = null,
         public ?string $cover = null,
-        public array $info = [],
+        public ReleaseInfo $info = new ReleaseInfo(),
         public bool $releaseOwn = false,
     ) {}
 
@@ -35,7 +32,7 @@ final readonly class Media
 
     public function withoutReleaseDetails(): self
     {
-        return clone($this, ['cover' => null, 'info' => []]);
+        return clone($this, ['cover' => null, 'info' => new ReleaseInfo()]);
     }
 
     public function asOwnRelease(): self
@@ -53,7 +50,7 @@ final readonly class Media
                 'hq' => $this->hq,
                 'release' => $this->release,
                 'cover' => $this->cover,
-                'info' => $this->info === [] ? null : $this->info,
+                'info' => $this->info->isEmpty() ? null : $this->info->toArray(),
                 'hqOffset' => $this->hqOffset,
                 'releaseOwn' => $this->releaseOwn ? true : null,
             ],

@@ -848,17 +848,18 @@ final class ProjectParser
 
     /**
      * @param array<string, mixed> $details
-     * @return array<string, mixed>
      */
-    private function releaseInfo(array $details): array
+    private function releaseInfo(array $details): ReleaseInfo
     {
-        $info = [];
+        $texts = [];
 
         foreach (['title' => 120, 'label' => 80, 'catalog' => 40, 'license' => 60] as $key => $max) {
             if (isset($details[$key])) {
-                $info[$key] = $this->text($details, $key, $max);
+                $texts[$key] = $this->text($details, $key, $max);
             }
         }
+
+        $formatted = null;
 
         if (isset($details['date'])) {
             $date = $details['date'];
@@ -871,8 +872,10 @@ final class ProjectParser
                 throw new BuildError('Project: „release: date“ muss JJJJ, JJJJ-MM oder JJJJ-MM-TT sein.');
             }
 
-            $info['date'] = $date;
+            $formatted = $date;
         }
+
+        $roles = [];
 
         if (isset($details['credits'])) {
             $credits = $details['credits'];
@@ -899,12 +902,19 @@ final class ProjectParser
                         throw new BuildError("Project: „release: credits“, Rolle „{$role}“: jeder Name ist Text mit höchstens 80 Zeichen.");
                     }
 
-                    $info['credits'][$role][] = trim((string) preg_replace('/\s+/u', ' ', $name));
+                    $roles[$role][] = trim((string) preg_replace('/\s+/u', ' ', $name));
                 }
             }
         }
 
-        return $info;
+        return new ReleaseInfo(
+            title: $texts['title'] ?? null,
+            label: $texts['label'] ?? null,
+            catalog: $texts['catalog'] ?? null,
+            license: $texts['license'] ?? null,
+            date: $formatted,
+            credits: $roles,
+        );
     }
 
     /** @param array<string, mixed> $meta */

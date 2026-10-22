@@ -92,7 +92,7 @@ final class Renderer
             $facts = $own
                 ? '<span>hier abspielbar</span>'
                 : '<span><b>' . $this->e($this->releaseLabel((string) $media->release)) . '</b> <span aria-hidden="true">↗</span></span>';
-            $date = $this->dateText((string) ($info['date'] ?? ''));
+            $date = $this->dateText($info->date ?? '');
             $facts .= $date === '' ? '' : ' <span><b>' . $this->e($date) . '</b></span>';
             $thumbnail = '';
             $badge = '<span class="badge">Link</span> ';
@@ -826,18 +826,18 @@ final class Renderer
         $info = $media->info;
         $url = (string) $media->release;
         $own = $media->releaseOwn;
-        $heading = (string) ($info['title'] ?? $release['title']);
+        $heading = $info->title ?? $release['title'];
         $title = $this->e($heading);
         $artist = $this->artistLine($release['artist'], $entry['prefix'], 'p');
         $tags = implode('', array_map(fn(string $tag): string => '<li>' . $this->e($tag) . '</li>', $release['tags']));
         $tags = $tags === '' ? '' : '<ul class="tags">' . $tags . '</ul>';
         $notes = $release['notesHtml'] === '' ? '' : '<section class="aside wide"><div class="notes">' . $release['notesHtml'] . '</div></section>';
         $head = $this->head($entry['prefix'] . ($entry['album'] !== null ? '/' . $entry['album'] : ''), 'link ' . basename($entry['slug']));
-        $facts = array_filter([$this->dateText((string) ($info['date'] ?? '')), $info['catalog'] ?? '', $info['label'] ?? '', $info['license'] ?? '']);
+        $facts = array_filter([$this->dateText($info->date ?? ''), $info->catalog ?? '', $info->label ?? '', $info->license ?? '']);
         $factLine = $facts === [] ? '' : '<p class="release-facts">' . $this->e(implode(' | ', $facts)) . '</p>';
         $credits = '';
 
-        foreach ($info['credits'] ?? [] as $role => $names) {
+        foreach ($info->credits as $role => $names) {
             $credits .= '<dt>' . $this->e((string) $role) . '</dt><dd>' . $this->e(implode(', ', (array) $names)) . '</dd>';
         }
 
