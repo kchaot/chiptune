@@ -33,6 +33,9 @@ jobs:
       - name: Statische Analyse
         run: composer analyse
 
+      - name: Klassenbeschreibungen prüfen
+        run: composer docs:check
+
       - name: Seite bauen
         run: php bin/build.php
 

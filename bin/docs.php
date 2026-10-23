@@ -18,11 +18,18 @@ require $root . '/opt/packagist/autoload.php';
 $docs = new CodeDocs($root);
 
 if (in_array('--check', $argv, true)) {
-    foreach ($docs->missing() as $name) {
+    $missing = $docs->missing();
+
+    foreach ($missing as $name) {
         fwrite(STDERR, "Keine Beschreibung: {$name}\n");
     }
 
-    exit($docs->missing() === [] ? 0 : 1);
+    if ($missing === []) {
+        $count = array_sum(array_map(count(...), $docs->areas()));
+        echo "Alle {$count} Klassen sind beschrieben.\n";
+    }
+
+    exit($missing === [] ? 0 : 1);
 }
 
 $target = array_values(array_filter(array_slice($argv, 1), static fn(string $arg): bool => !str_starts_with($arg, '--')))[0] ?? null;

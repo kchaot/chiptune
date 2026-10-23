@@ -29,6 +29,7 @@
             "@fmt:check",
             "@lint",
             "@analyse",
+            "@docs:check",
             "@build"
         ]
     },
