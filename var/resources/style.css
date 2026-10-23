@@ -898,6 +898,15 @@ body.code-page::after { display: none; }
 .code-page .tabs a.current { color: var(--panel); }
 .doc-text h2 { margin: 2rem 0 0.5rem; color: var(--cream); font-size: 1.25rem; }
 .doc-text code { padding: 0.05em 0.35em; background: var(--panel-raised); color: var(--lime); font-size: 0.9em; }
+.doc-text pre { margin: 0.6rem 0 1.1rem; padding: 0.75rem 1rem; overflow-x: auto; background: var(--panel); border-left: 0.25rem solid var(--line); font-size: 0.85rem; line-height: 1.5; }
+.doc-text em { color: var(--ink-soft); }
+.hl-keyword { color: var(--violet); }
+.hl-property { color: var(--cyan); }
+.hl-type { color: var(--pink); }
+.hl-generic { color: var(--green); }
+.hl-number, .hl-literal, .hl-value { color: var(--lime); }
+.hl-comment { color: var(--dim); font-style: italic; }
+.hl-attribute { font-style: italic; }
 .doc-text table { margin: 0.6rem 0 1rem; border-collapse: collapse; font-size: 0.85rem; }
 .doc-text th, .doc-text td { padding: 0.25rem 1.2rem 0.25rem 0; text-align: left; vertical-align: top; }
 .doc-text th { color: var(--ink-soft); font-weight: 600; }

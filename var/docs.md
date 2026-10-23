@@ -87,6 +87,17 @@ Eine Liste von Quellen. Jede ist ein lokaler Ordner oder ein Git-Repo, das in `.
 | `repo`, `ref` | Git-Repo und Zweig. Ohne `repo` ist die Quelle lokal. |
 | `media` | Hosts, von denen Audio und Bilder stammen dürfen. |
 
+Zum Beispiel eine lokale Quelle und eine aus einem Git-Repo:
+
+```json
+{
+    "sources": [
+        { "name": "kchaot", "prefix": "kchaot", "title": "KChaot", "path": "var/projects/kchaot", "media": ["kchaot.de"] },
+        { "name": "anonig", "prefix": "ab", "title": "AnonigBits", "path": "anonig", "repo": "ek9r/chiptune-data", "ref": "main", "media": ["8rnr.t1s.ch"] }
+    ]
+}
+```
+
 <!-- next: var -->
 ---
 title: var
@@ -109,6 +120,31 @@ Die eigenen Songs, im selben Aufbau wie jede andere Quelle. Ein Song ist eine Ma
 ---
 title: player.js
 ---
-Der Player in `var/resources/player.js` ist ein einziges JavaScript ohne Abhängigkeiten, rund 3600 Zeilen, und läuft vollständig im Browser: Audio über die Web Audio API, Oberfläche aus einfachen DOM-Elementen und SVG. Die Daten bekommt er als JSON, das der Build in die Seiten schreibt (`project`, `set`, `mix`). Ohne diese Daten tut er nichts.
+Der Player in `var/resources/player.js` ist ein einziges JavaScript ohne Abhängigkeiten, rund 3600 Zeilen, und läuft vollständig im Browser: Audio über die Web Audio API, Oberfläche aus einfachen DOM-Elementen und SVG. Die Daten bekommt er als JSON, das der Build in die Seiten schreibt (`project`, `set`, `mix`). Ohne diese Daten tut er nichts. Der Build minimiert die Datei, Kommentare fallen dabei weg.
 
-Der Build minimiert die Datei, Kommentare fallen dabei weg. Eine ausführliche Beschreibung des Aufbaus folgt.
+Am Ende der Datei entscheidet, was in der Seite steckt: Mixer (`mix`), Set (`set`) oder einzelner Song (`project`). Die Datei ist in dieser Reihenfolge aufgebaut:
+
+- Zustand und kleine Helfer (`makeState`, `el`, `svgNode`) und die Regler eines Decks (`deskControl`)
+- die Audio-Kette: Limiter, Rauschen, Kanal, Bus, und die Stimmen (`tone`, `kick`, `drum`)
+- `projectDeck`: ein Deck für einen Song mit Raster, Transport, Planung im Voraus und Synchronisation
+- Export als MIDI-Datei und als Strudel-Code
+- `studioPanel` und `mountProject` für die Song-Seite
+- `buildMachine` und `mountMix` für den Mixer, `mountSet` für Sets und Alben
+
+## Zustand eines Decks
+
+Jedes Deck hält seinen Zustand in einem Objekt: Tempo (`rate`), Feinabgleich (`nudge`), die Effekte (`fx`), die abgeschalteten Bänder (`kill`) und die Schleife (`hold`).
+
+<!-- code: var/resources/player.js#state -->
+
+## Ein Ton
+
+Eine Note ist ein Oszillator mit einer Hüllkurve. `gate` bestimmt, wie viel der Notenlänge klingt. Geplant wird der Ton auf der Zeitachse des Audio-Kontexts (`when`), nicht auf der Uhr der Seite.
+
+<!-- code: var/resources/player.js#tone -->
+
+## Planung im Voraus
+
+`tick()` schaut ein Stück voraus (`LOOKAHEAD`, im Mixer kürzer, bei versteckter Seite länger) und plant alle Noten, die in dieses Fenster fallen. Damit läuft die Musik auch dann sauber, wenn der Browser die Seite im Hintergrund drosselt.
+
+<!-- code: var/resources/player.js#tick -->

@@ -15,6 +15,9 @@ use Tempest\Markdown\Markdown;
  * jedes weitere Dokument ein Tab mit `title` in der Frontmatter. Eine `##`-Überschrift, die wie ein Ordner
  * unter `lib/` heißt (oder wie dessen Titel in `CodeDocs::AREAS`), bekommt später die Klassen dieses Ordners
  * darunter. Ordner, die in der Datei fehlen, hängt das Buch am Ende des Tabs `lib` automatisch an.
+ *
+ * Code in Fenced Blocks wird gefärbt. Eine Zeile `<!-- code: var/resources/player.js#tone -->` holt einen
+ * Ausschnitt live aus der Datei: Dort steht er zwischen `// docs: tone` und `// docs-end`.
  */
 final class CodeBook
 {
@@ -47,8 +50,13 @@ final class CodeBook
 
         $sanitizer = new HtmlSanitizer();
         $chunks = [];
+        $content = (string) preg_replace_callback(
+            '/^<!-- code: (\S+?)#([a-z0-9-]+) -->[ \t]*$/m',
+            fn(array $match): string => $this->snippet($match[1], $match[2]),
+            $content,
+        );
 
-        foreach (new Markdown(null)->parseMany($content, 'docs', 'next') as $chunk) {
+        foreach (new Markdown()->parseMany($content, 'docs', 'next') as $chunk) {
             $chunks[] = $chunk;
         }
 
@@ -84,6 +92,52 @@ final class CodeBook
         $tabs = $this->appendMissingAreas($tabs);
 
         return ['title' => trim($title), 'intro' => $sanitizer->clean($head->html), 'tabs' => array_values($tabs)];
+    }
+
+    private function snippet(string $file, string $name): string
+    {
+        $path = $this->root . '/' . $file;
+        $parts = [];
+
+        if (preg_match('~^(lib|bin|etc|var/resources)/[A-Za-z0-9_./-]+\.(php|js|json|sh)$~', $file, $parts) !== 1 || str_contains($file, '..') || !is_file($path)) {
+            throw new BuildError("var/docs.md: „{$file}“ ist keine Datei, aus der Ausschnitte geholt werden dürfen.");
+        }
+
+        $lines = [];
+        $inside = false;
+        $found = false;
+
+        foreach (preg_split('/\R/', (string) file_get_contents($path)) ?: [] as $line) {
+            if (preg_match('~^\s*//\s*docs:\s*' . preg_quote($name, '~') . '\s*$~', $line) === 1) {
+                $inside = true;
+                $found = true;
+
+                continue;
+            }
+
+            if ($inside && preg_match('~^\s*//\s*docs-end\s*$~', $line) === 1) {
+                break;
+            }
+
+            if ($inside) {
+                $lines[] = $line;
+            }
+        }
+
+        if (!$found || $lines === []) {
+            throw new BuildError("var/docs.md: In {$file} fehlt die Marke „// docs: {$name}“ mit einem Ausschnitt bis „// docs-end“.");
+        }
+
+        $indent = min(array_map(static fn(string $line): int => trim($line) === '' ? PHP_INT_MAX : strlen($line) - strlen(ltrim($line)), $lines));
+        $code = implode("\n", array_map(static fn(string $line): string => substr($line, min($indent, strlen($line))), $lines));
+
+        if (str_contains($code, '```')) {
+            throw new BuildError("var/docs.md: Der Ausschnitt „{$name}“ aus {$file} enthält drei Backticks.");
+        }
+
+        $language = ['php' => 'php', 'js' => 'js', 'json' => 'json', 'sh' => 'bash'][$parts[2]];
+
+        return "*Aus {$file}:*\n\n```{$language}\n" . rtrim($code) . "\n```";
     }
 
     /**
