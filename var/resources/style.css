@@ -888,8 +888,19 @@ body.code-page {
 body.code-page::after { display: none; }
 
 .code-page main { max-width: 64rem; }
-.doc-toc h2 { margin: 1.5rem 0 0.25rem; font-size: 1rem; color: var(--cream); }
-.doc-toc p { margin: 0 0 0.5rem; color: var(--ink-soft); font-size: 0.85rem; }
+.doc-intro { margin: 0 0 1.5rem; color: var(--ink-soft); }
+.doc-intro p { margin: 0 0 0.5rem; }
+.code-tab { display: none; scroll-margin-top: 1rem; }
+.code-tab:target, .code-tab:has(:target) { display: block; }
+.code-tabs:not(:has(:target)) .code-tab.first { display: block; }
+.code-page .tabs { border-bottom-color: var(--line); }
+.code-page .tabs a { border-color: var(--line); }
+.code-page .tabs a.current { color: var(--panel); }
+.doc-text h2 { margin: 2rem 0 0.5rem; color: var(--cream); font-size: 1.25rem; }
+.doc-text code { padding: 0.05em 0.35em; background: var(--panel-raised); color: var(--lime); font-size: 0.9em; }
+.doc-text table { margin: 0.6rem 0 1rem; border-collapse: collapse; font-size: 0.85rem; }
+.doc-text th, .doc-text td { padding: 0.25rem 1.2rem 0.25rem 0; text-align: left; vertical-align: top; }
+.doc-text th { color: var(--ink-soft); font-weight: 600; }
 .doc-index { margin: 0 0 1rem; padding: 0; list-style: none; columns: 2 24rem; font-size: 0.85rem; }
 .doc-index li { break-inside: avoid; margin-bottom: 0.2rem; }
 .doc-index span { color: var(--ink-soft); }

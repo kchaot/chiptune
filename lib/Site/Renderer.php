@@ -1043,62 +1043,55 @@ final class Renderer
     }
 
     /**
+     * @param array{
+     *     title: string,
+     *     intro: string,
+     *     tabs: list<array{slug: string, title: string, html: string, sections: list<array{area: string|null, title: string, html: string}>}>
+     * } $book
      * @param array<string, list<DocEntry>> $areas
      */
-    public function code(array $areas): string
+    public function code(array $book, array $areas): string
     {
-        $head = $this->head(null, 'cat code.md');
-        $index = '';
-        $sections = '';
+        $head = $this->head(null, 'cat docs.md');
+        $title = $this->e($book['title']);
+        $tabs = '';
 
-        foreach ($areas as $area => $entries) {
-            [$title, $intro] = CodeDocs::AREAS[$area];
-            $links = '';
-            $articles = '';
+        foreach ($book['tabs'] as $index => $tab) {
+            $bar = '';
 
-            foreach ($entries as $entry) {
-                $id = $this->e(strtolower($entry->short));
-                $links .= '<li><a href="#' . $id . '">' . $this->e($entry->short) . '</a> <span>' . $this->docText($entry->summary()) . '</span></li>';
-                $articles .=
-                    '<article class="doc" id="'
-                    . $id
-                    . '"><h3>'
-                    . $this->e($entry->short)
-                    . '</h3><p class="doc-name">'
-                    . $this->e($entry->kind)
-                    . ' <code>'
-                    . $this->e($entry->name)
-                    . '</code></p>';
-                $articles .= $entry->text === '' ? '<p><em>Noch keine Beschreibung.</em></p>' : $this->docText($entry->text, true);
-                $articles .= $this->docTable('Felder', ['Name', 'Typ'], array_map(static fn(array $field): array => [$field['name'], $field['type']], $entry->fields));
-                $articles .= $entry->cases === []
-                    ? ''
-                    : '<p class="doc-cases"><b>Fälle</b> <code>' . implode('</code> <code>', array_map($this->e(...), $entry->cases)) . '</code></p>';
-                $articles .= $this->docTable('Konstanten', ['Name', 'Wert'], array_map(static fn(array $constant): array => [
-                    $constant['name'],
-                    $constant['value'],
-                ], $entry->constants));
-                $articles .= $entry->methods === []
-                    ? ''
-                    : '<p class="doc-table"><b>Methoden</b></p><ul class="doc-methods">'
-                    . implode('', array_map(fn(string $method): string => '<li><code>' . $this->e($method) . '</code></li>', $entry->methods))
-                    . '</ul>';
-                $articles .= '</article>';
+            foreach ($book['tabs'] as $other) {
+                $bar .= sprintf(
+                    '<a href="#tab-%s"%s>%s</a>',
+                    $this->e($other['slug']),
+                    $other['slug'] === $tab['slug'] ? ' class="current" aria-current="page"' : '',
+                    $this->e($other['title']),
+                );
             }
 
-            $index .= '<h2>' . $this->e($title) . '</h2><p>' . $this->e($intro) . '</p><ul class="doc-index">' . $links . '</ul>';
-            $sections .= '<details class="doc-area" open><summary><h2>' . $this->e($title) . '</h2></summary>' . $articles . '</details>';
+            $body = $tab['html'];
+
+            foreach ($tab['sections'] as $section) {
+                $body .= $section['area'] === null ? $section['html'] : $this->docArea($section['title'], $section['html'], $areas[$section['area']] ?? []);
+            }
+
+            $tabs .= sprintf(
+                "\n    <section class=\"code-tab%s\" id=\"tab-%s\"><nav class=\"tabs\" aria-label=\"Bereiche\">%s</nav><div class=\"doc-text\">%s</div></section>",
+                $index === 0 ? ' first' : '',
+                $this->e($tab['slug']),
+                $bar,
+                $body,
+            );
         }
 
-        return $this->page('Code – ' . $this->site['title'], 'library code-page', <<<HTML
+        return $this->page($book['title'] . ' – ' . $this->site['title'], 'library code-page', <<<HTML
               {$head}
               <main>
                 <div class="heading">
-                  <h1>Code-Übersicht</h1>
-                  <p class="lead">Für alle, die am Code mitbauen. Entsteht bei jedem Build aus den Klassenbeschreibungen in <code>lib/</code>.</p>
+                  <h1>{$title}</h1>
                 </div>
-                <nav class="doc-toc" aria-label="Klassen">{$index}</nav>
-                {$sections}
+                <div class="doc-intro">{$book['intro']}</div>
+                <div class="code-tabs">{$tabs}
+                </div>
               </main>
               <script>
                 function openTarget() {
@@ -1112,6 +1105,53 @@ final class Renderer
                 openTarget();
               </script>
             HTML, false, false, false);
+    }
+
+    /**
+     * @param list<DocEntry> $entries
+     */
+    private function docArea(string $title, string $prose, array $entries): string
+    {
+        $links = '';
+        $articles = '';
+
+        foreach ($entries as $entry) {
+            $id = $this->e(strtolower($entry->short));
+            $links .= '<li><a href="#' . $id . '">' . $this->e($entry->short) . '</a> <span>' . $this->docText($entry->summary()) . '</span></li>';
+            $articles .= $this->docEntry($entry, $id);
+        }
+
+        return (
+            '<details class="doc-area" open><summary><h2>' . $this->e($title) . '</h2></summary>' . $prose . '<ul class="doc-index">' . $links . '</ul>' . $articles . '</details>'
+        );
+    }
+
+    private function docEntry(DocEntry $entry, string $id): string
+    {
+        $html =
+            '<article class="doc" id="'
+            . $id
+            . '"><h3>'
+            . $this->e($entry->short)
+            . '</h3><p class="doc-name">'
+            . $this->e($entry->kind)
+            . ' <code>'
+            . $this->e($entry->name)
+            . '</code></p>';
+        $html .= $entry->text === '' ? '<p><em>Noch keine Beschreibung.</em></p>' : $this->docText($entry->text, true);
+        $html .= $this->docTable('Felder', ['Name', 'Typ'], array_map(static fn(array $field): array => [$field['name'], $field['type']], $entry->fields));
+        $html .= $entry->cases === [] ? '' : '<p class="doc-cases"><b>Fälle</b> <code>' . implode('</code> <code>', array_map($this->e(...), $entry->cases)) . '</code></p>';
+        $html .= $this->docTable('Konstanten', ['Name', 'Wert'], array_map(static fn(array $constant): array => [
+            $constant['name'],
+            $constant['value'],
+        ], $entry->constants));
+        $html .= $entry->methods === []
+            ? ''
+            : '<p class="doc-table"><b>Methoden</b></p><ul class="doc-methods">'
+            . implode('', array_map(fn(string $method): string => '<li><code>' . $this->e($method) . '</code></li>', $entry->methods))
+            . '</ul>';
+
+        return $html . '</article>';
     }
 
     private function docText(string $text, bool $paragraphs = false): string
