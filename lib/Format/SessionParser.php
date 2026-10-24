@@ -20,13 +20,13 @@ final class SessionParser
     public const MAX_BYTES = 16_384;
 
     public function __construct(
-        private readonly ProjectParser $projects,
+        private readonly SongParser $songs,
         private readonly Markdown $markdown = new Markdown(null),
         private readonly HtmlSanitizer $sanitizer = new HtmlSanitizer(),
     ) {}
 
     /**
-     * @param \Closure(string): array{prefix: string, slug: string, project: Song} $resolve
+     * @param \Closure(string): array{prefix: string, slug: string, song: Song} $resolve
      */
     public function parse(string $source, string $fallbackTitle, \Closure $resolve): Session
     {
@@ -46,7 +46,9 @@ final class SessionParser
 
         if ($unknown !== []) {
             throw new BuildError(
-                'Session: unbekannter Schlüssel „' . implode('“, „', array_map('strval', $unknown)) . '“ (erlaubt: title, artist, tags, a, b, start, auto, fader).',
+                'Session: unbekannter Schlüssel „'
+                . implode('“, „', array_map('strval', $unknown))
+                . '“ (erlaubt: kind, format, title, artist, group, tags, a, b, start, auto, fader).',
             );
         }
 
@@ -60,15 +62,15 @@ final class SessionParser
             }
 
             $resolved = $resolve(trim($ref));
-            $project = $resolved['project'];
+            $song = $resolved['song'];
             $decks[$key] = new SessionDeck(
                 ref: trim($ref),
                 prefix: $resolved['prefix'],
                 slug: $resolved['slug'],
-                title: $project->title,
-                bpm: $project->bpm,
-                bars: $project->bars,
-                stepsPerBar: $project->stepsPerBar,
+                title: $song->title,
+                bpm: $song->bpm,
+                bars: $song->bars,
+                stepsPerBar: $song->stepsPerBar,
             );
         }
 
@@ -96,7 +98,7 @@ final class SessionParser
             $credits[$deck->ref] = ['prefix' => $deck->prefix, 'slug' => $deck->slug, 'title' => $deck->title];
         }
 
-        $head = $this->projects->describe($meta, $fallbackTitle);
+        $head = $this->songs->describe($meta, $fallbackTitle);
 
         return new Session(
             title: $head['title'],

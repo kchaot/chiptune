@@ -7,15 +7,15 @@ namespace Chiptune\Site;
 use Chiptune\Common\BuildError;
 use Chiptune\Format\Described;
 use Chiptune\Format\LinkParser;
-use Chiptune\Format\ProjectParser;
 use Chiptune\Format\SessionParser;
 use Chiptune\Format\SetParser;
 use Chiptune\Format\Song;
+use Chiptune\Format\SongParser;
 
 /**
  * Lädt Dateien nach Schlüssel (`prefix/slug`) und wählt den passenden Parser.
  *
- * Ergebnisse werden gemerkt. Verweise zwischen Dateien löst `project()` auf, Zyklen werden erkannt,
+ * Ergebnisse werden gemerkt. Verweise zwischen Dateien löst `song()` auf, Zyklen werden erkannt,
  * und eine kaputte Datei wird nur einmal gemeldet.
  */
 final class Library
@@ -35,7 +35,7 @@ final class Library
     /** @param list<array{source: string, prefix: string, slug: string, album: string|null, file: string, strict: bool, media: list<string>}> $files */
     public function __construct(
         array $files,
-        private readonly ProjectParser $projects,
+        private readonly SongParser $songs,
         private readonly SetParser $sets,
         private readonly ?SessionParser $sessions = null,
         private readonly ?LinkParser $links = null,
@@ -66,25 +66,25 @@ final class Library
 
         try {
             $source = (string) file_get_contents($file['file']);
-            $resolve = $this->project(...);
+            $resolve = $this->song(...);
 
-            $fileKind = $this->projects->kind($source);
+            $fileKind = $this->songs->kind($source);
 
             if ($fileKind === 'session') {
                 $kind = 'session';
-                $data = ($this->sessions ?? new SessionParser($this->projects))->parse($source, basename($file['slug']), $resolve);
+                $data = ($this->sessions ?? new SessionParser($this->songs))->parse($source, basename($file['slug']), $resolve);
             } elseif ($fileKind === 'link') {
                 $kind = 'link';
-                $data = ($this->links ?? new LinkParser($this->projects))->parse($source, basename($file['slug']), $resolve, $file['prefix']);
+                $data = ($this->links ?? new LinkParser($this->songs))->parse($source, basename($file['slug']), $resolve, $file['prefix']);
             } elseif ($fileKind === 'set') {
                 $kind = 'set';
                 $data = $this->sets->parse($source, basename($file['slug']), $resolve);
             } elseif ($fileKind === 'layer') {
-                $kind = 'project';
-                $data = $this->projects->parseLayer($source, basename($file['slug']), $resolve, $file['prefix']);
+                $kind = 'song';
+                $data = $this->songs->parseLayer($source, basename($file['slug']), $resolve, $file['prefix']);
             } else {
-                $kind = 'project';
-                $data = $this->projects->parse($source, basename($file['slug']), $resolve, $file['prefix']);
+                $kind = 'song';
+                $data = $this->songs->parse($source, basename($file['slug']), $resolve, $file['prefix']);
             }
         } catch (BuildError $error) {
             $this->failed[$key] = $error->getMessage();
@@ -98,9 +98,9 @@ final class Library
     }
 
     /**
-     * @return array{prefix: string, slug: string, project: Song}
+     * @return array{prefix: string, slug: string, song: Song}
      */
-    public function project(string $ref): array
+    public function song(string $ref): array
     {
         try {
             $entry = $this->load($ref);
@@ -121,10 +121,10 @@ final class Library
                     'link' => 'Link',
                     default => 'Set',
                 }
-                . '. Verweisen kann man nur auf Projects.',
+                . '. Verweisen kann man nur auf Songs.',
             );
         }
 
-        return ['prefix' => $entry['prefix'], 'slug' => $entry['slug'], 'project' => $song];
+        return ['prefix' => $entry['prefix'], 'slug' => $entry['slug'], 'song' => $song];
     }
 }

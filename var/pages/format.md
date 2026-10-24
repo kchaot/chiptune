@@ -7,7 +7,7 @@ Das Format lebt noch. Alles hier ist ein Experiment, und wir dokumentieren es in
 
 ## Ein Song, eine Textdatei
 
-Jeder Song ist eine einzige Markdown-Datei aus mehreren Teilen. Eine sogenannte "[Multi-Content](https://github.com/tempestphp/markdown/issues/17)"-MD: ein Kopf mit Titel und Tempo, dann pro Spur ein eigener "next"-Block mit den Einstellungen des Instruments und dem Raster mit den Noten. Der Text drumherum ist ganz normales Markdown und erklärt, was passiert. Auf jeder Song-Seite hier führt „Quelltext dieses Projects“ direkt zu solchen Dateien.
+Jeder Song ist eine einzige Markdown-Datei aus mehreren Teilen. Eine sogenannte "[Multi-Content](https://github.com/tempestphp/markdown/issues/17)"-MD: ein Kopf mit Titel und Tempo, dann pro Spur ein eigener "next"-Block mit den Einstellungen des Instruments und dem Raster mit den Noten. Der Text drumherum ist ganz normales Markdown und erklärt, was passiert. Auf jeder Song-Seite hier führt „Quelltext dieses Songs“ direkt zu solchen Dateien.
 
 ## Mehr Einblick
 

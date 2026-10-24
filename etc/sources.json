@@ -1,6 +1,6 @@
 {
     "sources": [
-        { "name": "kchaot", "prefix": "kchaot", "title": "KChaot",     "path": "var/projects/kchaot",                                 "media": ["kchaot.de"]                },
+        { "name": "kchaot", "prefix": "kchaot", "title": "KChaot",     "path": "var/songs/kchaot",                                    "media": ["kchaot.de"]                },
         { "name": "kalkig", "prefix": "kalkig", "title": "Kalkiges",   "path": "kalkig", "repo": "ek9r/chiptune-data", "ref": "main", "media": ["kalkig.de", "kalkie.de"]   },
         { "name": "anonig", "prefix": "ab",     "title": "AnonigBits", "path": "anonig", "repo": "ek9r/chiptune-data", "ref": "main", "media": ["kalkig.de", "8rnr.t1s.ch"] }
     ]

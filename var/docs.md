@@ -124,7 +124,7 @@ Zum Beispiel eine lokale Quelle und eine aus einem Git-Repo:
 ```json
 {
     "sources": [
-        { "name": "kchaot", "prefix": "kchaot", "title": "KChaot", "path": "var/projects/kchaot", "media": ["kchaot.de"] },
+        { "name": "kchaot", "prefix": "kchaot", "title": "KChaot", "path": "var/songs/kchaot", "media": ["kchaot.de"] },
         { "name": "anonig", "prefix": "ab", "title": "AnonigBits", "path": "anonig", "repo": "ek9r/chiptune-data", "ref": "main", "media": ["8rnr.t1s.ch"] }
     ]
 }
@@ -140,19 +140,19 @@ Die Inhalte. Alles, was sich ändert, ohne dass jemand Code anfasst, liegt hier.
 
 Die Seiten im Fuß (Format, Kontakt, Weiterkommen). Eine Markdown-Datei pro Seite: `title` und `order` in der Frontmatter, und mit `<!-- tab: name -->` lässt sich die Seite in Reiter teilen.
 
-## projects
+## songs
 
 Die eigenen Songs, im selben Aufbau wie jede andere Quelle. Ein Song ist eine Markdown-Datei aus mehreren Teilen: Kopf mit Titel und Tempo, dann pro Spur ein `<!-- track: name -->`-Block mit den Einstellungen des Instruments und dem Raster.
 
-<!-- code: var/projects/kchaot/erster-puls.md fold -->
+<!-- code: var/songs/kchaot/erster-puls.md fold -->
 
 Ein Ordner mit `_album.md` ist ein Album.
 
-<!-- code: var/projects/kchaot/skizzen/_album.md -->
+<!-- code: var/songs/kchaot/skizzen/_album.md -->
 
 Die Datei `_profile.md` im Wurzelordner einer Quelle beschreibt den Autor: `tagline`, `author` und `url` in der Frontmatter, darunter ein kurzer Text für die Autorenseite.
 
-<!-- code: var/projects/kchaot/_profile.md -->
+<!-- code: var/songs/kchaot/_profile.md -->
 
 Die `README.md` im Wurzelordner liest der Build nicht. Er überspringt sie wie `LICENSE`, `CHANGELOG` und ähnliche Dateien. Sie ist für Menschen gedacht, die das Repo auf GitHub öffnen, und darf deshalb frei bleiben.
 

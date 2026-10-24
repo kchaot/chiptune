@@ -19,7 +19,7 @@ use Tempest\Markdown\Markdown;
  *
  * Code in Fenced Blocks wird gefärbt. Eine Zeile `<!-- code: var/resources/player.js#tone -->` holt einen
  * Ausschnitt live aus der Datei: Dort steht er zwischen `// docs: tone` und `// docs-end`. Ohne `#name`
- * kommt eine kleine Beispieldatei ganz (zum Beispiel aus `var/projects/`). Danach dürfen `lines` (Zeilennummern, bei Ausschnitten mit
+ * kommt eine kleine Beispieldatei ganz (zum Beispiel aus `var/songs/`). Danach dürfen `lines` (Zeilennummern, bei Ausschnitten mit
  * den echten Zeilen der Datei) und `fold` (eingeklappt) stehen.
  */
 final class CodeBook
@@ -123,7 +123,7 @@ final class CodeBook
         $parts = [];
 
         if (
-            preg_match('~^(lib|bin|etc|var/resources|var/projects|var/pages)/[A-Za-z0-9_./-]+\.(php|js|json|sh|md)$~', $file, $parts) !== 1
+            preg_match('~^(lib|bin|etc|var/resources|var/songs|var/pages)/[A-Za-z0-9_./-]+\.(php|js|json|sh|md)$~', $file, $parts) !== 1
             || str_contains($file, '..')
             || !is_file($path)
             || is_link($path)

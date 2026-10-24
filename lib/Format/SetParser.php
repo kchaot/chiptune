@@ -21,13 +21,13 @@ final class SetParser
     public const MAX_PARTS = 32;
 
     public function __construct(
-        private readonly ProjectParser $projects,
+        private readonly SongParser $songs,
         private readonly Markdown $markdown = new Markdown(null),
         private readonly HtmlSanitizer $sanitizer = new HtmlSanitizer(),
     ) {}
 
     /**
-     * @param \Closure(string): array{prefix: string, slug: string, project: Song} $resolve
+     * @param \Closure(string): array{prefix: string, slug: string, song: Song} $resolve
      */
     public function parse(string $source, string $fallbackTitle, \Closure $resolve): Set
     {
@@ -37,13 +37,13 @@ final class SetParser
 
         $chunks = [];
 
-        foreach ($this->markdown->parseMany($source, 'project', 'part') as $chunk) {
+        foreach ($this->markdown->parseMany($source, 'song', 'part') as $chunk) {
             $chunks[] = $chunk;
         }
 
         $head = null;
 
-        if ($chunks !== [] && ($chunks[0]->name === null || $chunks[0]->name === 'project-1')) {
+        if ($chunks !== [] && ($chunks[0]->name === null || $chunks[0]->name === 'song-1')) {
             $head = array_shift($chunks);
         }
 
@@ -83,7 +83,7 @@ final class SetParser
             }
 
             $resolved = $resolve($ref);
-            $project = $resolved['project'];
+            $song = $resolved['song'];
             /** @var array<string, mixed> $fm */
             $fm = $chunk->frontmatter;
 
@@ -99,10 +99,10 @@ final class SetParser
                 throw new BuildError("{$where}: „repeat“ muss eine ganze Zahl von 1 bis 16 sein.");
             }
 
-            $bar = $project->stepsPerBar;
+            $bar = $song->stepsPerBar;
             $startBar = 1;
             $start = 0;
-            $stop = $project->steps;
+            $stop = $song->steps;
 
             if (isset($fm['bars'])) {
                 $value = is_int($fm['bars']) ? (string) $fm['bars'] : $fm['bars'];
@@ -122,37 +122,37 @@ final class SetParser
                 $start = ($startBar - 1) * $bar;
                 $stop = $endBar * $bar;
 
-                if ($stop > $project->steps) {
-                    throw new BuildError("{$where}: „bars“ reicht bis Bar {$endBar}, das Project hat {$project->bars} Bars.");
+                if ($stop > $song->steps) {
+                    throw new BuildError("{$where}: „bars“ reicht bis Bar {$endBar}, der Song hat {$song->bars} Bars.");
                 }
             }
 
-            $run = ($stop - $start) * $project->stepSeconds;
+            $run = ($stop - $start) * $song->stepSeconds;
             $duration += $run * $repeat;
 
             $parts[] = new SetPart(
                 ref: $ref,
                 prefix: $resolved['prefix'],
                 slug: $resolved['slug'],
-                title: $project->title,
-                artist: $project->artist,
-                bpm: $project->bpm,
-                stepsPerBar: $project->stepsPerBar,
-                stepsPerBeat: $project->stepsPerBeat,
-                stepSeconds: $project->stepSeconds,
-                steps: $project->steps,
+                title: $song->title,
+                artist: $song->artist,
+                bpm: $song->bpm,
+                stepsPerBar: $song->stepsPerBar,
+                stepsPerBeat: $song->stepsPerBeat,
+                stepSeconds: $song->stepSeconds,
+                steps: $song->steps,
                 start: $start,
                 stop: $stop,
                 startBar: $startBar,
                 repeat: $repeat,
-                tracks: $project->tracks,
+                tracks: $song->tracks,
                 notesHtml: $this->sanitizer->clean($chunk->html),
             );
 
-            $credits[$ref] = ['prefix' => $resolved['prefix'], 'slug' => $resolved['slug'], 'title' => $project->title];
+            $credits[$ref] = ['prefix' => $resolved['prefix'], 'slug' => $resolved['slug'], 'title' => $song->title];
         }
 
-        $info = $this->projects->describe($meta, $fallbackTitle);
+        $info = $this->songs->describe($meta, $fallbackTitle);
 
         return new Set(
             title: $info['title'],

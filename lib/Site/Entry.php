@@ -30,7 +30,7 @@ final readonly class Entry
         public ?string $album,
         public ?string $source,
         public EntryKind $kind,
-        public Described $project,
+        public Described $data,
         public ?string $strudel = null,
         public ?array $nav = null,
         public array $order = [],
@@ -46,43 +46,43 @@ final readonly class Entry
 
     public function title(): string
     {
-        return $this->project->title;
+        return $this->data->title;
     }
 
     public function artist(): string
     {
-        return $this->project->artist;
+        return $this->data->artist;
     }
 
     public function group(): string
     {
-        return $this->project->group;
+        return $this->data->group;
     }
 
     /** @return list<string> */
     public function tags(): array
     {
-        return $this->project->tags;
+        return $this->data->tags;
     }
 
     public function song(): Song
     {
-        return $this->project instanceof Song ? $this->project : throw new \LogicException("Eintrag {$this->key()} ist kein Song.");
+        return $this->data instanceof Song ? $this->data : throw new \LogicException("Eintrag {$this->key()} ist kein Song.");
     }
 
     public function link(): Link
     {
-        return $this->project instanceof Link ? $this->project : throw new \LogicException("Eintrag {$this->key()} ist kein Link.");
+        return $this->data instanceof Link ? $this->data : throw new \LogicException("Eintrag {$this->key()} ist kein Link.");
     }
 
     public function session(): Session
     {
-        return $this->project instanceof Session ? $this->project : throw new \LogicException("Eintrag {$this->key()} ist keine Session.");
+        return $this->data instanceof Session ? $this->data : throw new \LogicException("Eintrag {$this->key()} ist keine Session.");
     }
 
     public function set(): Set
     {
-        return $this->project instanceof Set ? $this->project : throw new \LogicException("Eintrag {$this->key()} ist kein Set.");
+        return $this->data instanceof Set ? $this->data : throw new \LogicException("Eintrag {$this->key()} ist kein Set.");
     }
 
     public function key(): string
