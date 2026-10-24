@@ -22,13 +22,13 @@ final class LinkParser
     public const MAX_FROM = 6;
 
     public function __construct(
-        private readonly ProjectParser $projects,
+        private readonly SongParser $songs,
         private readonly Markdown $markdown = new Markdown(null),
         private readonly HtmlSanitizer $sanitizer = new HtmlSanitizer(),
     ) {}
 
     /**
-     * @param \Closure(string): array{prefix: string, slug: string, project: Song} $resolve
+     * @param \Closure(string): array{prefix: string, slug: string, song: Song} $resolve
      */
     public function parse(string $source, string $fallbackTitle, \Closure $resolve, string $owner): Link
     {
@@ -47,14 +47,16 @@ final class LinkParser
         $unknown = array_diff(array_keys($meta), ['kind', 'format', 'title', 'artist', 'group', 'tags', 'release', 'from']);
 
         if ($unknown !== []) {
-            throw new BuildError('Link: unbekannter Schlüssel „' . implode('“, „', array_map('strval', $unknown)) . '“ (erlaubt: title, artist, group, tags, release, from).');
+            throw new BuildError(
+                'Link: unbekannter Schlüssel „' . implode('“, „', array_map('strval', $unknown)) . '“ (erlaubt: kind, format, title, artist, group, tags, release, from).',
+            );
         }
 
         if (!isset($meta['release'])) {
             throw new BuildError('Link: „release“ fehlt. Es braucht mindestens die https-Adresse der Aufnahme.');
         }
 
-        $media = $this->projects->media(['release' => $meta['release']]);
+        $media = $this->songs->media(['release' => $meta['release']]);
 
         $from = $meta['from'] ?? [];
 
@@ -72,14 +74,14 @@ final class LinkParser
             $ref = trim($ref);
             $resolved = $resolve($ref);
 
-            if ($resolved['prefix'] !== $owner && $resolved['project']->remix !== true) {
-                throw new BuildError("Link: „{$ref}“ erlaubt kein Remixen. Der Autor müsste „remix: true“ in sein Project schreiben.");
+            if ($resolved['prefix'] !== $owner && $resolved['song']->remix !== true) {
+                throw new BuildError("Link: „{$ref}“ erlaubt kein Remixen. Der Autor müsste „remix: true“ in seinen Song schreiben.");
             }
 
-            $credits[$ref] = ['prefix' => $resolved['prefix'], 'slug' => $resolved['slug'], 'title' => $resolved['project']->title];
+            $credits[$ref] = ['prefix' => $resolved['prefix'], 'slug' => $resolved['slug'], 'title' => $resolved['song']->title];
         }
 
-        $head = $this->projects->describe($meta, $fallbackTitle);
+        $head = $this->songs->describe($meta, $fallbackTitle);
 
         return new Link(
             title: $head['title'],

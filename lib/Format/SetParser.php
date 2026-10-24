@@ -21,13 +21,13 @@ final class SetParser
     public const MAX_PARTS = 32;
 
     public function __construct(
-        private readonly ProjectParser $projects,
+        private readonly SongParser $songs,
         private readonly Markdown $markdown = new Markdown(null),
         private readonly HtmlSanitizer $sanitizer = new HtmlSanitizer(),
     ) {}
 
     /**
-     * @param \Closure(string): array{prefix: string, slug: string, project: Song} $resolve
+     * @param \Closure(string): array{prefix: string, slug: string, song: Song} $resolve
      */
     public function parse(string $source, string $fallbackTitle, \Closure $resolve): Set
     {
@@ -37,13 +37,13 @@ final class SetParser
 
         $chunks = [];
 
-        foreach ($this->markdown->parseMany($source, 'project', 'part') as $chunk) {
+        foreach ($this->markdown->parseMany($source, 'song', 'part') as $chunk) {
             $chunks[] = $chunk;
         }
 
         $head = null;
 
-        if ($chunks !== [] && ($chunks[0]->name === null || $chunks[0]->name === 'project-1')) {
+        if ($chunks !== [] && ($chunks[0]->name === null || $chunks[0]->name === 'song-1')) {
             $head = array_shift($chunks);
         }
 
@@ -63,11 +63,7 @@ final class SetParser
             throw new BuildError(sprintf('Mehr als %d Parts.', self::MAX_PARTS));
         }
 
-        $loop = filter_var($meta['loop'] ?? false, FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE);
-
-        if ($loop === null) {
-            throw new BuildError('Set: „loop“ muss true oder false sein.');
-        }
+        $loop = $this->songs->flag($meta, 'loop', false, 'Set');
 
         $parts = [];
         $credits = [];
@@ -83,7 +79,7 @@ final class SetParser
             }
 
             $resolved = $resolve($ref);
-            $project = $resolved['project'];
+            $song = $resolved['song'];
             /** @var array<string, mixed> $fm */
             $fm = $chunk->frontmatter;
 
@@ -95,64 +91,52 @@ final class SetParser
 
             $repeat = $fm['repeat'] ?? 1;
 
-            if (!is_int($repeat) || $repeat < 1 || $repeat > 16) {
-                throw new BuildError("{$where}: „repeat“ muss eine ganze Zahl von 1 bis 16 sein.");
+            if (!is_int($repeat) || $repeat < 1 || $repeat > SongParser::MAX_REPEAT) {
+                throw new BuildError("{$where}: „repeat“ muss eine ganze Zahl von 1 bis " . SongParser::MAX_REPEAT . ' sein.');
             }
 
-            $bar = $project->stepsPerBar;
+            $bar = $song->stepsPerBar;
             $startBar = 1;
             $start = 0;
-            $stop = $project->steps;
+            $stop = $song->steps;
 
             if (isset($fm['bars'])) {
-                $value = is_int($fm['bars']) ? (string) $fm['bars'] : $fm['bars'];
-
-                $r = [];
-                if (!is_string($value) || preg_match('/^\s*(\d{1,4})\s*(?:-\s*(\d{1,4}))?\s*$/', $value, $r) !== 1) {
-                    throw new BuildError("{$where}: „bars“ muss eine Zahl oder ein Bereich wie 1-8 sein.");
-                }
-
-                $startBar = (int) $r[1];
-                $endBar = isset($r[2]) && $r[2] !== '' ? (int) $r[2] : $startBar;
-
-                if ($startBar < 1 || $endBar < $startBar) {
-                    throw new BuildError("{$where}: „bars“ muss bei 1 beginnen und aufsteigen.");
-                }
+                [$startBar, $endBar] = $this->songs->range($fm['bars'], "{$where}: „bars“");
 
                 $start = ($startBar - 1) * $bar;
                 $stop = $endBar * $bar;
 
-                if ($stop > $project->steps) {
-                    throw new BuildError("{$where}: „bars“ reicht bis Bar {$endBar}, das Project hat {$project->bars} Bars.");
+                if ($stop > $song->steps) {
+                    throw new BuildError("{$where}: „bars“ reicht bis Bar {$endBar}, der Song hat {$song->bars} Bars.");
                 }
             }
 
-            $run = ($stop - $start) * $project->stepSeconds;
+            $run = ($stop - $start) * $song->stepSeconds;
             $duration += $run * $repeat;
 
             $parts[] = new SetPart(
                 ref: $ref,
                 prefix: $resolved['prefix'],
                 slug: $resolved['slug'],
-                title: $project->title,
-                artist: $project->artist,
-                bpm: $project->bpm,
-                stepsPerBar: $project->stepsPerBar,
-                stepsPerBeat: $project->stepsPerBeat,
-                stepSeconds: $project->stepSeconds,
-                steps: $project->steps,
+                title: $song->title,
+                artist: $song->artist,
+                bpm: $song->bpm,
+                stepsPerBar: $song->stepsPerBar,
+                stepsPerBeat: $song->stepsPerBeat,
+                stepSeconds: $song->stepSeconds,
+                steps: $song->steps,
                 start: $start,
                 stop: $stop,
                 startBar: $startBar,
                 repeat: $repeat,
-                tracks: $project->tracks,
+                tracks: $song->tracks,
                 notesHtml: $this->sanitizer->clean($chunk->html),
             );
 
-            $credits[$ref] = ['prefix' => $resolved['prefix'], 'slug' => $resolved['slug'], 'title' => $project->title];
+            $credits[$ref] = ['prefix' => $resolved['prefix'], 'slug' => $resolved['slug'], 'title' => $song->title];
         }
 
-        $info = $this->projects->describe($meta, $fallbackTitle);
+        $info = $this->songs->describe($meta, $fallbackTitle);
 
         return new Set(
             title: $info['title'],

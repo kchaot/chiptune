@@ -41,7 +41,7 @@ final class Sources
         }
 
         /** @var list<mixed> $sources */
-        $projects = [];
+        $files = [];
         $albums = [];
         /** @var array<string, array{title: string, url: string, profile: string|null}> $authors */
         $authors = [];
@@ -123,16 +123,16 @@ final class Sources
                 $authors[$prefix]['profile'] = $profile;
             }
 
-            $found = $this->projectFiles($name, $directory);
+            $found = $this->entryFiles($name, $directory);
 
             foreach ($found['files'] as $slug => $file) {
                 $key = "{$prefix}/{$slug}";
 
-                if (isset($projects[$key])) {
-                    throw new BuildError("„{$key}“ kommt in den Quellen „{$projects[$key]['source']}“ und „{$name}“ vor.");
+                if (isset($files[$key])) {
+                    throw new BuildError("„{$key}“ kommt in den Quellen „{$files[$key]['source']}“ und „{$name}“ vor.");
                 }
 
-                $projects[$key] = ['source' => $name, 'prefix' => $prefix, 'slug' => (string) $slug, 'album' => null, 'file' => $file, 'strict' => $strict, 'media' => $media];
+                $files[$key] = ['source' => $name, 'prefix' => $prefix, 'slug' => (string) $slug, 'album' => null, 'file' => $file, 'strict' => $strict, 'media' => $media];
             }
 
             foreach ($found['albums'] as $album => $info) {
@@ -144,11 +144,11 @@ final class Sources
                 foreach ($info['files'] as $slug => $file) {
                     $key = "{$prefix}/{$album}/{$slug}";
 
-                    if (isset($projects[$key])) {
-                        throw new BuildError("„{$key}“ kommt in den Quellen „{$projects[$key]['source']}“ und „{$name}“ vor.");
+                    if (isset($files[$key])) {
+                        throw new BuildError("„{$key}“ kommt in den Quellen „{$files[$key]['source']}“ und „{$name}“ vor.");
                     }
 
-                    $projects[$key] = [
+                    $files[$key] = [
                         'source' => $name,
                         'prefix' => $prefix,
                         'slug' => "{$album}/{$slug}",
@@ -163,15 +163,15 @@ final class Sources
         }
 
         foreach (array_keys($albums) as $albumKey) {
-            if (isset($projects[$albumKey])) {
-                throw new BuildError("„{$albumKey}“ ist ein Album (Ordner) und ein Project (Datei). Der Name darf nur einmal vorkommen.");
+            if (isset($files[$albumKey])) {
+                throw new BuildError("„{$albumKey}“ ist ein Album (Ordner) und ein Song (Datei). Der Name darf nur einmal vorkommen.");
             }
         }
 
-        ksort($projects);
+        ksort($files);
         ksort($albums);
 
-        return ['files' => array_values($projects), 'albums' => $albums, 'authors' => $authors, 'media' => array_values(array_unique($mediaHosts))];
+        return ['files' => array_values($files), 'albums' => $albums, 'authors' => $authors, 'media' => array_values(array_unique($mediaHosts))];
     }
 
     /** @return list<string> */
@@ -288,7 +288,7 @@ final class Sources
     /**
      * @return array{files: array<string, string>, albums: array<string, array{file: string|null, files: array<string, string>}>}
      */
-    private function projectFiles(string $source, string $directory): array
+    private function entryFiles(string $source, string $directory): array
     {
         $files = $this->markdownFiles($source, $directory);
         $albums = [];

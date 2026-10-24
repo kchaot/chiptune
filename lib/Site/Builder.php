@@ -8,9 +8,9 @@ use Chiptune\Common\BuildError;
 use Chiptune\Common\HtmlSanitizer;
 use Chiptune\Format\Link;
 use Chiptune\Format\Media;
-use Chiptune\Format\ProjectParser;
 use Chiptune\Format\SetParser;
 use Chiptune\Format\Song;
+use Chiptune\Format\SongParser;
 use Tempest\Markdown\Markdown;
 
 /**
@@ -37,9 +37,9 @@ final class Builder
         $sources = new Sources($this->root, $this->root . '/.cache/sources');
         $collected = $sources->collect($this->readJson($this->root . '/etc/sources.json'), $fetch);
 
-        $projects = new ProjectParser();
-        $sets = new SetParser($projects);
-        $library = new Library($collected['files'], $projects, $sets);
+        $songs = new SongParser();
+        $sets = new SetParser($songs);
+        $library = new Library($collected['files'], $songs, $sets);
         $entries = [];
         $errors = [];
 
@@ -83,7 +83,7 @@ final class Builder
                 album: $file['album'],
                 source: $file['file'],
                 kind: $kind,
-                project: $data,
+                data: $data,
                 strudel: $data instanceof Song ? $this->handStrudel($file['file'], $data, $label) : null,
             );
         }
@@ -152,7 +152,7 @@ final class Builder
                 EntryKind::Set => $renderer->set($entry),
                 EntryKind::Session => $renderer->session($entry),
                 EntryKind::Link => $renderer->link($entry),
-                default => $renderer->project($entry),
+                default => $renderer->song($entry),
             });
             Filesystem::write("{$directory}/source.md", (string) file_get_contents((string) $entry->source));
         }
@@ -165,12 +165,12 @@ final class Builder
         }
 
         foreach ($entries as $entry) {
-            if ($entry->kind !== EntryKind::Project) {
+            if ($entry->kind !== EntryKind::Song) {
                 continue;
             }
 
             $id = Renderer::mixId($entry->prefix, $entry->slug);
-            Filesystem::write("{$this->public}/+mixer/data/{$id}.json", (string) json_encode($renderer->projectPayload($entry->song()), Renderer::JSON_FLAGS));
+            Filesystem::write("{$this->public}/+mixer/data/{$id}.json", (string) json_encode($renderer->songPayload($entry->song()), Renderer::JSON_FLAGS));
             $catalog[] = [
                 'id' => $id,
                 'title' => $entry->title(),
@@ -212,7 +212,7 @@ final class Builder
         $sessionCount = count(array_filter($entries, fn(Entry $entry): bool => $entry->kind === EntryKind::Session));
         $linkCount = count(array_filter($entries, fn(Entry $entry): bool => $entry->kind === EntryKind::Link));
         fwrite(STDOUT, sprintf(
-            "%d Projects, %d Sets, %d Sessions, %d Links und %d Alben von %d Autoren gebaut: %s\n",
+            "%d Songs, %d Sets, %d Sessions, %d Links und %d Alben von %d Autoren gebaut: %s\n",
             count($entries) - $setCount - $sessionCount - $linkCount,
             $setCount,
             $sessionCount,
@@ -247,16 +247,22 @@ final class Builder
             $html = new HtmlSanitizer()->clean($parsed->html);
         }
 
-        $unknown = array_diff(array_keys($meta), ['title', 'artist', 'tags', 'tracks', 'loop']);
+        $unknown = array_diff(array_keys($meta), ['title', 'artist', 'group', 'tags', 'songs', 'tracks', 'loop']);
 
         if ($unknown !== []) {
-            throw new BuildError('_album.md: unbekannter Schlüssel „' . implode('“, „', array_map('strval', $unknown)) . '“ (erlaubt: title, artist, tags, tracks, loop).');
+            throw new BuildError('_album.md: unbekannter Schlüssel „' . implode('“, „', array_map('strval', $unknown)) . '“ (erlaubt: title, artist, group, tags, songs, loop).');
         }
+
+        if (isset($meta['songs'], $meta['tracks'])) {
+            throw new BuildError('_album.md: „songs“ und „tracks“ sind derselbe Schlüssel (tracks ist der alte Name). Bitte nur „songs“ verwenden.');
+        }
+
+        $listKey = isset($meta['songs']) ? 'songs' : 'tracks';
 
         $available = [];
 
         foreach ($entries as $entry) {
-            if ($entry->prefix === $album['prefix'] && $entry->album === $album['slug'] && $entry->kind === EntryKind::Project) {
+            if ($entry->prefix === $album['prefix'] && $entry->album === $album['slug'] && $entry->kind === EntryKind::Song) {
                 $available[substr($entry->slug, strlen($album['slug']) + 1)] = $entry->prefix . '/' . $entry->slug;
             }
         }
@@ -264,16 +270,16 @@ final class Builder
         ksort($available);
         $order = [];
 
-        if (isset($meta['tracks'])) {
-            if (!is_array($meta['tracks']) || !array_is_list($meta['tracks'])) {
-                throw new BuildError('_album.md: „tracks“ muss eine Liste von Dateinamen ohne .md sein.');
+        if (isset($meta[$listKey])) {
+            if (!is_array($meta[$listKey]) || !array_is_list($meta[$listKey])) {
+                throw new BuildError("_album.md: „{$listKey}“ muss eine Liste von Dateinamen ohne .md sein.");
             }
 
-            foreach ($meta['tracks'] as $name) {
+            foreach ($meta[$listKey] as $name) {
                 $name = is_int($name) ? (string) $name : $name;
 
                 if (!is_string($name) || !isset($available[$name])) {
-                    throw new BuildError('_album.md: „tracks“ nennt „' . (is_string($name) ? $name : (string) json_encode($name)) . '“, das ist kein Project in diesem Album.');
+                    throw new BuildError("_album.md: „{$listKey}“ nennt „" . (is_string($name) ? $name : (string) json_encode($name)) . '“, das ist kein Song in diesem Album.');
                 }
 
                 $order[$name] = $available[$name];
@@ -283,12 +289,12 @@ final class Builder
         $order += $available;
 
         if ($order === []) {
-            throw new BuildError('Das Album enthält kein Project, das sich abspielen lässt.');
+            throw new BuildError('Das Album enthält keinen Song, der sich abspielen lässt.');
         }
 
         $head = ['format' => 1, 'kind' => 'set', 'loop' => $meta['loop'] ?? false, 'title' => $meta['title'] ?? ucfirst(str_replace('-', ' ', $album['slug']))];
 
-        foreach (['artist', 'tags'] as $key) {
+        foreach (['artist', 'group', 'tags'] as $key) {
             if (isset($meta[$key])) {
                 $head[$key] = $meta[$key];
             }
@@ -300,7 +306,7 @@ final class Builder
             $source .= "<!-- part: {$ref} -->\n\n";
         }
 
-        $data = $sets->parse($source, $album['slug'], $library->project(...));
+        $data = $sets->parse($source, $album['slug'], $library->song(...));
         $data = $data->withNotesHtml($html);
 
         return new Entry(
@@ -309,7 +315,7 @@ final class Builder
             album: $album['slug'],
             source: null,
             kind: EntryKind::Album,
-            project: $data,
+            data: $data,
             order: array_map(strval(...), array_keys($order)),
             sessions: array_values(array_filter(
                 $entries,
@@ -531,7 +537,7 @@ final class Builder
         }
     }
 
-    private function handStrudel(string $markdownFile, Song $project, string $label): ?string
+    private function handStrudel(string $markdownFile, Song $song, string $label): ?string
     {
         $path = substr($markdownFile, 0, -3) . '.strudel';
 
@@ -541,7 +547,7 @@ final class Builder
 
         $name = basename($path);
         $text = str_replace("\r\n", "\n", (string) file_get_contents($path));
-        $stand = Renderer::strudelStand($project);
+        $stand = Renderer::strudelStand($song);
 
         if (strlen($text) > 65_536) {
             fwrite(STDERR, "Warnung in {$label}: {$name} ist größer als 64 KB und wird ignoriert.\n");
