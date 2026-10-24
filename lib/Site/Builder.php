@@ -37,23 +37,65 @@ final class Builder
         $sources = new Sources($this->root, $this->root . '/.cache/sources');
         $collected = $sources->collect($this->readJson($this->root . '/etc/sources.json'), $fetch);
 
-        $songs = new SongParser();
         $sets = new SetParser();
-        $library = new Library($collected['files'], $songs, $sets);
-        $entries = [];
+        $library = new Library($collected['files'], new SongParser(), $sets);
         $errors = [];
 
-        foreach ($collected['files'] as $file) {
+        $entries = $this->loadEntries($collected['files'], $library, $errors);
+        $albumEntries = $this->loadAlbums($collected['albums'], $entries, $library, $sets, $errors);
+
+        if ($errors !== []) {
+            fwrite(STDERR, "Der Build wurde abgebrochen:\n- " . implode("\n- ", $errors) . "\n");
+
+            return 1;
+        }
+
+        usort($albumEntries, fn(Entry $a, Entry $b): int => strcasecmp($a->title(), $b->title()));
+        $entries = $this->linkAlbums($entries, $albumEntries);
+        $authors = $this->loadAuthors($collected['authors'], $entries);
+
+        $this->prepareDist();
+        $assets = $this->writeAssets($site['assets_base']);
+        $renderer = new Renderer($site, $assets, $authors, $pages);
+
+        $this->writePages($renderer, $entries, $albumEntries, $authors);
+        $this->writeMixer($renderer, $site['base_path'], $entries, $albumEntries, $authors);
+        $this->writeServerFiles($site['noindex'], $site['assets_origin'], $site['base_path'], $collected['media']);
+        $this->report($entries, $albumEntries, $authors);
+
+        return 0;
+    }
+
+    /**
+     * @param list<string> $errors
+     */
+    private function fail(bool $strict, string $label, BuildError $error, array &$errors): void
+    {
+        if ($strict) {
+            $errors[] = "{$label}: {$error->getMessage()}";
+
+            return;
+        }
+
+        fwrite(STDERR, "ÜBERSPRUNGEN: {$label}: {$error->getMessage()}\n");
+    }
+
+    /**
+     * @param list<array{source: string, prefix: string, slug: string, album: string|null, file: string, strict: bool, media: list<string>}> $files
+     * @param list<string> $errors
+     * @return list<Entry>
+     */
+    private function loadEntries(array $files, Library $library, array &$errors): array
+    {
+        $entries = [];
+
+        foreach ($files as $file) {
             $label = "{$file['source']}/{$file['slug']}.md";
 
             try {
                 $loaded = $library->load("{$file['prefix']}/{$file['slug']}");
             } catch (BuildError $error) {
-                if ($file['strict']) {
-                    $errors[] = "{$label}: {$error->getMessage()}";
-                } else {
-                    fwrite(STDERR, "ÜBERSPRUNGEN: {$label}: {$error->getMessage()}\n");
-                }
+                $this->fail($file['strict'], $label, $error, $errors);
 
                 continue;
             }
@@ -64,11 +106,7 @@ final class Builder
                 fwrite(STDERR, "Warnung in {$label}: {$warning}\n");
             }
 
-            if ($data instanceof Link) {
-                if (!$data->media->isEmpty()) {
-                    $data = $data->withMedia($this->checkedMedia($data->media, $file['media'], $file['strict'], $label, $errors));
-                }
-            } elseif ($data instanceof Song && !$data->media->isEmpty()) {
+            if (($data instanceof Link || $data instanceof Song) && !$data->media->isEmpty()) {
                 $data = $data->withMedia($this->checkedMedia($data->media, $file['media'], $file['strict'], $label, $errors));
             }
 
@@ -76,13 +114,12 @@ final class Builder
                 fwrite(STDERR, "Warnung in {$label}: „group“ gilt nur für Songs ohne Album und wird ignoriert.\n");
             }
 
-            $kind = EntryKind::from($loaded['kind']);
             $entries[] = new Entry(
                 prefix: $file['prefix'],
                 slug: $file['slug'],
                 album: $file['album'],
                 source: $file['file'],
-                kind: $kind,
+                kind: EntryKind::from($loaded['kind']),
                 data: $data,
                 strudel: $data instanceof Song ? $this->handStrudel($file['file'], $data, $label) : null,
             );
@@ -90,32 +127,38 @@ final class Builder
 
         usort($entries, fn(Entry $a, Entry $b): int => strcasecmp($a->title(), $b->title()));
 
+        return $entries;
+    }
+
+    /**
+     * @param array<string, array{source: string, prefix: string, slug: string, file: string|null, strict: bool, items: list<string>}> $albums
+     * @param list<Entry> $entries
+     * @param list<string> $errors
+     * @return list<Entry>
+     */
+    private function loadAlbums(array $albums, array $entries, Library $library, SetParser $sets, array &$errors): array
+    {
         $albumEntries = [];
 
-        foreach ($collected['albums'] as $album) {
-            $label = "{$album['source']}/{$album['slug']}/";
-
+        foreach ($albums as $album) {
             try {
                 $albumEntries[] = $this->buildAlbum($album, $entries, $library, $sets);
             } catch (BuildError $error) {
-                if ($album['strict']) {
-                    $errors[] = "{$label}: {$error->getMessage()}";
-                } else {
-                    fwrite(STDERR, "ÜBERSPRUNGEN: {$label}: {$error->getMessage()}\n");
-                }
+                $this->fail($album['strict'], "{$album['source']}/{$album['slug']}/", $error, $errors);
             }
         }
 
-        if ($errors !== []) {
-            fwrite(STDERR, "Der Build wurde abgebrochen:\n- " . implode("\n- ", $errors) . "\n");
+        return $albumEntries;
+    }
 
-            return 1;
-        }
-
-        usort($albumEntries, fn(Entry $a, Entry $b): int => strcasecmp($a->title(), $b->title()));
-        $entries = $this->linkAlbums($entries, $albumEntries);
-
-        $authors = array_intersect_key($collected['authors'], array_flip(array_column($entries, 'prefix')));
+    /**
+     * @param array<string, array{title: string, url: string, profile: string|null}> $authors
+     * @param list<Entry> $entries
+     * @return array<string, array{title: string, url: string, profile?: string|null, author?: string, tagline?: string, html?: string}>
+     */
+    private function loadAuthors(array $authors, array $entries): array
+    {
+        $authors = array_intersect_key($authors, array_flip(array_column($entries, 'prefix')));
 
         foreach ($authors as $prefix => $author) {
             $prefix = (string) $prefix;
@@ -124,10 +167,16 @@ final class Builder
             $authors[$prefix] += ['tagline' => $profile['tagline'], 'html' => $profile['html'], 'author' => $profile['author']];
         }
 
-        $this->prepareDist();
-        $assets = $this->writeAssets($site['assets_base']);
-        $renderer = new Renderer($site, $assets, $authors, $pages);
+        return $authors;
+    }
 
+    /**
+     * @param list<Entry> $entries
+     * @param list<Entry> $albumEntries
+     * @param array<string, array<string, mixed>> $authors
+     */
+    private function writePages(Renderer $renderer, array $entries, array $albumEntries, array $authors): void
+    {
         Filesystem::write($this->public . '/index.html', $renderer->library([...$entries, ...$albumEntries]));
         Filesystem::write($this->public . '/404.html', $renderer->notFound());
         Filesystem::write($this->public . '/+code/index.html', $renderer->code(new CodeBook($this->root)->read(), new CodeDocs($this->root)->areas()));
@@ -156,7 +205,15 @@ final class Builder
             });
             Filesystem::write("{$directory}/source.md", (string) file_get_contents((string) $entry->source));
         }
+    }
 
+    /**
+     * @param list<Entry> $entries
+     * @param list<Entry> $albumEntries
+     * @param array<string, array<string, mixed>> $authors
+     */
+    private function writeMixer(Renderer $renderer, string $basePath, array $entries, array $albumEntries, array $authors): void
+    {
         $catalog = [];
         $albumTitles = [];
 
@@ -184,45 +241,61 @@ final class Builder
                 'group' => $entry->album === null ? $entry->group() : '',
                 'groupId' => $entry->album === null && $entry->group() !== '' ? $entry->prefix . '/' . mb_strtolower($entry->group()) : '',
                 'tags' => array_values(array_map('strval', $entry->tags())),
-                'href' => $site['base_path'] . "{$entry->prefix}/{$entry->slug}/",
+                'href' => $basePath . "{$entry->prefix}/{$entry->slug}/",
                 'data' => "data/{$id}.json",
             ];
         }
 
         Filesystem::write($this->public . '/+mixer/index.html', $renderer->mix($catalog));
+    }
 
-        Filesystem::write($this->public . '/robots.txt', $site['noindex'] ? "User-agent: *\nDisallow: /\n" : "User-agent: *\nAllow: /\n");
+    /**
+     * @param list<string> $mediaHosts
+     */
+    private function writeServerFiles(bool $noindex, string $assetsOrigin, string $basePath, array $mediaHosts): void
+    {
+        Filesystem::write($this->public . '/robots.txt', $noindex ? "User-agent: *\nDisallow: /\n" : "User-agent: *\nAllow: /\n");
         Filesystem::write($this->public . '/' . self::MARKER, "Von build.php erzeugt. Das Deployment ersetzt den Inhalt dieses Ordners.\n");
 
         $htaccess = $this->root . '/var/resources/htaccess';
 
-        if (is_file($htaccess)) {
-            $origin = $site['assets_origin'] === '' ? '' : ' ' . $site['assets_origin'];
-            $hosts = implode(' ', array_map(fn(string $host): string => "https://{$host}", $collected['media']));
-            $mediaSrc = $collected['media'] === [] ? '' : " media-src 'self' {$hosts};";
-            $imgHosts = $collected['media'] === [] ? '' : " {$hosts}";
-            Filesystem::write($this->public . '/.htaccess', str_replace(
-                ['__ASSET_ORIGIN__', '__BASE_PATH__', '__MEDIA_SRC__', '__IMG_HOSTS__'],
-                [$origin, $site['base_path'], $mediaSrc, $imgHosts],
-                (string) file_get_contents($htaccess),
-            ));
+        if (!is_file($htaccess)) {
+            return;
         }
 
-        $setCount = count(array_filter($entries, fn(Entry $entry): bool => $entry->kind === EntryKind::Set));
-        $sessionCount = count(array_filter($entries, fn(Entry $entry): bool => $entry->kind === EntryKind::Session));
-        $linkCount = count(array_filter($entries, fn(Entry $entry): bool => $entry->kind === EntryKind::Link));
+        $origin = $assetsOrigin === '' ? '' : ' ' . $assetsOrigin;
+        $hosts = implode(' ', array_map(fn(string $host): string => "https://{$host}", $mediaHosts));
+        $mediaSrc = $mediaHosts === [] ? '' : " media-src 'self' {$hosts};";
+        $imgHosts = $mediaHosts === [] ? '' : " {$hosts}";
+        Filesystem::write($this->public . '/.htaccess', str_replace(
+            ['__ASSET_ORIGIN__', '__BASE_PATH__', '__MEDIA_SRC__', '__IMG_HOSTS__'],
+            [$origin, $basePath, $mediaSrc, $imgHosts],
+            (string) file_get_contents($htaccess),
+        ));
+    }
+
+    /**
+     * @param list<Entry> $entries
+     * @param list<Entry> $albumEntries
+     * @param array<string, array<string, mixed>> $authors
+     */
+    private function report(array $entries, array $albumEntries, array $authors): void
+    {
+        $count = fn(EntryKind $kind): int => count(array_filter($entries, fn(Entry $entry): bool => $entry->kind === $kind));
+        $sets = $count(EntryKind::Set);
+        $sessions = $count(EntryKind::Session);
+        $links = $count(EntryKind::Link);
+
         fwrite(STDOUT, sprintf(
             "%d Songs, %d Sets, %d Sessions, %d Links und %d Alben von %d Autoren gebaut: %s\n",
-            count($entries) - $setCount - $sessionCount - $linkCount,
-            $setCount,
-            $sessionCount,
-            $linkCount,
+            count($entries) - $sets - $sessions - $links,
+            $sets,
+            $sessions,
+            $links,
             count($albumEntries),
             count($authors),
             $this->public,
         ));
-
-        return 0;
     }
 
     /**
