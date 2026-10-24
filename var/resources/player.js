@@ -5,8 +5,9 @@
   const projectData = document.getElementById('project');
   const setData = document.getElementById('set');
   const mixData = document.getElementById('mix');
+  const synthData = document.getElementById('synth');
 
-  if (!root || !(projectData || setData || mixData)) return;
+  if (!root || !(projectData || setData || mixData || synthData)) return;
 
   const WAVES = { square: 'square', triangle: 'triangle', saw: 'sawtooth', sine: 'sine' };
   const DRUM_ORDER = ['k', 'c', 's', 'o', 'h'];
@@ -2310,7 +2311,6 @@
       delay.connect(damp);
       damp.connect(feedback);
       feedback.connect(delay);
-      // Das Delay folgt dem Tempo, solange der Audiokontext läuft.
       setInterval(() => {
         if (ctx && ctx.state === 'running') delay.delayTime.setTargetAtTime(Math.min(1.9, beat() * 0.75), ctx.currentTime, 0.1);
       }, 250);
@@ -3598,7 +3598,1188 @@
     renderState();
   }
 
-  if (mixData) mountMix(JSON.parse(mixData.textContent));
+
+  const NOTE_NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
+  const SEMITONES = { C: 0, D: 2, E: 4, F: 5, G: 7, A: 9, B: 11 };
+  const BLACK_KEYS = [1, 3, 6, 8, 10];
+  const INSTRUMENT_LABELS = { square: 'Rechteck', pulse: 'Puls', triangle: 'Dreieck', saw: 'Säge', sine: 'Sinus', drums: 'Drums' };
+  const DRUM_LABELS = { k: 'Kick', c: 'Clap', s: 'Snare', o: 'Open Hat', h: 'Hi-Hat' };
+  const ROLL_CELL = 20;
+  const ROLL_ROW = 13;
+  const ROLL_ROWS = 24;
+  const DRUM_ROW = 24;
+  const MAX_UI_STEPS = 256;
+
+  function noteMidi(token) {
+    const match = /^([A-G])([#b]?)(-?\d)$/.exec(token);
+
+    if (!match) return null;
+
+    const shift = match[2] === '#' ? 1 : match[2] === 'b' ? -1 : 0;
+    return 12 * (Number(match[3]) + 1) + SEMITONES[match[1]] + shift;
+  }
+
+  function midiName(midi) {
+    return NOTE_NAMES[midi % 12] + (Math.floor(midi / 12) - 1);
+  }
+
+  function midiFrequency(midi) {
+    return 440 * Math.pow(2, (midi - 69) / 12);
+  }
+
+  function isDrumToken(token) {
+    return DRUM_ORDER.includes(token);
+  }
+
+  function cleanCells(track) {
+    const drums = track.instrument === 'drums';
+    let holding = false;
+
+    return track.cells.map(token => {
+      if (token === '-') return holding && !drums ? '-' : '.';
+      holding = !drums && noteMidi(token) !== null;
+      return token;
+    });
+  }
+
+  function eventStart(cells, index) {
+    let start = index;
+    while (start > 0 && cells[start] === '-') start--;
+    return noteMidi(cells[start]) === null ? -1 : start;
+  }
+
+  function eventEnd(cells, start) {
+    let end = start;
+    while (end + 1 < cells.length && cells[end + 1] === '-') end++;
+    return end;
+  }
+
+  // docs: synth
+  function synthMarkdown(model) {
+    const text = value => {
+      const plain = /^[\p{L}\p{N}][\p{L}\p{N} ._-]*$/u.test(value) && !/\s$/.test(value) && !/^(true|false|null|yes|no|on|off)$/i.test(value) && !/^\d+(\.\d+)?$/.test(value);
+      return plain ? value : JSON.stringify(value);
+    };
+    const number = value => String(Number(value.toFixed(2)));
+    const lines = ['---', 'format: ' + model.limits.format, 'title: ' + text(model.title || 'Ohne Titel')];
+
+    if (model.artist) lines.push('artist: ' + text(model.artist));
+
+    lines.push('bpm: ' + model.bpm, 'grid: ' + model.grid);
+
+    if (model.remix) lines.push('remix: true');
+
+    lines.push('---', '');
+
+    if (model.origin) lines.push('Basiert auf ' + model.origin + '.', '');
+
+    model.tracks.forEach(track => {
+      const cells = cleanCells(track);
+      const bars = [];
+
+      for (let i = 0; i < cells.length; i += model.grid) bars.push(cells.slice(i, i + model.grid).join(' '));
+
+      const rows = [];
+
+      for (let i = 0; i < bars.length; i += 4) rows.push(bars.slice(i, i + 4).join(' | '));
+
+      lines.push('<!-- track: ' + track.name + ' -->', '---', 'instrument: ' + track.instrument, 'volume: ' + number(track.volume));
+
+      if (track.gate !== 0.9) lines.push('gate: ' + number(track.gate));
+
+      if (track.instrument === 'pulse' && track.pw !== 0.25) lines.push('pw: ' + number(track.pw));
+
+      lines.push('---', '```grid', ...rows, '```', '');
+    });
+
+    return lines.join('\n');
+  }
+  // docs-end
+
+  function parseSynthValue(raw) {
+    const text = raw.trim();
+
+    if (text.startsWith('"')) {
+      try {
+        return JSON.parse(text);
+      } catch (error) {
+        return text.replace(/^"|"$/g, '');
+      }
+    }
+
+    if (text.startsWith("'")) return text.replace(/^'|'$/g, '');
+
+    if (text === 'true') return true;
+
+    if (text === 'false') return false;
+
+    return /^-?\d+(\.\d+)?$/.test(text) ? Number(text) : text;
+  }
+
+  function parseSynthFields(block) {
+    const fields = {};
+
+    block.split('\n').forEach(line => {
+      const match = /^([A-Za-z][\w-]*):\s*(.*)$/.exec(line);
+
+      if (match) fields[match[1]] = match[2] === '' ? null : parseSynthValue(match[2]);
+    });
+
+    return fields;
+  }
+
+  function parseSynthMarkdown(source, limits) {
+    const text = source.replace(/\r\n?/g, '\n');
+    const head = /^---\n([\s\S]*?)\n---(?:\n|$)/.exec(text);
+
+    if (!head) throw new Error('Am Anfang fehlt der Kopf zwischen zwei „---“-Zeilen.');
+
+    const fields = parseSynthFields(head[1]);
+
+    if (fields.kind === 'layer' || fields.kind === 'set' || fields.kind === 'session' || fields.kind === 'link') throw new Error('Nur normale Songs lassen sich laden, „' + fields.kind + '“ nicht.');
+
+    if (fields.format !== undefined && fields.format !== limits.format) throw new Error('Das Format ' + fields.format + ' kennt der Synth nicht.');
+
+    const bpm = fields.bpm === undefined ? limits.bpm.default : fields.bpm;
+    const grid = fields.grid === undefined ? limits.grid.default : fields.grid;
+
+    if (!Number.isInteger(bpm) || bpm < limits.bpm.min || bpm > limits.bpm.max) throw new Error('„bpm“ muss eine ganze Zahl von ' + limits.bpm.min + ' bis ' + limits.bpm.max + ' sein.');
+
+    if (!Number.isInteger(grid) || grid < limits.grid.min || grid > limits.grid.max || grid % 4 !== 0) throw new Error('„grid“ muss durch 4 teilbar sein, von ' + limits.grid.min + ' bis ' + limits.grid.max + '.');
+
+    const rest = text.slice(head[0].length);
+
+    if (/^<!--\s*layer:/m.test(rest)) throw new Error('Layer-Songs lassen sich im Synth nicht bearbeiten.');
+
+    const marks = [...rest.matchAll(/^<!--\s*track:\s*(.*?)\s*-->[ \t]*$/gm)];
+
+    if (marks.length > limits.maxTracks) throw new Error('Höchstens ' + limits.maxTracks + ' Spuren.');
+
+    const rows = marks.map((mark, index) => {
+      const name = mark[1].replace(/[<>&"]/g, '').trim().slice(0, 32) || 'spur';
+      let chunk = rest.slice(mark.index + mark[0].length, index + 1 < marks.length ? marks[index + 1].index : rest.length).replace(/^\n+/, '');
+      let options = {};
+      const front = /^---\n([\s\S]*?)\n---(?:\n|$)/.exec(chunk);
+
+      if (front) {
+        options = parseSynthFields(front[1]);
+        chunk = chunk.slice(front[0].length);
+      }
+
+      if (Object.prototype.hasOwnProperty.call(options, 'clips')) throw new Error('Spur „' + name + '“ nutzt Clips. Die löst der Synth nicht auf.');
+
+      const instrument = options.instrument === undefined ? 'square' : options.instrument;
+
+      if (!limits.instruments.includes(instrument)) throw new Error('Spur „' + name + '“: Instrument „' + instrument + '“ gibt es nicht.');
+
+      const drums = instrument === 'drums';
+      const volume = options.volume === undefined ? (drums ? 0.3 : 0.2) : options.volume;
+      const gate = options.gate === undefined ? 0.9 : options.gate;
+      const pw = options.pw === undefined ? 0.25 : options.pw;
+
+      if (typeof volume !== 'number' || volume < 0 || volume > 1) throw new Error('Spur „' + name + '“: „volume“ liegt zwischen 0 und 1.');
+
+      if (typeof gate !== 'number' || gate < 0.05 || gate > 1) throw new Error('Spur „' + name + '“: „gate“ liegt zwischen 0,05 und 1.');
+
+      if (typeof pw !== 'number' || pw < 0.05 || pw > 0.5) throw new Error('Spur „' + name + '“: „pw“ liegt zwischen 0,05 und 0,5.');
+
+      const block = /```grid[ \t]*\n([\s\S]*?)```/.exec(chunk);
+
+      if (!block) throw new Error('Spur „' + name + '“ hat keinen Raster-Block.');
+
+      const cells = block[1].split(/\s+/).filter(token => token !== '' && token !== '|');
+
+      cells.forEach(token => {
+        const valid = token === '.' || token === '-' || (drums ? isDrumToken(token) : noteMidi(token) !== null);
+
+        if (!valid) throw new Error('Spur „' + name + '“: „' + token + '“ ist hier kein gültiges Zeichen.');
+      });
+
+      return { name, instrument, volume, gate, pw, cells };
+    });
+
+    const longest = rows.reduce((max, row) => Math.max(max, row.cells.length), 0);
+    const bars = Math.max(1, Math.ceil(longest / grid));
+
+    if (bars * grid > Math.min(limits.maxSteps, MAX_UI_STEPS)) throw new Error('Der Song hat ' + longest + ' Steps. Der Synth bearbeitet höchstens ' + Math.min(limits.maxSteps, MAX_UI_STEPS) + '.');
+
+    const tracks = rows.map(row => {
+      const midis = row.cells.map(noteMidi).filter(midi => midi !== null);
+      const base = midis.length ? Math.max(-1, Math.min(7, Math.floor(Math.min(...midis) / 12) - 1)) : 3;
+
+      return { ...row, mute: false, base, cells: row.cells.concat(Array(bars * grid - row.cells.length).fill('.')) };
+    });
+
+    return {
+      title: typeof fields.title === 'string' ? fields.title.slice(0, limits.maxTitle) : '',
+      artist: typeof fields.artist === 'string' ? fields.artist.slice(0, limits.maxArtist) : '',
+      bpm,
+      grid,
+      bars,
+      remix: fields.remix === true,
+      tracks,
+    };
+  }
+
+  function mountSynth(limits) {
+    const model = {
+      limits,
+      title: 'Mein Synth-Song',
+      artist: '',
+      bpm: limits.bpm.default,
+      grid: limits.grid.default,
+      bars: 2,
+      remix: false,
+      tracks: [],
+    };
+    const stepsOf = () => model.bars * model.grid;
+    const stepSeconds = () => 60 / model.bpm / (model.grid / 4);
+    const rolls = [];
+    let bus = null;
+    let playing = null;
+    let timer = 0;
+    let frame = 0;
+
+    function uniqueName(base) {
+      const taken = model.tracks.map(track => track.name);
+      let name = base;
+
+      for (let n = 2; taken.includes(name); n++) name = base + '-' + n;
+
+      return name;
+    }
+
+    function newTrack(instrument) {
+      const drums = instrument === 'drums';
+
+      return {
+        name: uniqueName(drums ? 'drums' : instrument),
+        instrument,
+        volume: drums ? 0.3 : 0.2,
+        gate: 0.9,
+        pw: 0.25,
+        mute: false,
+        base: instrument === 'saw' || instrument === 'triangle' ? 1 : 3,
+        cells: Array(stepsOf()).fill('.'),
+      };
+    }
+
+    function fit(track) {
+      const steps = stepsOf();
+      track.cells = track.cells.slice(0, steps);
+      while (track.cells.length < steps) track.cells.push('.');
+    }
+
+    function demo() {
+      const kick = newTrack('drums');
+      kick.name = 'kick';
+      const bass = newTrack('saw');
+      bass.name = 'bass';
+      bass.gate = 0.5;
+      bass.volume = 0.26;
+      const lead = newTrack('pulse');
+      lead.name = 'lead';
+      lead.volume = 0.14;
+      lead.base = 3;
+
+      for (let i = 0; i < stepsOf(); i += 4) kick.cells[i] = 'k';
+      [[2, 'E2'], [6, 'E2'], [10, 'G2'], [14, 'D2'], [18, 'E2'], [22, 'E2'], [26, 'A2'], [30, 'D2']].forEach(([i, note]) => (bass.cells[i] = note));
+      [[0, 'E4'], [1, '-'], [4, 'G4'], [8, 'B4'], [9, '-'], [10, '-'], [16, 'A4'], [20, 'G4'], [24, 'E4'], [25, '-'], [26, '-'], [27, '-']].forEach(([i, token]) => (lead.cells[i] = token));
+      model.tracks = [kick, bass, lead];
+    }
+
+    function ensureAudio() {
+      if (!ctx) initAudio();
+
+      return ctx.resume().then(() => {
+        if (!bus || bus.context !== ctx) bus = makeBus(master);
+      });
+    }
+
+    function sound(track, token, when, length) {
+      if (track.mute) return;
+
+      if (track.instrument === 'drums') {
+        if (isDrumToken(token)) drum(track, bus, { d: token }, when);
+        return;
+      }
+
+      const midi = noteMidi(token);
+
+      if (midi !== null) tone(track, bus, { f: midiFrequency(midi), len: length }, when, stepSeconds());
+    }
+
+    function planStep(step, when) {
+      model.tracks.forEach(track => {
+        const token = track.cells[step];
+
+        if (token === undefined || token === '.' || token === '-') return;
+
+        const cells = cleanCells(track);
+        const end = eventEnd(cells, step);
+        sound(track, token, when, end - step + 1);
+      });
+    }
+
+    function tick() {
+      if (!playing || !ctx) return;
+
+      const until = ctx.currentTime + lookahead(0.25);
+      playing.step %= stepsOf();
+
+      while (playing.time < until) {
+        planStep(playing.step, playing.time);
+        playing.marks.push({ time: playing.time, step: playing.step });
+        playing.time += stepSeconds();
+        playing.step = (playing.step + 1) % stepsOf();
+      }
+    }
+
+    function follow() {
+      if (!playing) return;
+
+      let changed = false;
+
+      while (playing.marks.length && playing.marks[0].time <= ctx.currentTime) {
+        playing.head = playing.marks.shift().step;
+        changed = true;
+      }
+
+      if (changed) {
+        drawAll();
+        syncLive();
+      }
+
+      frame = requestAnimationFrame(follow);
+    }
+
+    async function start() {
+      await ensureAudio();
+      playing = { step: 0, time: ctx.currentTime + 0.08, marks: [], head: -1 };
+      timer = setInterval(tick, 25);
+      tick();
+      frame = requestAnimationFrame(follow);
+      playButton.textContent = '■ Stopp';
+      playButton.setAttribute('aria-pressed', 'true');
+    }
+
+    function stop() {
+      clearInterval(timer);
+      cancelAnimationFrame(frame);
+      playing = null;
+
+      if (bus) {
+        bus.disconnect();
+        bus = null;
+      }
+
+      playButton.textContent = '▶ Abspielen';
+      playButton.setAttribute('aria-pressed', 'false');
+      drawAll();
+    }
+
+    const colors = () => {
+      const style = getComputedStyle(document.documentElement);
+      const read = name => style.getPropertyValue(name).trim();
+
+      return { lane: read('--lane'), raised: read('--panel-raised'), line: read('--line'), dim: read('--dim'), ink: read('--ink-soft'), note: read('--lime'), drum: read('--cyan'), head: read('--pink') };
+    };
+
+    function rowCount(track) {
+      return track.instrument === 'drums' ? DRUM_ORDER.length : ROLL_ROWS;
+    }
+
+    function rowHeight(track) {
+      return track.instrument === 'drums' ? DRUM_ROW : ROLL_ROW;
+    }
+
+    function rowToken(track, row) {
+      if (track.instrument === 'drums') return DRUM_ORDER[row];
+
+      return midiName(12 * (track.base + 1) + ROLL_ROWS - 1 - row);
+    }
+
+    function drawLabels(roll) {
+      const { track, labels } = roll;
+      const palette = colors();
+      const scale = window.devicePixelRatio || 1;
+      const height = rowCount(track) * rowHeight(track);
+      labels.width = 64 * scale;
+      labels.height = height * scale;
+      labels.style.width = '64px';
+      labels.style.height = height + 'px';
+
+      const g = labels.getContext('2d');
+      g.scale(scale, scale);
+      g.font = '10px ui-monospace, monospace';
+      g.textBaseline = 'middle';
+
+      for (let row = 0; row < rowCount(track); row++) {
+        const top = row * rowHeight(track);
+        const token = rowToken(track, row);
+        const midi = noteMidi(token);
+        const black = midi !== null && BLACK_KEYS.includes(midi % 12);
+        g.fillStyle = black ? palette.lane : palette.raised;
+        g.fillRect(0, top, 64, rowHeight(track));
+        g.fillStyle = midi === null || !black ? palette.ink : palette.dim;
+
+        if (midi === null) g.fillText(DRUM_LABELS[token], 4, top + rowHeight(track) / 2);
+        else g.fillText(token, 4, top + rowHeight(track) / 2);
+      }
+    }
+
+    function draw(roll) {
+      const { track, canvas } = roll;
+      const palette = colors();
+      const scale = window.devicePixelRatio || 1;
+      const steps = stepsOf();
+      const width = steps * ROLL_CELL;
+      const rows = rowCount(track);
+      const height = rows * rowHeight(track);
+      const drums = track.instrument === 'drums';
+      const cells = cleanCells(track);
+
+      canvas.width = width * scale;
+      canvas.height = height * scale;
+      canvas.style.width = width + 'px';
+      canvas.style.height = height + 'px';
+
+      const g = canvas.getContext('2d');
+      g.scale(scale, scale);
+      g.font = '9px ui-monospace, monospace';
+      g.textBaseline = 'middle';
+
+      for (let row = 0; row < rows; row++) {
+        const midi = drums ? null : noteMidi(rowToken(track, row));
+        g.fillStyle = midi !== null && BLACK_KEYS.includes(midi % 12) ? palette.lane : palette.raised;
+        g.fillRect(0, row * rowHeight(track), width, rowHeight(track));
+        g.fillStyle = palette.line;
+        g.fillRect(0, (row + 1) * rowHeight(track) - 1, width, 1);
+      }
+
+      for (let step = 0; step <= steps; step++) {
+        const bar = step % model.grid === 0;
+        const beat = step % (model.grid / 4) === 0;
+        g.fillStyle = bar ? palette.dim : palette.line;
+
+        if (bar || beat) g.fillRect(step * ROLL_CELL, 0, bar ? 2 : 1, height);
+      }
+
+      cells.forEach((token, step) => {
+        if (token === '.' || token === '-') return;
+
+        const row = drums ? DRUM_ORDER.indexOf(token) : 12 * (track.base + 1) + ROLL_ROWS - 1 - noteMidi(token);
+
+        if (row < 0 || row >= rows) return;
+
+        const length = drums ? 1 : eventEnd(cells, step) - step + 1;
+        g.fillStyle = drums ? palette.drum : palette.note;
+        g.globalAlpha = track.mute ? 0.35 : 1;
+        g.fillRect(step * ROLL_CELL + 1, row * rowHeight(track) + 1, length * ROLL_CELL - 2, rowHeight(track) - 2);
+        g.globalAlpha = 1;
+      });
+
+      if (playing && playing.head >= 0) {
+        g.fillStyle = palette.head;
+        g.globalAlpha = 0.28;
+        g.fillRect(playing.head * ROLL_CELL, 0, ROLL_CELL, height);
+        g.globalAlpha = 1;
+
+        const box = roll.scroller;
+        const left = playing.head * ROLL_CELL;
+
+        if (left < box.scrollLeft || left > box.scrollLeft + box.clientWidth - ROLL_CELL * 2) box.scrollLeft = Math.max(0, left - ROLL_CELL * 2);
+      }
+    }
+
+    function drawAll() {
+      if (!tracksHost.hidden) rolls.forEach(draw);
+    }
+
+    function refresh(keepText) {
+      if (!keepText) output.value = synthMarkdown(model);
+
+      status.className = 'synth-status';
+      syncLive();
+      const notes = model.tracks.reduce((sum, track) => sum + cleanCells(track).filter(token => token !== '.' && token !== '-').length, 0);
+      status.textContent = notes === 0 ? 'Noch keine Noten gesetzt.' : model.tracks.length + ' Spuren, ' + notes + ' Noten, ' + model.bars + ' Takte.';
+      drawAll();
+    }
+
+    function preview(track, token) {
+      ensureAudio().then(() => sound(track, token, ctx.currentTime + 0.01, 1));
+    }
+
+    function placeNote(track, step, token) {
+      const cells = track.cells;
+
+      if (cells[step] === '-' || noteMidi(cells[step]) !== null) {
+        for (let i = step + 1; i < cells.length && cells[i] === '-'; i++) cells[i] = '.';
+      }
+
+      cells[step] = token;
+    }
+
+    function clearEvent(track, step) {
+      const cells = cleanCells(track);
+      const start = eventStart(cells, step);
+
+      if (start < 0) return;
+
+      const end = eventEnd(cells, start);
+      for (let i = start; i <= end; i++) track.cells[i] = '.';
+    }
+
+    function bindRoll(roll) {
+      const { track, canvas } = roll;
+      let drag = null;
+
+      const hit = event => {
+        const box = canvas.getBoundingClientRect();
+        const step = Math.max(0, Math.min(stepsOf() - 1, Math.floor((event.clientX - box.left) / ROLL_CELL)));
+        const row = Math.max(0, Math.min(rowCount(track) - 1, Math.floor((event.clientY - box.top) / rowHeight(track))));
+
+        return { step, row };
+      };
+
+      canvas.addEventListener('pointerdown', event => {
+        const { step, row } = hit(event);
+        const token = rowToken(track, row);
+        canvas.setPointerCapture(event.pointerId);
+
+        if (track.instrument === 'drums') {
+          const erase = track.cells[step] === token;
+          track.cells[step] = erase ? '.' : token;
+          drag = { kind: 'drum', erase };
+
+          if (!erase) preview(track, token);
+        } else {
+          const cells = cleanCells(track);
+          const start = eventStart(cells, step);
+
+          if (start >= 0 && cells[start] === token && eventEnd(cells, start) >= step) {
+            clearEvent(track, step);
+            drag = null;
+          } else {
+            placeNote(track, step, token);
+            drag = { kind: 'note', step, end: step };
+            preview(track, token);
+          }
+        }
+
+        refresh();
+      });
+
+      canvas.addEventListener('pointermove', event => {
+        if (!drag) return;
+
+        const { step, row } = hit(event);
+
+        if (drag.kind === 'drum') {
+          const token = rowToken(track, row);
+          const value = drag.erase ? (track.cells[step] === token ? '.' : track.cells[step]) : token;
+
+          if (track.cells[step] !== value) {
+            track.cells[step] = value;
+            refresh();
+          }
+
+          return;
+        }
+
+        let limit = stepsOf() - 1;
+
+        for (let i = drag.step + 1; i <= limit; i++) {
+          if (i > drag.end && track.cells[i] !== '.') {
+            limit = i - 1;
+            break;
+          }
+        }
+
+        const target = Math.max(drag.step, Math.min(step, limit));
+
+        if (target === drag.end) return;
+
+        for (let i = drag.step + 1; i <= Math.max(target, drag.end); i++) track.cells[i] = i <= target ? '-' : '.';
+
+        drag.end = target;
+        refresh();
+      });
+
+      const release = () => {
+        drag = null;
+      };
+
+      canvas.addEventListener('pointerup', release);
+      canvas.addEventListener('pointercancel', release);
+    }
+
+    function field(label, control) {
+      const wrap = el('label', 'synth-field');
+      wrap.append(el('span', 'synth-field-label', label), control);
+
+      return wrap;
+    }
+
+    function input(type, value, attributes = {}) {
+      const control = el('input');
+      control.type = type;
+      Object.entries(attributes).forEach(([key, v]) => control.setAttribute(key, v));
+      control.value = value;
+
+      return control;
+    }
+
+    function select(options, value) {
+      const control = el('select');
+      options.forEach(([key, label]) => {
+        const option = el('option', '', label);
+        option.value = String(key);
+        control.append(option);
+      });
+      control.value = String(value);
+
+      return control;
+    }
+
+    function slider(track, key, min, max, step, label) {
+      const control = input('range', track[key], { min, max, step });
+      const wrap = field(label, control);
+      const read = el('span', 'synth-value', ' ' + track[key]);
+      wrap.firstChild.append(read);
+      control.addEventListener('input', () => {
+        track[key] = Number(control.value);
+        read.textContent = ' ' + track[key];
+        refresh();
+      });
+
+      return wrap;
+    }
+
+    function trackControls(track) {
+      const name = input('text', track.name, { maxlength: 32, 'aria-label': 'Name der Spur' });
+      name.className = 'synth-name';
+      name.addEventListener('input', () => {
+        track.name = name.value.replace(/[<>&"]/g, '').trim() || 'spur';
+        refresh();
+      });
+
+      const kind = select(limits.instruments.map(key => [key, INSTRUMENT_LABELS[key] || key]), track.instrument);
+      kind.addEventListener('change', () => {
+        const wasDrums = track.instrument === 'drums';
+        track.instrument = kind.value;
+
+        if ((track.instrument === 'drums') !== wasDrums) {
+          track.cells = Array(stepsOf()).fill('.');
+          track.volume = track.instrument === 'drums' ? 0.3 : 0.2;
+        }
+
+        buildTracks();
+        refresh();
+      });
+
+      const mute = el('button', 'synth-button', track.mute ? 'Stumm an' : 'Stumm');
+      mute.type = 'button';
+      mute.setAttribute('aria-pressed', String(track.mute));
+      mute.addEventListener('click', () => {
+        track.mute = !track.mute;
+        mute.textContent = track.mute ? 'Stumm an' : 'Stumm';
+        mute.setAttribute('aria-pressed', String(track.mute));
+        refresh();
+      });
+
+      const clear = el('button', 'synth-button', 'Leeren');
+      clear.type = 'button';
+      clear.addEventListener('click', () => {
+        track.cells = Array(stepsOf()).fill('.');
+        refresh();
+      });
+
+      const remove = el('button', 'synth-button', 'Entfernen');
+      remove.type = 'button';
+      remove.addEventListener('click', () => {
+        model.tracks.splice(model.tracks.indexOf(track), 1);
+        buildTracks();
+        refresh();
+      });
+
+      return { name, kind, mute, clear, remove };
+    }
+
+    function trackRow(track) {
+      const section = el('section', 'synth-track');
+      const head = el('div', 'synth-track-head');
+      const roll = { track, canvas: el('canvas', 'synth-canvas'), labels: el('canvas', 'synth-labels'), scroller: el('div', 'synth-scroll') };
+      const { name, kind, mute, clear, remove } = trackControls(track);
+
+      head.append(name, kind, slider(track, 'volume', 0, 1, 0.01, 'Lautstärke'));
+
+      if (track.instrument !== 'drums') head.append(slider(track, 'gate', 0.05, 1, 0.05, 'Gate'));
+
+      if (track.instrument === 'pulse') head.append(slider(track, 'pw', 0.05, 0.5, 0.05, 'Pulsbreite'));
+
+      if (track.instrument !== 'drums') {
+        const lower = el('button', 'synth-button', '−');
+        const higher = el('button', 'synth-button', '+');
+        const octave = el('span', 'synth-octave', 'Oktave ' + track.base);
+        lower.type = higher.type = 'button';
+        lower.setAttribute('aria-label', 'Zwei Oktaven tiefer anzeigen');
+        higher.setAttribute('aria-label', 'Zwei Oktaven höher anzeigen');
+        const move = by => {
+          track.base = Math.max(-1, Math.min(7, track.base + by));
+          octave.textContent = 'Oktave ' + track.base;
+          drawLabels(roll);
+          draw(roll);
+        };
+        lower.addEventListener('click', () => move(-1));
+        higher.addEventListener('click', () => move(1));
+        head.append(lower, octave, higher);
+      }
+
+      head.append(mute, clear, remove);
+      roll.scroller.append(roll.canvas);
+      const body = el('div', 'synth-roll');
+      body.append(roll.labels, roll.scroller);
+      section.append(head, body);
+      rolls.push(roll);
+      bindRoll(roll);
+      drawLabels(roll);
+
+      return section;
+    }
+
+    function liveBarsPerLine() {
+      return Math.max(1, Math.floor(72 / (model.grid * 2 + 3)));
+    }
+
+    // docs: live
+    function liveHeader(track) {
+      const drums = track.instrument === 'drums';
+      const parts = [track.name + ': ' + track.instrument];
+
+      if (track.volume !== (drums ? 0.3 : 0.2)) parts.push('vol=' + Number(track.volume.toFixed(2)));
+
+      if (!drums && track.gate !== 0.9) parts.push('gate=' + Number(track.gate.toFixed(2)));
+
+      if (track.instrument === 'pulse' && track.pw !== 0.25) parts.push('pw=' + Number(track.pw.toFixed(2)));
+
+      if (track.mute) parts.push('mute');
+
+      return parts.join(' ');
+    }
+
+    function liveText() {
+      const perLine = liveBarsPerLine();
+
+      return model.tracks
+        .map(track => {
+          const cells = cleanCells(track);
+          const bars = [];
+
+          for (let i = 0; i < cells.length; i += model.grid) bars.push(cells.slice(i, i + model.grid).join(' '));
+
+          const lines = [liveHeader(track)];
+
+          for (let i = 0; i < bars.length; i += perLine) lines.push(bars.slice(i, i + perLine).join(' | '));
+
+          return lines.join('\n');
+        })
+        .join('\n\n');
+    }
+    // docs-end
+
+    const isLiveHeader = line => /^[^.|\-][^:]*:\s*\S/.test(line);
+
+    function parseLiveBlock(header, body, previous) {
+      const match = /^(.+?):\s*(\S+)((?:\s+\S+)*)\s*$/.exec(header);
+
+      if (!match || !limits.instruments.includes(match[2])) throw new Error('Kopfzeile „' + header.trim() + '“: erwartet wird „name: instrument“ mit einem der Instrumente ' + limits.instruments.join(', ') + '.');
+
+      const instrument = match[2];
+      const drums = instrument === 'drums';
+      const track = { name: match[1].replace(/[<>&"]/g, '').trim().slice(0, 32) || 'spur', instrument, volume: drums ? 0.3 : 0.2, gate: 0.9, pw: 0.25, mute: false, base: previous && (previous.instrument === 'drums') === drums ? previous.base : 3, cells: [] };
+      const ranges = { vol: ['volume', 0, 1], gate: ['gate', 0.05, 1], pw: ['pw', 0.05, 0.5] };
+
+      match[3].split(/\s+/).filter(Boolean).forEach(option => {
+        const pair = /^(vol|gate|pw)=(\d*\.?\d+)$/.exec(option);
+
+        if (option === 'mute') track.mute = true;
+        else if (pair && Number(pair[2]) >= ranges[pair[1]][1] && Number(pair[2]) <= ranges[pair[1]][2]) track[ranges[pair[1]][0]] = Number(pair[2]);
+        else throw new Error('Spur „' + track.name + '“: „' + option + '“ ist keine gültige Angabe (vol=, gate=, pw=, mute).');
+      });
+
+      track.cells = body.split(/\s+/).filter(token => token !== '' && token !== '|');
+      track.cells.forEach(token => {
+        if (!(token === '.' || token === '-' || (drums ? isDrumToken(token) : noteMidi(token) !== null))) throw new Error('Spur „' + track.name + '“: „' + token + '“ ist hier kein gültiges Zeichen.');
+      });
+
+      if (!drums && track.base === 3) {
+        const midis = track.cells.map(noteMidi).filter(midi => midi !== null);
+
+        if (midis.length && !previous) track.base = Math.max(-1, Math.min(7, Math.floor(Math.min(...midis) / 12) - 1));
+      }
+
+      return track;
+    }
+
+    function applyLiveText(text) {
+      const blocks = [];
+      const errors = [];
+
+      text.replace(/\r\n?/g, '\n').split('\n').forEach((line, index) => {
+        const trimmed = line.trim();
+
+        if (trimmed === '' || trimmed.startsWith('//')) return;
+
+        if (isLiveHeader(trimmed)) blocks.push({ header: trimmed, body: [], line: index + 1 });
+        else if (blocks.length) blocks[blocks.length - 1].body.push(trimmed);
+        else errors.push('Zeile ' + (index + 1) + ': Eine Spur beginnt mit „name: instrument“.');
+      });
+
+      if (blocks.length > limits.maxTracks) errors.push('Höchstens ' + limits.maxTracks + ' Spuren.');
+
+      const tracks = [];
+
+      blocks.slice(0, limits.maxTracks).forEach((block, index) => {
+        try {
+          tracks.push(parseLiveBlock(block.header, block.body.join(' '), model.tracks[index]));
+        } catch (error) {
+          errors.push('Zeile ' + block.line + ': ' + error.message);
+
+          if (model.tracks[index]) tracks.push(model.tracks[index]);
+        }
+      });
+
+      const longest = tracks.reduce((max, track) => Math.max(max, track.cells.length), 0);
+      const cap = Math.floor(Math.min(limits.maxSteps, MAX_UI_STEPS) / model.grid);
+      if (longest > cap * model.grid) errors.push('Zu lang: höchstens ' + cap * model.grid + ' Steps bei diesem Raster.');
+
+      model.bars = Math.max(1, Math.min(cap, Math.ceil(longest / model.grid)));
+      model.tracks = tracks;
+      model.tracks.forEach(fit);
+      ensureOption(bars, model.bars, model.bars + (model.bars === 1 ? ' Takt' : ' Takte'));
+      refresh();
+
+      liveError = errors[0] || '';
+      syncLive();
+
+      if (errors.length) fail(errors[0]);
+    }
+
+    function liveSpans(text, head) {
+      const spans = [];
+      let offset = 0;
+      let index = -1;
+
+      text.split('\n').forEach(line => {
+        const trimmed = line.trim();
+
+        if (trimmed !== '' && !trimmed.startsWith('//')) {
+          if (isLiveHeader(trimmed)) index = 0;
+          else if (index >= 0) {
+            for (const match of line.matchAll(/\S+/g)) {
+              if (match[0] === '|') continue;
+
+              if (index === head) spans.push([offset + match.index, offset + match.index + match[0].length]);
+
+              index++;
+            }
+          }
+        }
+
+        offset += line.length + 1;
+      });
+
+      return spans;
+    }
+
+    function paintLive() {
+      const text = liveArea.value;
+      const spans = playing && playing.head >= 0 ? liveSpans(text, playing.head) : [];
+      const escape = part => part.replace(/&/g, '&amp;').replace(/</g, '&lt;');
+      let html = '';
+      let from = 0;
+
+      spans.forEach(([start, end]) => {
+        html += escape(text.slice(from, start)) + '<mark>' + escape(text.slice(start, end)) + '</mark>';
+        from = end;
+      });
+
+      liveMirror.innerHTML = html + escape(text.slice(from)) + '\n';
+      liveMirror.scrollTop = liveArea.scrollTop;
+      liveMirror.scrollLeft = liveArea.scrollLeft;
+    }
+
+    function syncLive() {
+      if (document.activeElement !== liveArea) {
+        liveArea.value = liveText();
+        liveArea.rows = Math.max(10, liveArea.value.split('\n').length + 2);
+      }
+
+      paintLive();
+      livePosition.className = liveError ? 'synth-status synth-error' : 'synth-status';
+      livePosition.textContent = liveError || (playing && playing.head >= 0 ? 'Takt ' + (Math.floor(playing.head / model.grid) + 1) + ' von ' + model.bars + ', Step ' + ((playing.head % model.grid) + 1) : '');
+    }
+
+    const tracksHost = el('div', 'synth-tracks');
+    const liveHost = el('div', 'synth-live');
+    const liveArea = el('textarea', 'synth-live-text');
+    liveArea.spellcheck = false;
+    liveArea.wrap = 'off';
+    const liveMirror = el('div', 'synth-live-mirror');
+    liveMirror.setAttribute('aria-hidden', 'true');
+    const liveWrap = el('div', 'synth-live-wrap');
+    liveWrap.append(liveMirror, liveArea);
+    liveArea.setAttribute('aria-label', 'Alle Raster als Text');
+    liveArea.setAttribute('autocapitalize', 'off');
+    const livePosition = el('p', 'synth-status');
+    let liveTimer = 0;
+    let liveError = '';
+    liveArea.addEventListener('input', () => {
+      paintLive();
+      clearTimeout(liveTimer);
+      liveTimer = setTimeout(() => applyLiveText(liveArea.value), 150);
+    });
+    liveArea.addEventListener('keydown', event => {
+      if (event.key === 'Enter' && (event.ctrlKey || event.metaKey)) {
+        event.preventDefault();
+        playButton.click();
+      }
+    });
+    liveArea.addEventListener('scroll', paintLive);
+    liveHost.append(liveWrap, livePosition);
+
+    function buildTracks() {
+      rolls.length = 0;
+      tracksHost.replaceChildren(...model.tracks.map(trackRow));
+      addMelodic.disabled = addDrums.disabled = model.tracks.length >= limits.maxTracks;
+    }
+
+    const playButton = el('button', 'play', '▶ Abspielen');
+    playButton.type = 'button';
+    playButton.setAttribute('aria-pressed', 'false');
+    playButton.addEventListener('click', () => (playing ? stop() : start()));
+
+    const bpm = input('number', model.bpm, { min: limits.bpm.min, max: limits.bpm.max, step: 1 });
+    bpm.addEventListener('change', () => {
+      model.bpm = Math.max(limits.bpm.min, Math.min(limits.bpm.max, Math.round(Number(bpm.value)) || limits.bpm.default));
+      bpm.value = model.bpm;
+      refresh();
+    });
+
+    const gridSizes = [4, 8, 12, 16, 24, 32, 48, 64].filter(size => size >= limits.grid.min && size <= limits.grid.max);
+    const grid = select(gridSizes.map(size => [size, size + ' Steps pro Takt']), model.grid);
+    const barOptions = [1, 2, 4, 8, 16];
+    const bars = select(barOptions.map(count => [count, count + (count === 1 ? ' Takt' : ' Takte')]), model.bars);
+
+    function resize() {
+      model.grid = Number(grid.value);
+      model.bars = Math.min(Number(bars.value), Math.floor(Math.min(limits.maxSteps, MAX_UI_STEPS) / model.grid));
+      bars.value = String(model.bars);
+      model.tracks.forEach(fit);
+      buildTracks();
+      refresh();
+    }
+
+    grid.addEventListener('change', resize);
+    bars.addEventListener('change', resize);
+
+    const title = input('text', model.title, { maxlength: limits.maxTitle, 'aria-label': 'Titel' });
+    title.addEventListener('input', () => {
+      model.title = title.value;
+      refresh();
+    });
+
+    const artist = input('text', model.artist, { maxlength: limits.maxArtist, 'aria-label': 'Künstler', placeholder: 'optional' });
+    artist.addEventListener('input', () => {
+      model.artist = artist.value;
+      refresh();
+    });
+
+    const remix = input('checkbox', '');
+    remix.addEventListener('change', () => {
+      model.remix = remix.checked;
+      refresh();
+    });
+
+    const addMelodic = el('button', 'synth-button', '+ Melodie-Spur');
+    const addDrums = el('button', 'synth-button', '+ Drum-Spur');
+    addMelodic.type = addDrums.type = 'button';
+    addMelodic.addEventListener('click', () => {
+      model.tracks.push(newTrack('square'));
+      buildTracks();
+      refresh();
+    });
+    addDrums.addEventListener('click', () => {
+      model.tracks.push(newTrack('drums'));
+      buildTracks();
+      refresh();
+    });
+
+    const reset = el('button', 'synth-button', 'Neu beginnen');
+    reset.type = 'button';
+    reset.addEventListener('click', () => {
+      model.tracks = [];
+      buildTracks();
+      refresh();
+    });
+
+    function ensureOption(control, value, label) {
+      if (![...control.options].some(option => option.value === String(value))) {
+        const option = el('option', '', label);
+        option.value = String(value);
+        const after = [...control.options].find(existing => Number(existing.value) > value);
+        control.insertBefore(option, after || null);
+      }
+
+      control.value = String(value);
+    }
+
+    function applyModel(next) {
+      Object.assign(model, { title: next.title, artist: next.artist, bpm: next.bpm, grid: next.grid, bars: next.bars, remix: next.remix, tracks: next.tracks });
+
+      if (next.origin !== undefined) model.origin = next.origin;
+
+      title.value = model.title;
+      artist.value = model.artist;
+      bpm.value = model.bpm;
+      remix.checked = model.remix;
+      ensureOption(grid, model.grid, model.grid + ' Steps pro Takt');
+      ensureOption(bars, model.bars, model.bars + (model.bars === 1 ? ' Takt' : ' Takte'));
+      buildTracks();
+    }
+
+    function fail(message) {
+      status.textContent = message;
+      status.className = 'synth-status synth-error';
+    }
+
+    function loadFromHash() {
+      const match = /^#([a-z0-9][a-z0-9-]*(?:\/[a-z0-9][a-z0-9-]*){1,2})$/.exec(location.hash);
+
+      if (!match) return;
+
+      status.textContent = 'Lade ' + match[1] + ' …';
+      fetch(limits.base + match[1] + '/source.md')
+        .then(response => {
+          if (!response.ok) throw new Error('„' + match[1] + '“ lässt sich nicht laden.');
+
+          return response.text();
+        })
+        .then(text => {
+          const next = parseSynthMarkdown(text, limits);
+
+          if (!next.remix) throw new Error('Dieser Song erlaubt keine Remixe.');
+
+          next.origin = match[1];
+          applyModel(next);
+          refresh();
+          status.textContent = 'Geladen aus ' + match[1] + '. Tags, Release und HQ-Angaben werden nicht übernommen.';
+        })
+        .catch(error => fail(error.message));
+    }
+
+    const output = el('textarea', 'synth-output');
+    output.readOnly = true;
+    output.rows = 16;
+    output.spellcheck = false;
+    output.setAttribute('aria-label', 'Song im Songformat');
+    const status = el('p', 'synth-status');
+    const editBox = input('checkbox', '');
+    let typing = 0;
+    editBox.addEventListener('change', () => {
+      output.readOnly = !editBox.checked;
+
+      if (!editBox.checked) refresh();
+    });
+    output.addEventListener('input', () => {
+      if (output.readOnly) return;
+
+      clearTimeout(typing);
+      typing = setTimeout(() => {
+        try {
+          applyModel(parseSynthMarkdown(output.value, limits));
+          refresh(true);
+        } catch (error) {
+          fail('Im Text: ' + error.message);
+        }
+      }, 250);
+    });
+    const copy = el('button', 'synth-button', 'Kopieren');
+    copy.type = 'button';
+    copy.addEventListener('click', async () => {
+      try {
+        await navigator.clipboard.writeText(output.value);
+        status.textContent = 'In die Zwischenablage kopiert.';
+      } catch (error) {
+        output.select();
+        status.textContent = 'Markiert, bitte mit Strg+C kopieren.';
+      }
+    });
+
+    const save = el('button', 'synth-button', 'Als Datei laden');
+    save.type = 'button';
+    save.addEventListener('click', () => {
+      const slug = (model.title || 'song').toLowerCase().replace(/ä/g, 'ae').replace(/ö/g, 'oe').replace(/ü/g, 'ue').replace(/ß/g, 'ss').replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'song';
+      const link = el('a');
+      link.href = URL.createObjectURL(new Blob([output.value], { type: 'text/markdown' }));
+      link.download = slug + '.md';
+      link.click();
+      URL.revokeObjectURL(link.href);
+    });
+
+    const settings = el('div', 'synth-settings');
+    settings.append(field('Titel', title), field('Künstler', artist), field('Tempo (BPM)', bpm), field('Raster', grid), field('Länge', bars), field('Remix erlaubt', remix));
+
+    const rasterMode = el('button', 'synth-button', 'Raster');
+    const liveMode = el('button', 'synth-button', 'Live');
+    rasterMode.type = liveMode.type = 'button';
+    const modes = el('span', 'synth-modes');
+    modes.append(rasterMode, liveMode);
+
+    function setMode(mode) {
+      const isLive = mode === 'live';
+      tracksHost.hidden = isLive;
+      liveHost.hidden = !isLive;
+      rasterMode.setAttribute('aria-pressed', String(!isLive));
+      liveMode.setAttribute('aria-pressed', String(isLive));
+      help.textContent = isLive ? LIVE_HELP : RASTER_HELP;
+      buildTracks();
+      refresh();
+
+      if (isLive) liveArea.focus();
+    }
+
+    rasterMode.addEventListener('click', () => setMode('raster'));
+    liveMode.addEventListener('click', () => setMode('live'));
+
+    const bar = el('div', 'synth-bar');
+    bar.append(playButton, modes, addMelodic, addDrums, reset);
+
+    const RASTER_HELP = 'Klick setzt eine Note, ein zweiter Klick auf dieselbe Note löscht sie. Ziehen nach rechts macht sie länger. Eine Spur spielt pro Step einen Ton, für Akkorde oder mehrere Drums legst du weitere Spuren an.';
+    const LIVE_HELP = 'Je Spur eine Kopfzeile „name: instrument“ (dazu bei Bedarf vol=, gate=, pw=, mute) und darunter das Raster, beliebig auf Zeilen verteilt. Zeilen mit // werden übersprungen. Noten wie C4, F#3, Bb2, „.“ ist Pause, „-“ hält die Note, „|“ trennt Takte (nur zur Übersicht). Jede Änderung klingt ab dem nächsten Step, auch während der Wiedergabe. Strg+Enter startet und stoppt.';
+    const help = el('p', 'synth-help', RASTER_HELP);
+    const result = el('section', 'synth-result');
+    const actions = el('div', 'synth-actions');
+    actions.append(copy, save, status);
+    const switchLabel = field('Text bearbeiten', editBox);
+    switchLabel.className = 'synth-field synth-switch';
+    const file = el('details', 'synth-file');
+    file.append(el('summary', '', 'Markdown-Datei anzeigen und bearbeiten'), switchLabel, output);
+    result.append(el('h2', '', 'Song als Markdown-Datei'), actions, file);
+
+    demo();
+    root.replaceChildren(bar, settings, help, tracksHost, liveHost, result);
+    setMode('raster');
+    buildTracks();
+    refresh();
+    loadFromHash();
+    addEventListener('hashchange', loadFromHash);
+    addEventListener('beforeunload', () => stop());
+  }
+
+  if (synthData) mountSynth(JSON.parse(synthData.textContent));
+  else if (mixData) mountMix(JSON.parse(mixData.textContent));
   else if (setData) mountSet(JSON.parse(setData.textContent));
   else mountProject(JSON.parse(projectData.textContent));
 })();

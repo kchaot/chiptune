@@ -130,7 +130,9 @@ abstract class PageRenderer
         $mix = $mixLink
             ? '<a class="mix-link" href="'
             . $this->url('+mixer/')
-            . '" title="Mixer: zwei Decks, Crossfader und Effekte" aria-label="Mixer: zwei Decks, Crossfader und Effekte"><b>+</b>Mixer</a>'
+            . '" title="Mixer: zwei Decks, Crossfader und Effekte" aria-label="Mixer: zwei Decks, Crossfader und Effekte"><b>+</b>Mixer</a> <a class="mix-link" href="'
+            . $this->url('+synth/')
+            . '" title="Synth: Songs im Raster bauen und als Datei mitnehmen" aria-label="Synth: Songs im Raster bauen und als Datei mitnehmen"><b>+</b>Synth</a>'
             : '';
 
         if ($links === [] && $outro === '' && $mix === '') {

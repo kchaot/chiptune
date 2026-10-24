@@ -716,6 +716,7 @@ body:has(.page .tab:target) .home { display: none; }
   line-height: 1;
   box-shadow: 3px 3px 0 rgb(0 0 0 / 0.45);
 }
+.footer nav .mix-link + .mix-link { margin-left: 0.5rem; }
 .footer nav .mix-link b { font-size: 1.3rem; }
 .footer nav .mix-link:hover { color: #fff; border-bottom-color: transparent; box-shadow: 0 0 1rem rgb(123 77 255 / 0.55); }
 
@@ -951,3 +952,42 @@ table.doc-table th { background: var(--panel-raised); }
 table.doc-table tbody tr:hover td { background: rgb(91 53 214 / 0.06); }
 table.doc-table th { color: var(--ink-soft); font-weight: 600; }
 .doc-methods { margin: 0.2rem 0 0; padding-left: 1.1rem; font-size: 0.85rem; }
+
+.synth-page main { max-width: 72rem; }
+.synth .synth-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem 0.6rem; margin: 0 0 0.9rem; }
+.synth .synth-settings { display: flex; flex-wrap: wrap; gap: 0.6rem 1.2rem; margin: 0 0 0.9rem; padding: 0.7rem 0.9rem; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); font: 0.78rem var(--mono); }
+.synth .synth-field { display: flex; flex-direction: column; gap: 0.25rem; min-width: 0; }
+.synth .synth-field-label { color: var(--dim); font-size: 0.68rem; letter-spacing: 0.08em; text-transform: uppercase; }
+.synth .synth-value { color: var(--cream); letter-spacing: 0; text-transform: none; }
+.synth input[type="text"], .synth input[type="number"], .synth select, .synth textarea { padding: 0.3rem 0.5rem; border: 1px solid var(--line); border-radius: 5px; background: var(--panel-solid); color: var(--ink); font: 0.8rem var(--mono); }
+.synth input:focus-visible, .synth select:focus-visible, .synth textarea:focus-visible, .synth .synth-button:focus-visible, .synth .synth-canvas:focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; }
+.synth input[type="range"] { width: 7rem; accent-color: var(--violet); }
+.synth .synth-button { padding: 0.3rem 0.8rem; border: 1px solid var(--line); border-radius: 5px; background: var(--panel-raised); color: var(--ink-soft); font: 0.78rem var(--mono); cursor: pointer; transition: border-color 0.12s, color 0.12s; }
+.synth .synth-button:hover:not(:disabled) { border-color: var(--violet); color: var(--cream); }
+.synth .synth-button:disabled { opacity: 0.4; cursor: not-allowed; }
+.synth .synth-button[aria-pressed="true"] { background: var(--violet); color: var(--cream); }
+.synth .synth-help { margin: 0 0 0.9rem; color: var(--ink-soft); font-size: 0.8rem; }
+.synth .synth-track { margin: 0 0 0.9rem; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); }
+.synth .synth-track-head { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 0.5rem 0.9rem; padding: 0.6rem 0.8rem; }
+.synth .synth-name { width: 9rem; }
+.synth .synth-octave { align-self: center; padding-bottom: 0.2rem; color: var(--ink-soft); font-size: 0.75rem; }
+.synth .synth-roll { display: flex; border-top: 1px solid var(--line); }
+.synth .synth-labels { flex: none; border-right: 1px solid var(--line); }
+.synth .synth-scroll { flex: 1; min-width: 0; overflow-x: auto; }
+.synth .synth-canvas { display: block; touch-action: none; cursor: crosshair; }
+.synth .synth-result h2 { margin: 1.4rem 0 0.5rem; color: var(--cream); font-size: 1.1rem; }
+.synth .synth-output { width: 100%; resize: vertical; line-height: 1.45; }
+.synth .synth-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem 0.8rem; margin-top: 0.5rem; }
+.synth .synth-switch { flex-direction: row; align-items: center; gap: 0.5rem; margin: 0 0 0.5rem; }
+.synth .synth-error { color: var(--pink); }
+.synth .synth-status { margin: 0; color: var(--ink-soft); font-size: 0.78rem; }
+.synth .synth-modes { display: inline-flex; }
+.synth .synth-modes .synth-button { border-radius: 0; }
+.synth .synth-modes .synth-button:first-child { border-radius: 5px 0 0 5px; }
+.synth .synth-modes .synth-button:last-child { border-radius: 0 5px 5px 0; border-left: 0; }
+.synth .synth-live-wrap { position: relative; border: 1px solid var(--line); border-radius: 5px; background: var(--panel-solid); }
+.synth .synth-live-text, .synth .synth-live-mirror { margin: 0; padding: 0.7rem 0.9rem; border: 0; font: 0.95rem/1.6 var(--mono); letter-spacing: normal; tab-size: 2; white-space: pre; overflow: auto; }
+.synth .synth-live-text { position: relative; z-index: 1; display: block; width: 100%; background: transparent; resize: vertical; }
+.synth .synth-live-mirror { position: absolute; inset: 0; overflow: hidden; color: transparent; pointer-events: none; }
+.synth .synth-live-mirror mark { color: transparent; background: rgb(255 46 110 / 0.5); border-radius: 2px; }
+.synth .synth-file > summary { margin: 0.4rem 0 0.6rem; color: var(--violet); font-weight: 600; cursor: pointer; }

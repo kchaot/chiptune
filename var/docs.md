@@ -421,9 +421,9 @@ Die `README.md` im Wurzelordner liest der Build nicht. Er überspringt sie wie `
 title: player.js
 group: resources
 ---
-Der Player gehört zu den Ressourcen der Stage (`var/resources/`, siehe [var](#tab-var)). Die Datei `var/resources/player.js` ist ein einziges JavaScript ohne Abhängigkeiten, rund 3600 Zeilen, und läuft vollständig im Browser: Audio über die Web Audio API, Oberfläche aus einfachen DOM-Elementen und SVG. Die Daten bekommt sie als JSON, das der Build in die Seiten schreibt (`project`, `set`, `mix`). Ohne diese Daten tut sie nichts. Der Build minimiert die Datei, Kommentare fallen dabei weg.
+Der Player gehört zu den Ressourcen der Stage (`var/resources/`, siehe [var](#tab-var)). Die Datei `var/resources/player.js` ist ein einziges JavaScript ohne Abhängigkeiten, rund 4300 Zeilen, und läuft vollständig im Browser: Audio über die Web Audio API, Oberfläche aus einfachen DOM-Elementen und SVG. Die Daten bekommt sie als JSON, das der Build in die Seiten schreibt (`project`, `set`, `mix`). Ohne diese Daten tut sie nichts. Der Build minimiert die Datei, Kommentare fallen dabei weg.
 
-Am Ende der Datei entscheidet, was in der Seite steckt: Mixer (`mix`), Set (`set`) oder einzelner Song (`project`). Die Datei ist in dieser Reihenfolge aufgebaut:
+Am Ende der Datei entscheidet, was in der Seite steckt: Synth (`synth`), Mixer (`mix`), Set (`set`) oder einzelner Song (`project`). Die Datei ist in dieser Reihenfolge aufgebaut:
 
 - Zustand und kleine Helfer (`makeState`, `el`, `svgNode`) und die Regler eines Decks (`deskControl`)
 - die Audio-Kette: Limiter, Rauschen, Kanal, Bus, und die Stimmen (`tone`, `kick`, `drum`)
@@ -431,6 +431,7 @@ Am Ende der Datei entscheidet, was in der Seite steckt: Mixer (`mix`), Set (`set
 - Export als MIDI-Datei und als Strudel-Code
 - `studioPanel` und `mountProject` für die Song-Seite
 - `buildMachine` und `mountMix` für den Mixer, `mountSet` für Sets und Alben
+- `mountSynth` für den Synth unter `+synth/`: Raster-Editor mit eigener Abspielplanung, die dieselben Stimmen (`tone`, `drum`) nutzt wie die Decks
 
 ## Zustand eines Decks
 
@@ -449,3 +450,37 @@ Eine Note ist ein Oszillator mit einer Hüllkurve. `gate` bestimmt, wie viel der
 `tick()` schaut ein Stück voraus (`LOOKAHEAD`, im Mixer kürzer, bei versteckter Seite länger) und plant alle Noten, die in dieses Fenster fallen. Damit läuft die Musik auch dann sauber, wenn der Browser die Seite im Hintergrund drosselt.
 
 <!-- code: var/resources/player.js#tick lines fold -->
+
+## Der Synth schreibt das Songformat
+
+Der Synth unter `+synth/` baut einen Song im Browser und gibt ihn als Songformat aus. Die Grenzen (Tempo, Raster, Spuren, Instrumente, Längen) schreibt der Build aus `SongParser` und `Fields` als JSON in die Seite, der Synth kennt sie also nicht doppelt. `synthMarkdown` macht aus dem Modell die Datei: Kopf, je Spur ein Marker mit Frontmatter und ein Raster-Block, vier Takte pro Zeile. Ein `-` bleibt nur hinter einer Note stehen, sonst würde der Parser es ablehnen.
+
+Die Markdown-Datei steht eingeklappt unter dem Editor („Markdown-Datei anzeigen und bearbeiten“). Das Textfeld darin lässt sich auch bearbeiten, und das gilt live: Die Planung liest bei jedem Step das aktuelle Modell, ein laufender Song folgt dem neuen Text also ohne Pause. `parseSynthMarkdown` liest den Text zurück ins Modell und meldet Fehler im Klartext, statt etwas still zu verlieren (Clips, Layer und andere Dateitypen lehnt er ab). Neben der Klavierrolle gibt es den Modus **Live**, beschrieben im Abschnitt [Live-Code im Synth](#player-live-code-im-synth). Auf demselben Weg öffnet `+synth/#prefix/name` einen Song aus der Bibliothek, wenn er Remixe erlaubt und aus eigenen Noten besteht. Der Link „Im +Synth öffnen“ auf der Song-Seite erscheint nur dann.
+
+<!-- code: var/resources/player.js#synth lines fold -->
+
+## Live-Code im Synth
+
+Der Modus **Live** zeigt alle Raster in einem einzigen Text. Er ist die vereinfachte Form der Markdown-Datei: Das Frontmatter schrumpft auf eine Kopfzeile je Spur, alles darüber hinaus (Titel, Tempo, Raster) bleibt in den Feldern über dem Text.
+
+```text
+kick: drums
+k . . . k . . . k . . . k . . .
+
+bass: saw vol=0.26 gate=0.5
+. . E2 . . . E2 . . . G2 . . . D2 . | . . E2 . . . E2 . . . A2 . . . D2 .
+```
+
+| Teil | Bedeutung |
+| --- | --- |
+| `name: instrument` | Beginnt eine Spur. Der Name hat bis zu 32 Zeichen ohne `< > & "` |
+| `vol=`, `gate=`, `pw=` | Lautstärke (0 bis 1), Gate (0,05 bis 1), Pulsbreite (0,05 bis 0,5). Nur nötig, wenn sie vom Standard abweichen |
+| `mute` | Spur stumm schalten |
+| Raster | Wie im Songformat, beliebig auf Zeilen verteilt. Der senkrechte Taktstrich dient nur der Übersicht |
+| `//` | Zeile wird übersprungen |
+
+Jede Änderung wirkt nach 150 Millisekunden auf den laufenden Song. `applyLiveText` liest den Text zurück: Ein neuer Block ist eine neue Spur, ein gelöschter Block entfernt sie. Hat eine Spur einen Fehler, behält genau diese Spur ihren letzten Stand, die anderen werden übernommen, und die Meldung steht mit Zeilennummer unter dem Text. Wird eine Zeile länger als der Song, wächst die Länge.
+
+Die Stelle, die gerade erklingt, ist im Text markiert. Ein Textfeld kann einzelne Zeichen nicht einfärben. Darum liegt unter ihm ein Spiegel (`liveMirror`) mit demselben Text und denselben Maßen, dessen Schrift unsichtbar ist und in dem `liveSpans` das Zeichen am aktuellen Step je Spur umrahmt. `paintLive` füllt ihn bei jedem Step und bei jedem Tastendruck neu. Aus Kopfzeile und Raster entsteht der Text in `liveText`:
+
+<!-- code: var/resources/player.js#live lines fold -->
