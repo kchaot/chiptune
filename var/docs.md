@@ -364,17 +364,23 @@ group: Verzeichnisse
 ---
 Der gesamte PHP-Code liegt unter `lib/`, in drei Ordnern. Die Richtung ist **IN → OUT**: Das Format liest, die Site baut, und Gemeinsames brauchen beide. Format und Gemeinsames kennen die Site nicht. Was die Parser lesen, beschreibt der Tab [Songformat](#tab-songformat).
 
+Die Ordner folgen einer Regel: Die Klasse in der Wurzel eines Ordners ist der Einstieg, der gleichnamige Unterordner enthält ihre Helfer, zum Beispiel `Format/Song.php` und `Format/Song/`. Auf dieser Seite steht jede Klasse direkt vor ihren Helfern.
+
 ## Das Format (IN)
 
 Liest Markdown und macht daraus unveränderliche Value Objects. Es kennt weder Seiten noch Dateisystem und ließe sich als eigenes Paket herauslösen.
+
+Jeder Dateityp hat seine Wurzelklasse und einen Ordner mit Parsern und Teilen: `Song` (mit `Song/`: Spuren, Layer, Clips und der Zusammenbau), `Set`, `Session`, `Link` und `Media` (Aufnahmen und Veröffentlichung). Was alle Typen teilen, liegt in der Wurzel: `Fields` (die gemeinsamen Prüfungen), `Credit` und `Described`.
 
 ## Die Site (OUT)
 
 Die Referenz-Implementierung: Sie holt die Quellen, baut daraus die Seite und rendert sie. Eine andere Ausgabe könnte dieselben Value Objects anders verwenden.
 
+Drei Einstiege: `Builder` (der Ablauf, mit `Builder/`: Einstellungen, Assets, Einlesen, Alben, Fehlersammler), `Renderer` (mit `Renderer/`: eine Klasse je Seitenart, dazu `PageRenderer` mit dem Gemeinsamen) und `CodeBook` (diese Seite, mit `CodeBook/`: die Klassenbeschreibungen). `Library` und `Sources` holen und lesen die Dateien der Quellen.
+
 ## Gemeinsames
 
-Was Format und Site beide brauchen: Fehler beim Bauen und das Säubern von HTML.
+Was Format und Site beide brauchen: Fehler beim Bauen, das Säubern von HTML, das Schreiben von Dateien und Adressen.
 
 <!-- next: var -->
 ---
