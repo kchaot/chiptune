@@ -6,12 +6,12 @@ namespace Chiptune\Site;
 
 use Chiptune\Common\BuildError;
 use Chiptune\Format\Described;
-use Chiptune\Format\LayerParser;
-use Chiptune\Format\LinkParser;
-use Chiptune\Format\SessionParser;
-use Chiptune\Format\SetParser;
+use Chiptune\Format\Link\LinkParser;
+use Chiptune\Format\Session\SessionParser;
+use Chiptune\Format\Set\SetParser;
 use Chiptune\Format\Song;
-use Chiptune\Format\SongParser;
+use Chiptune\Format\Song\LayerParser;
+use Chiptune\Format\Song\SongParser;
 
 /**
  * Lädt Dateien nach Schlüssel (`prefix/slug`) und wählt den passenden Parser.

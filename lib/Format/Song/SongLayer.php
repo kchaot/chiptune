@@ -2,7 +2,9 @@
 
 declare(strict_types=1);
 
-namespace Chiptune\Format;
+namespace Chiptune\Format\Song;
+
+use Chiptune\Format\Song;
 
 /**
  * Der Hinweis, aus welchem Song ein Layer-Song einen Layer übernommen hat.

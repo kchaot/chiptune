@@ -4,8 +4,8 @@ declare(strict_types=1);
 
 namespace Chiptune\Site\Renderer;
 
-use Chiptune\Format\SetPart;
-use Chiptune\Format\Track;
+use Chiptune\Format\Set\SetPart;
+use Chiptune\Format\Song\Track;
 use Chiptune\Site\Entry;
 use Chiptune\Site\EntryKind;
 

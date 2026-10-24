@@ -6,7 +6,7 @@ namespace Chiptune\Site;
 
 use Chiptune\Common\BuildError;
 use Chiptune\Common\HtmlSanitizer;
-use Chiptune\Format\SongParser;
+use Chiptune\Format\Song\SongParser;
 use Chiptune\Site\CodeBook\CodeDocs;
 use Tempest\Highlight\Highlighter;
 use Tempest\Markdown\Markdown;
@@ -60,7 +60,7 @@ final class CodeBook
         $content = (string) preg_replace_callback(
             '/\{\{(\w+)::(\w+)(\|kb)?\}\}/',
             function (array $match): string {
-                $name = "Chiptune\\Format\\{$match[1]}::{$match[2]}";
+                $name = ($this->formatClass($match[1]) ?? "Chiptune\\Format\\{$match[1]}") . "::{$match[2]}";
 
                 if (!defined($name) || !is_int(constant($name))) {
                     throw new BuildError("var/docs.md: {$match[1]}::{$match[2]} ist keine Zahl-Konstante in lib/Format.");
@@ -213,6 +213,15 @@ final class CodeBook
         $indent = min(array_map(static fn(string $line): int => trim($line) === '' ? PHP_INT_MAX : strlen($line) - strlen(ltrim($line)), $lines));
 
         return [$language, rtrim(implode("\n", array_map(static fn(string $line): string => substr($line, min($indent, strlen($line))), $lines))), $first];
+    }
+
+    private function formatClass(string $short): ?string
+    {
+        foreach (glob("{$this->root}/lib/Format/{,*/}{$short}.php", GLOB_BRACE) ?: [] as $file) {
+            return 'Chiptune\\' . str_replace('/', '\\', substr($file, strlen("{$this->root}/lib/"), -4));
+        }
+
+        return null;
     }
 
     /**

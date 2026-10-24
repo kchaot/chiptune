@@ -5,8 +5,8 @@ declare(strict_types=1);
 namespace Chiptune\Site;
 
 use Chiptune\Common\Filesystem;
-use Chiptune\Format\SetParser;
-use Chiptune\Format\SongParser;
+use Chiptune\Format\Set\SetParser;
+use Chiptune\Format\Song\SongParser;
 use Chiptune\Site\Builder\AlbumBuilder;
 use Chiptune\Site\Builder\Assets;
 use Chiptune\Site\Builder\EntryLoader;

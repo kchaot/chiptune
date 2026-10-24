@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Chiptune\Format;
+namespace Chiptune\Format\Media;
 
 /**
  * Angaben zu einer Veröffentlichung.

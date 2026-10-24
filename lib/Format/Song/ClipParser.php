@@ -2,9 +2,12 @@
 
 declare(strict_types=1);
 
-namespace Chiptune\Format;
+namespace Chiptune\Format\Song;
 
 use Chiptune\Common\BuildError;
+use Chiptune\Format\Credit;
+use Chiptune\Format\Fields;
+use Chiptune\Format\Song;
 
 /**
  * Liest die `clips` einer Spur: Teile aus Spuren anderer Songs.

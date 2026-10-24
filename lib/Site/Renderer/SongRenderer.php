@@ -6,7 +6,7 @@ namespace Chiptune\Site\Renderer;
 
 use Chiptune\Format\Media;
 use Chiptune\Format\Song;
-use Chiptune\Format\Track;
+use Chiptune\Format\Song\Track;
 use Chiptune\Site\Entry;
 
 /**

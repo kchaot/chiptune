@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Chiptune\Format;
+namespace Chiptune\Format\Song;
 
 /**
  * Eine Spur eines Songs: ein Instrument mit seinen Noten.

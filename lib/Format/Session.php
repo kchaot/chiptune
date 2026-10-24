@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Chiptune\Format;
 
+use Chiptune\Format\Session\SessionDeck;
+
 /**
  * Eine Session hält den Startzustand des Mixers fest.
  *

@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Chiptune\Format;
 
+use Chiptune\Format\Set\SetPart;
+
 /**
  * Ein Set oder Album: mehrere Songs hintereinander, mit Gesamtdauer.
  *

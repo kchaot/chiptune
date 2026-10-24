@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 namespace Chiptune\Format;
 
+use Chiptune\Format\Song\SongLayer;
+use Chiptune\Format\Song\Track;
+
 /**
  * Ein Song: Tracks mit Noten auf einem festen Raster.
  *

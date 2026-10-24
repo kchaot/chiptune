@@ -7,7 +7,7 @@ namespace Chiptune\Site\Builder;
 use Chiptune\Common\BuildError;
 use Chiptune\Common\HtmlSanitizer;
 use Chiptune\Format\Set;
-use Chiptune\Format\SetParser;
+use Chiptune\Format\Set\SetParser;
 use Chiptune\Format\Song;
 use Chiptune\Site\Entry;
 use Chiptune\Site\EntryKind;

@@ -2,9 +2,11 @@
 
 declare(strict_types=1);
 
-namespace Chiptune\Format;
+namespace Chiptune\Format\Media;
 
 use Chiptune\Common\BuildError;
+use Chiptune\Format\Fields;
+use Chiptune\Format\Media;
 
 /**
  * Liest die Aufnahmen aus dem Kopf einer Datei: `hq`, `hq-offset` und `release`.

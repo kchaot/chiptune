@@ -2,9 +2,13 @@
 
 declare(strict_types=1);
 
-namespace Chiptune\Format;
+namespace Chiptune\Format\Song;
 
 use Chiptune\Common\HtmlSanitizer;
+use Chiptune\Format\Credit;
+use Chiptune\Format\Fields;
+use Chiptune\Format\Media\MediaParser;
+use Chiptune\Format\Song;
 use Tempest\Markdown\ParsedMarkdown;
 
 /**

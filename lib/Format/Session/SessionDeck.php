@@ -2,7 +2,10 @@
 
 declare(strict_types=1);
 
-namespace Chiptune\Format;
+namespace Chiptune\Format\Session;
+
+use Chiptune\Format\Session;
+use Chiptune\Format\Song;
 
 /**
  * Ein Deck einer Session: der Song mit den Angaben, die der Mixer zum Einstellen braucht.
