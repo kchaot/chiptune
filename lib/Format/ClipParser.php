@@ -22,7 +22,7 @@ final class ClipParser
 
     /**
      * @param (\Closure(string): array{prefix: string, slug: string, song: Song})|null $resolve
-     * @param array<string, array{prefix: string, slug: string, title: string}> $credits
+     * @param array<string, Credit> $credits
      * @return array{events: list<array{t: int, len: int, d?: string, f?: float}>, end: int, first: Track|null, drums: list<bool>, bands: list<array{ref: string, title: string, track: string, start: int, len: int}>}
      */
     public function parse(mixed $clips, string $where, int $dstSpb, ?\Closure $resolve, string $owner, array &$credits): array
@@ -180,7 +180,7 @@ final class ClipParser
             $first ??= $sourceTrack;
             $drums[] = $isDrums;
             $bands[] = ['ref' => "{$prefix}/{$slug}", 'title' => $source->title, 'track' => $trackName, 'start' => $at, 'len' => $length * $repeat];
-            $credits["{$prefix}/{$slug}"] = ['prefix' => $prefix, 'slug' => $slug, 'title' => $source->title];
+            $credits["{$prefix}/{$slug}"] = new Credit($prefix, $slug, $source->title);
         }
 
         return ['events' => $events, 'end' => $end, 'first' => $first, 'drums' => $drums, 'bands' => $bands];

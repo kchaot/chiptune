@@ -14,7 +14,7 @@ final readonly class Session implements Described
 {
     /**
      * @param list<string> $tags
-     * @param list<array{prefix: string, slug: string, title: string}> $credits
+     * @param list<Credit> $credits
      * @param list<string> $warnings
      */
     public function __construct(

@@ -65,7 +65,7 @@ final class LinkParser
 
             Fields::mayRemix('Link', $ref, $resolved['prefix'], $owner, $resolved['song']->remix);
 
-            $credits[$ref] = ['prefix' => $resolved['prefix'], 'slug' => $resolved['slug'], 'title' => $resolved['song']->title];
+            $credits[$ref] = new Credit($resolved['prefix'], $resolved['slug'], $resolved['song']->title);
         }
 
         $head = Fields::describe($meta, $fallbackTitle);

@@ -101,7 +101,7 @@ final class SongParser
 
     /**
      * @param (\Closure(string): array{prefix: string, slug: string, song: Song})|null $resolve
-     * @param array<string, array{prefix: string, slug: string, title: string}> $credits
+     * @param array<string, Credit> $credits
      */
     private function parseTrack(ParsedMarkdown $chunk, int $stepsPerBeat, ?\Closure $resolve, string $owner, array &$credits): Track
     {

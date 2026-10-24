@@ -77,7 +77,7 @@ final class SessionParser
         $credits = [];
 
         foreach ($decks as $deck) {
-            $credits[$deck->ref] = ['prefix' => $deck->prefix, 'slug' => $deck->slug, 'title' => $deck->title];
+            $credits[$deck->ref] = new Credit($deck->prefix, $deck->slug, $deck->title);
         }
 
         $head = Fields::describe($meta, $fallbackTitle);

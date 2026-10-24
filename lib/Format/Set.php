@@ -14,7 +14,7 @@ final readonly class Set implements Described
     /**
      * @param list<string> $tags
      * @param list<SetPart> $parts
-     * @param list<array{prefix: string, slug: string, title: string}> $credits
+     * @param list<Credit> $credits
      * @param list<string> $warnings
      */
     public function __construct(

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Chiptune\Site;
 
 use Chiptune\Common\BuildError;
+use Chiptune\Format\Credit;
 use Chiptune\Format\Media;
 use Chiptune\Format\Session;
 use Chiptune\Format\Set;
@@ -709,7 +710,7 @@ final class Renderer
     }
 
     /**
-     * @param list<array{prefix: string, slug: string, title: string}> $credits
+     * @param list<Credit> $credits
      */
     private function credits(array $credits): string
     {
@@ -718,13 +719,13 @@ final class Renderer
         }
 
         $links = array_map(
-            fn(array $credit): string => (
+            fn(Credit $credit): string => (
                 '<a href="'
-                . $this->url($credit['prefix'] . '/' . $credit['slug'] . '/')
+                . $this->url($credit->prefix . '/' . $credit->slug . '/')
                 . '">'
-                . $this->e($credit['title'])
+                . $this->e($credit->title)
                 . '</a> von '
-                . $this->e($this->authorTitle($credit['prefix']))
+                . $this->e($this->authorTitle($credit->prefix))
             ),
             $credits,
         );

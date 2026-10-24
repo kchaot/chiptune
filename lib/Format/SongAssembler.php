@@ -23,7 +23,7 @@ final class SongAssembler
     /**
      * @param array<string, mixed> $meta
      * @param list<Track> $tracks
-     * @param array<string, array{prefix: string, slug: string, title: string}> $credits
+     * @param array<string, Credit> $credits
      * @param list<SongLayer> $layers
      */
     public function assemble(

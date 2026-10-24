@@ -106,7 +106,7 @@ final class SetParser
                 notesHtml: $this->sanitizer->clean($chunk->html),
             );
 
-            $credits[$ref] = ['prefix' => $resolved['prefix'], 'slug' => $resolved['slug'], 'title' => $song->title];
+            $credits[$ref] = new Credit($resolved['prefix'], $resolved['slug'], $song->title);
         }
 
         $info = Fields::describe($meta, $fallbackTitle);
