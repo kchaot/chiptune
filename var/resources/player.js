@@ -3945,7 +3945,10 @@
         changed = true;
       }
 
-      if (changed) drawAll();
+      if (changed) {
+        drawAll();
+        syncLive();
+      }
 
       frame = requestAnimationFrame(follow);
     }
@@ -4090,13 +4093,14 @@
     }
 
     function drawAll() {
-      rolls.forEach(draw);
+      if (!tracksHost.hidden) rolls.forEach(draw);
     }
 
     function refresh(keepText) {
       if (!keepText) output.value = synthMarkdown(model);
 
       status.className = 'synth-status';
+      syncLive();
       const notes = model.tracks.reduce((sum, track) => sum + cleanCells(track).filter(token => token !== '.' && token !== '-').length, 0);
       status.textContent = notes === 0 ? 'Noch keine Noten gesetzt.' : model.tracks.length + ' Spuren, ' + notes + ' Noten, ' + model.bars + ' Takte.';
       drawAll();
@@ -4252,10 +4256,7 @@
       return wrap;
     }
 
-    function trackRow(track) {
-      const section = el('section', 'synth-track');
-      const head = el('div', 'synth-track-head');
-      const roll = { track, canvas: el('canvas', 'synth-canvas'), labels: el('canvas', 'synth-labels'), scroller: el('div', 'synth-scroll') };
+    function trackControls(track) {
       const name = input('text', track.name, { maxlength: 32, 'aria-label': 'Name der Spur' });
       name.className = 'synth-name';
       name.addEventListener('input', () => {
@@ -4302,6 +4303,15 @@
         refresh();
       });
 
+      return { name, kind, mute, clear, remove };
+    }
+
+    function trackRow(track) {
+      const section = el('section', 'synth-track');
+      const head = el('div', 'synth-track-head');
+      const roll = { track, canvas: el('canvas', 'synth-canvas'), labels: el('canvas', 'synth-labels'), scroller: el('div', 'synth-scroll') };
+      const { name, kind, mute, clear, remove } = trackControls(track);
+
       head.append(name, kind, slider(track, 'volume', 0, 1, 0.01, 'Lautstärke'));
 
       if (track.instrument !== 'drums') head.append(slider(track, 'gate', 0.05, 1, 0.05, 'Gate'));
@@ -4338,7 +4348,206 @@
       return section;
     }
 
+    function liveBarsPerLine() {
+      return Math.max(1, Math.floor(72 / (model.grid * 2 + 3)));
+    }
+
+    // docs: live
+    function liveHeader(track) {
+      const drums = track.instrument === 'drums';
+      const parts = [track.name + ': ' + track.instrument];
+
+      if (track.volume !== (drums ? 0.3 : 0.2)) parts.push('vol=' + Number(track.volume.toFixed(2)));
+
+      if (!drums && track.gate !== 0.9) parts.push('gate=' + Number(track.gate.toFixed(2)));
+
+      if (track.instrument === 'pulse' && track.pw !== 0.25) parts.push('pw=' + Number(track.pw.toFixed(2)));
+
+      if (track.mute) parts.push('mute');
+
+      return parts.join(' ');
+    }
+
+    function liveText() {
+      const perLine = liveBarsPerLine();
+
+      return model.tracks
+        .map(track => {
+          const cells = cleanCells(track);
+          const bars = [];
+
+          for (let i = 0; i < cells.length; i += model.grid) bars.push(cells.slice(i, i + model.grid).join(' '));
+
+          const lines = [liveHeader(track)];
+
+          for (let i = 0; i < bars.length; i += perLine) lines.push(bars.slice(i, i + perLine).join(' | '));
+
+          return lines.join('\n');
+        })
+        .join('\n\n');
+    }
+    // docs-end
+
+    const isLiveHeader = line => /^[^.|\-][^:]*:\s*\S/.test(line);
+
+    function parseLiveBlock(header, body, previous) {
+      const match = /^(.+?):\s*(\S+)((?:\s+\S+)*)\s*$/.exec(header);
+
+      if (!match || !limits.instruments.includes(match[2])) throw new Error('Kopfzeile „' + header.trim() + '“: erwartet wird „name: instrument“ mit einem der Instrumente ' + limits.instruments.join(', ') + '.');
+
+      const instrument = match[2];
+      const drums = instrument === 'drums';
+      const track = { name: match[1].replace(/[<>&"]/g, '').trim().slice(0, 32) || 'spur', instrument, volume: drums ? 0.3 : 0.2, gate: 0.9, pw: 0.25, mute: false, base: previous && (previous.instrument === 'drums') === drums ? previous.base : 3, cells: [] };
+      const ranges = { vol: ['volume', 0, 1], gate: ['gate', 0.05, 1], pw: ['pw', 0.05, 0.5] };
+
+      match[3].split(/\s+/).filter(Boolean).forEach(option => {
+        const pair = /^(vol|gate|pw)=(\d*\.?\d+)$/.exec(option);
+
+        if (option === 'mute') track.mute = true;
+        else if (pair && Number(pair[2]) >= ranges[pair[1]][1] && Number(pair[2]) <= ranges[pair[1]][2]) track[ranges[pair[1]][0]] = Number(pair[2]);
+        else throw new Error('Spur „' + track.name + '“: „' + option + '“ ist keine gültige Angabe (vol=, gate=, pw=, mute).');
+      });
+
+      track.cells = body.split(/\s+/).filter(token => token !== '' && token !== '|');
+      track.cells.forEach(token => {
+        if (!(token === '.' || token === '-' || (drums ? isDrumToken(token) : noteMidi(token) !== null))) throw new Error('Spur „' + track.name + '“: „' + token + '“ ist hier kein gültiges Zeichen.');
+      });
+
+      if (!drums && track.base === 3) {
+        const midis = track.cells.map(noteMidi).filter(midi => midi !== null);
+
+        if (midis.length && !previous) track.base = Math.max(-1, Math.min(7, Math.floor(Math.min(...midis) / 12) - 1));
+      }
+
+      return track;
+    }
+
+    function applyLiveText(text) {
+      const blocks = [];
+      const errors = [];
+
+      text.replace(/\r\n?/g, '\n').split('\n').forEach((line, index) => {
+        const trimmed = line.trim();
+
+        if (trimmed === '' || trimmed.startsWith('//')) return;
+
+        if (isLiveHeader(trimmed)) blocks.push({ header: trimmed, body: [], line: index + 1 });
+        else if (blocks.length) blocks[blocks.length - 1].body.push(trimmed);
+        else errors.push('Zeile ' + (index + 1) + ': Eine Spur beginnt mit „name: instrument“.');
+      });
+
+      if (blocks.length > limits.maxTracks) errors.push('Höchstens ' + limits.maxTracks + ' Spuren.');
+
+      const tracks = [];
+
+      blocks.slice(0, limits.maxTracks).forEach((block, index) => {
+        try {
+          tracks.push(parseLiveBlock(block.header, block.body.join(' '), model.tracks[index]));
+        } catch (error) {
+          errors.push('Zeile ' + block.line + ': ' + error.message);
+
+          if (model.tracks[index]) tracks.push(model.tracks[index]);
+        }
+      });
+
+      const longest = tracks.reduce((max, track) => Math.max(max, track.cells.length), 0);
+      const cap = Math.floor(Math.min(limits.maxSteps, MAX_UI_STEPS) / model.grid);
+      if (longest > cap * model.grid) errors.push('Zu lang: höchstens ' + cap * model.grid + ' Steps bei diesem Raster.');
+
+      model.bars = Math.max(1, Math.min(cap, Math.ceil(longest / model.grid)));
+      model.tracks = tracks;
+      model.tracks.forEach(fit);
+      ensureOption(bars, model.bars, model.bars + (model.bars === 1 ? ' Takt' : ' Takte'));
+      refresh();
+
+      liveError = errors[0] || '';
+      syncLive();
+
+      if (errors.length) fail(errors[0]);
+    }
+
+    function liveSpans(text, head) {
+      const spans = [];
+      let offset = 0;
+      let index = -1;
+
+      text.split('\n').forEach(line => {
+        const trimmed = line.trim();
+
+        if (trimmed !== '' && !trimmed.startsWith('//')) {
+          if (isLiveHeader(trimmed)) index = 0;
+          else if (index >= 0) {
+            for (const match of line.matchAll(/\S+/g)) {
+              if (match[0] === '|') continue;
+
+              if (index === head) spans.push([offset + match.index, offset + match.index + match[0].length]);
+
+              index++;
+            }
+          }
+        }
+
+        offset += line.length + 1;
+      });
+
+      return spans;
+    }
+
+    function paintLive() {
+      const text = liveArea.value;
+      const spans = playing && playing.head >= 0 ? liveSpans(text, playing.head) : [];
+      const escape = part => part.replace(/&/g, '&amp;').replace(/</g, '&lt;');
+      let html = '';
+      let from = 0;
+
+      spans.forEach(([start, end]) => {
+        html += escape(text.slice(from, start)) + '<mark>' + escape(text.slice(start, end)) + '</mark>';
+        from = end;
+      });
+
+      liveMirror.innerHTML = html + escape(text.slice(from)) + '\n';
+      liveMirror.scrollTop = liveArea.scrollTop;
+      liveMirror.scrollLeft = liveArea.scrollLeft;
+    }
+
+    function syncLive() {
+      if (document.activeElement !== liveArea) {
+        liveArea.value = liveText();
+        liveArea.rows = Math.max(10, liveArea.value.split('\n').length + 2);
+      }
+
+      paintLive();
+      livePosition.className = liveError ? 'synth-status synth-error' : 'synth-status';
+      livePosition.textContent = liveError || (playing && playing.head >= 0 ? 'Takt ' + (Math.floor(playing.head / model.grid) + 1) + ' von ' + model.bars + ', Step ' + ((playing.head % model.grid) + 1) : '');
+    }
+
     const tracksHost = el('div', 'synth-tracks');
+    const liveHost = el('div', 'synth-live');
+    const liveArea = el('textarea', 'synth-live-text');
+    liveArea.spellcheck = false;
+    liveArea.wrap = 'off';
+    const liveMirror = el('div', 'synth-live-mirror');
+    liveMirror.setAttribute('aria-hidden', 'true');
+    const liveWrap = el('div', 'synth-live-wrap');
+    liveWrap.append(liveMirror, liveArea);
+    liveArea.setAttribute('aria-label', 'Alle Raster als Text');
+    liveArea.setAttribute('autocapitalize', 'off');
+    const livePosition = el('p', 'synth-status');
+    let liveTimer = 0;
+    let liveError = '';
+    liveArea.addEventListener('input', () => {
+      paintLive();
+      clearTimeout(liveTimer);
+      liveTimer = setTimeout(() => applyLiveText(liveArea.value), 150);
+    });
+    liveArea.addEventListener('keydown', event => {
+      if (event.key === 'Enter' && (event.ctrlKey || event.metaKey)) {
+        event.preventDefault();
+        playButton.click();
+      }
+    });
+    liveArea.addEventListener('scroll', paintLive);
+    liveHost.append(liveWrap, livePosition);
 
     function buildTracks() {
       rolls.length = 0;
@@ -4522,19 +4731,46 @@
     const settings = el('div', 'synth-settings');
     settings.append(field('Titel', title), field('Künstler', artist), field('Tempo (BPM)', bpm), field('Raster', grid), field('Länge', bars), field('Remix erlaubt', remix));
 
-    const bar = el('div', 'synth-bar');
-    bar.append(playButton, addMelodic, addDrums, reset);
+    const rasterMode = el('button', 'synth-button', 'Raster');
+    const liveMode = el('button', 'synth-button', 'Live');
+    rasterMode.type = liveMode.type = 'button';
+    const modes = el('span', 'synth-modes');
+    modes.append(rasterMode, liveMode);
 
-    const help = el('p', 'synth-help', 'Klick setzt eine Note, ein zweiter Klick auf dieselbe Note löscht sie. Ziehen nach rechts macht sie länger. Eine Spur spielt pro Step einen Ton, für Akkorde oder mehrere Drums legst du weitere Spuren an.');
+    function setMode(mode) {
+      const isLive = mode === 'live';
+      tracksHost.hidden = isLive;
+      liveHost.hidden = !isLive;
+      rasterMode.setAttribute('aria-pressed', String(!isLive));
+      liveMode.setAttribute('aria-pressed', String(isLive));
+      help.textContent = isLive ? LIVE_HELP : RASTER_HELP;
+      buildTracks();
+      refresh();
+
+      if (isLive) liveArea.focus();
+    }
+
+    rasterMode.addEventListener('click', () => setMode('raster'));
+    liveMode.addEventListener('click', () => setMode('live'));
+
+    const bar = el('div', 'synth-bar');
+    bar.append(playButton, modes, addMelodic, addDrums, reset);
+
+    const RASTER_HELP = 'Klick setzt eine Note, ein zweiter Klick auf dieselbe Note löscht sie. Ziehen nach rechts macht sie länger. Eine Spur spielt pro Step einen Ton, für Akkorde oder mehrere Drums legst du weitere Spuren an.';
+    const LIVE_HELP = 'Je Spur eine Kopfzeile „name: instrument“ (dazu bei Bedarf vol=, gate=, pw=, mute) und darunter das Raster, beliebig auf Zeilen verteilt. Zeilen mit // werden übersprungen. Noten wie C4, F#3, Bb2, „.“ ist Pause, „-“ hält die Note, „|“ trennt Takte (nur zur Übersicht). Jede Änderung klingt ab dem nächsten Step, auch während der Wiedergabe. Strg+Enter startet und stoppt.';
+    const help = el('p', 'synth-help', RASTER_HELP);
     const result = el('section', 'synth-result');
     const actions = el('div', 'synth-actions');
     actions.append(copy, save, status);
     const switchLabel = field('Text bearbeiten', editBox);
     switchLabel.className = 'synth-field synth-switch';
-    result.append(el('h2', '', 'Song im Songformat'), switchLabel, output, actions);
+    const file = el('details', 'synth-file');
+    file.append(el('summary', '', 'Markdown-Datei anzeigen und bearbeiten'), switchLabel, output);
+    result.append(el('h2', '', 'Song als Markdown-Datei'), actions, file);
 
     demo();
-    root.replaceChildren(bar, settings, help, tracksHost, result);
+    root.replaceChildren(bar, settings, help, tracksHost, liveHost, result);
+    setMode('raster');
     buildTracks();
     refresh();
     loadFromHash();

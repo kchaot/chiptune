@@ -455,6 +455,32 @@ Eine Note ist ein Oszillator mit einer Hüllkurve. `gate` bestimmt, wie viel der
 
 Der Synth unter `+synth/` baut einen Song im Browser und gibt ihn als Songformat aus. Die Grenzen (Tempo, Raster, Spuren, Instrumente, Längen) schreibt der Build aus `SongParser` und `Fields` als JSON in die Seite, der Synth kennt sie also nicht doppelt. `synthMarkdown` macht aus dem Modell die Datei: Kopf, je Spur ein Marker mit Frontmatter und ein Raster-Block, vier Takte pro Zeile. Ein `-` bleibt nur hinter einer Note stehen, sonst würde der Parser es ablehnen.
 
-Das Textfeld lässt sich auch bearbeiten, und das gilt live: Die Planung liest bei jedem Step das aktuelle Modell, ein laufender Song folgt dem neuen Text also ohne Pause. `parseSynthMarkdown` liest den Text zurück ins Modell und meldet Fehler im Klartext, statt etwas still zu verlieren (Clips, Layer und andere Dateitypen lehnt er ab). Auf demselben Weg öffnet `+synth/#prefix/name` einen Song aus der Bibliothek, wenn er Remixe erlaubt und aus eigenen Noten besteht. Der Link „Im +Synth öffnen“ auf der Song-Seite erscheint nur dann.
+Die Markdown-Datei steht eingeklappt unter dem Editor („Markdown-Datei anzeigen und bearbeiten“). Das Textfeld darin lässt sich auch bearbeiten, und das gilt live: Die Planung liest bei jedem Step das aktuelle Modell, ein laufender Song folgt dem neuen Text also ohne Pause. `parseSynthMarkdown` liest den Text zurück ins Modell und meldet Fehler im Klartext, statt etwas still zu verlieren (Clips, Layer und andere Dateitypen lehnt er ab). Neben der Klavierrolle gibt es den Modus **Live**, beschrieben im Abschnitt [Live-Code im Synth](#player-live-code-im-synth). Auf demselben Weg öffnet `+synth/#prefix/name` einen Song aus der Bibliothek, wenn er Remixe erlaubt und aus eigenen Noten besteht. Der Link „Im +Synth öffnen“ auf der Song-Seite erscheint nur dann.
 
 <!-- code: var/resources/player.js#synth lines fold -->
+
+## Live-Code im Synth
+
+Der Modus **Live** zeigt alle Raster in einem einzigen Text. Er ist die vereinfachte Form der Markdown-Datei: Das Frontmatter schrumpft auf eine Kopfzeile je Spur, alles darüber hinaus (Titel, Tempo, Raster) bleibt in den Feldern über dem Text.
+
+```text
+kick: drums
+k . . . k . . . k . . . k . . .
+
+bass: saw vol=0.26 gate=0.5
+. . E2 . . . E2 . . . G2 . . . D2 . | . . E2 . . . E2 . . . A2 . . . D2 .
+```
+
+| Teil | Bedeutung |
+| --- | --- |
+| `name: instrument` | Beginnt eine Spur. Der Name hat bis zu 32 Zeichen ohne `< > & "` |
+| `vol=`, `gate=`, `pw=` | Lautstärke (0 bis 1), Gate (0,05 bis 1), Pulsbreite (0,05 bis 0,5). Nur nötig, wenn sie vom Standard abweichen |
+| `mute` | Spur stumm schalten |
+| Raster | Wie im Songformat, beliebig auf Zeilen verteilt. Der senkrechte Taktstrich dient nur der Übersicht |
+| `//` | Zeile wird übersprungen |
+
+Jede Änderung wirkt nach 150 Millisekunden auf den laufenden Song. `applyLiveText` liest den Text zurück: Ein neuer Block ist eine neue Spur, ein gelöschter Block entfernt sie. Hat eine Spur einen Fehler, behält genau diese Spur ihren letzten Stand, die anderen werden übernommen, und die Meldung steht mit Zeilennummer unter dem Text. Wird eine Zeile länger als der Song, wächst die Länge.
+
+Die Stelle, die gerade erklingt, ist im Text markiert. Ein Textfeld kann einzelne Zeichen nicht einfärben. Darum liegt unter ihm ein Spiegel (`liveMirror`) mit demselben Text und denselben Maßen, dessen Schrift unsichtbar ist und in dem `liveSpans` das Zeichen am aktuellen Step je Spur umrahmt. `paintLive` füllt ihn bei jedem Step und bei jedem Tastendruck neu. Aus Kopfzeile und Raster entsteht der Text in `liveText`:
+
+<!-- code: var/resources/player.js#live lines fold -->

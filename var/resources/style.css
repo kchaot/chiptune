@@ -981,3 +981,13 @@ table.doc-table th { color: var(--ink-soft); font-weight: 600; }
 .synth .synth-switch { flex-direction: row; align-items: center; gap: 0.5rem; margin: 0 0 0.5rem; }
 .synth .synth-error { color: var(--pink); }
 .synth .synth-status { margin: 0; color: var(--ink-soft); font-size: 0.78rem; }
+.synth .synth-modes { display: inline-flex; }
+.synth .synth-modes .synth-button { border-radius: 0; }
+.synth .synth-modes .synth-button:first-child { border-radius: 5px 0 0 5px; }
+.synth .synth-modes .synth-button:last-child { border-radius: 0 5px 5px 0; border-left: 0; }
+.synth .synth-live-wrap { position: relative; border: 1px solid var(--line); border-radius: 5px; background: var(--panel-solid); }
+.synth .synth-live-text, .synth .synth-live-mirror { margin: 0; padding: 0.7rem 0.9rem; border: 0; font: 0.95rem/1.6 var(--mono); letter-spacing: normal; tab-size: 2; white-space: pre; overflow: auto; }
+.synth .synth-live-text { position: relative; z-index: 1; display: block; width: 100%; background: transparent; resize: vertical; }
+.synth .synth-live-mirror { position: absolute; inset: 0; overflow: hidden; color: transparent; pointer-events: none; }
+.synth .synth-live-mirror mark { color: transparent; background: rgb(255 46 110 / 0.5); border-radius: 2px; }
+.synth .synth-file > summary { margin: 0.4rem 0 0.6rem; color: var(--violet); font-weight: 600; cursor: pointer; }
