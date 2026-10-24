@@ -4,10 +4,13 @@
 declare(strict_types=1);
 
 $root = dirname(__DIR__);
-$ref = $argv[1] ?? 'HEAD';
+$args = array_slice($argv, 1);
+$info = in_array('--info', $args, true);
+$args = array_values(array_diff($args, ['--info']));
+$ref = $args[0] ?? 'HEAD';
 
 if (str_starts_with($ref, '-')) {
-    fwrite(STDERR, "Aufruf: php bin/compare.php [Stand]\n");
+    fwrite(STDERR, "Aufruf: php bin/compare.php [--info] [Stand]\n");
     exit(2);
 }
 
@@ -88,6 +91,18 @@ foreach (['Neu' => $added, 'Entfernt' => $removed, 'Geändert' => $changed] as $
     if (count($files) > 20) {
         echo "  {$title}: … und " . (count($files) - 20) . " weitere\n";
     }
+}
+
+if ($info) {
+    $summary = sprintf(
+        'Die Ausgabe weicht von „%s“ ab: %d neu, %d entfernt, %d geändert. Bei Änderungen an Code oder Inhalten ist das erwartet.',
+        $ref,
+        count($added),
+        count($removed),
+        count($changed),
+    );
+    echo ($_SERVER['GITHUB_ACTIONS'] ?? '') === 'true' ? "::notice title=Ausgabe verändert::{$summary}\n" : $summary . "\n";
+    exit(0);
 }
 
 exit(1);

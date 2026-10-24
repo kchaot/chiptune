@@ -135,27 +135,39 @@ final class CodeRenderer extends PageRenderer
         $links = '';
         $articles = '';
 
-        foreach ($groups as $root => $members) {
-            $helpers = '';
+        foreach ($groups as $members) {
             $rootLink = '';
-            $body = '';
+            $rootHtml = '';
+            $helperLinks = '';
+            $helperHtml = '';
+            $folder = '';
+            $helperCount = 0;
 
             foreach ($members as [$entry, $depth]) {
                 $id = $this->e(strtolower($entry->short));
-                $link = '<a href="#' . $id . '">' . $this->e($entry->short) . '</a> <span>' . $this->docText($entry->summary()) . '</span>';
-                $body .= $this->docEntry($entry, $id, $depth > 0);
 
-                if ($depth > 0) {
-                    $helpers .= '<li>' . $link . '</li>';
+                if ($depth === 0) {
+                    $parts = explode('\\', $entry->name);
+                    $folder = $parts[1] . '/' . $parts[2] . '/';
+                    $rootLink = '<a href="#' . $id . '">' . $this->e($entry->short) . '</a> <span>' . $this->docText($entry->summary()) . '</span>';
+                    $rootHtml = $this->docEntry($entry, $id, false);
                 } else {
-                    $rootLink = $link;
+                    $helperCount++;
+                    $helperLinks .= '<li><a href="#' . $id . '" title="' . $this->e($entry->summary()) . '">' . $this->e($entry->short) . '</a></li>';
+                    $helperHtml .= $this->docEntry($entry, $id, true);
                 }
             }
 
             $links .= '<li class="doc-root">' . $rootLink;
-            $links .= $helpers === '' ? '' : '<ul class="doc-helpers" aria-label="' . $this->e($root) . '/">' . $helpers . '</ul>';
+            $articles .= '<div class="doc-group">' . $rootHtml;
+
+            if ($helperCount > 0) {
+                $links .= '<ul class="doc-helpers" aria-label="' . $this->e($folder) . '">' . $helperLinks . '</ul>';
+                $articles .= '<p class="doc-folder"><code>' . $this->e($folder) . '</code> ' . $helperCount . ' Helfer</p>' . $helperHtml;
+            }
+
             $links .= '</li>';
-            $articles .= '<div class="doc-group">' . $body . '</div>';
+            $articles .= '</div>';
         }
 
         $count = count($entries);

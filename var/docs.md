@@ -286,13 +286,16 @@ php bin/docs.php --check           # Klassen ohne Beschreibung? Dann Code 1
 
 ## compare.php
 
-Baut einen Git-Stand (Standard: `HEAD`) und den Arbeitsstand und vergleicht jede Ausgabedatei per SHA-1. Code 0 heißt: Die Seite ist bitgleich. So lässt sich nach einem Umbau zeigen, dass sich die Ausgabe nicht geändert hat.
+Baut einen Git-Stand (Standard: `HEAD`) und den Arbeitsstand und vergleicht jede Ausgabedatei per SHA-1. Code 0 heißt: Die Seite ist bitgleich, Code 1: Es gibt Unterschiede. So lässt sich nach einem Umbau zeigen, dass sich die Ausgabe nicht geändert hat.
 
 ```bash
 php bin/build.php --local-only     # legt .cache/sources an, falls es fehlt
 php bin/compare.php                # Arbeitsstand gegen HEAD
 php bin/compare.php origin/main    # gegen den Stand auf main
+php bin/compare.php --info origin/main   # Unterschiede nur melden, Code bleibt 0
 ```
+
+Mit `--info` endet der Vergleich auch bei Unterschieden mit Code 0. Die CI nutzt das: Der Schritt bleibt grün und zeigt in GitHub nur einen Hinweis. Echte Fehler (Bau schlägt fehl, Stand fehlt) enden weiter mit Code 2.
 
 ## pull.sh
 

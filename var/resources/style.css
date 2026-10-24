@@ -924,7 +924,7 @@ body.code-page::after { display: none; }
 .doc-text th { background: var(--panel-raised); }
 .doc-text tbody tr:hover td { background: rgb(91 53 214 / 0.06); }
 .doc-text th { color: var(--ink-soft); font-weight: 600; }
-.doc-index { margin: 0 0 1rem; padding: 0; list-style: none; columns: 2 24rem; font-size: 0.85rem; }
+.doc-index { margin: 0 0 1rem; padding: 0; list-style: none; columns: 2 24rem; font-size: 0.8rem; }
 .doc-index li { break-inside: avoid; margin-bottom: 0.2rem; }
 .doc-index span { color: var(--ink-soft); }
 .doc-area { margin-top: 2rem; padding-top: 1rem; border-top: 1px dashed var(--line); }
@@ -933,10 +933,12 @@ body.code-page::after { display: none; }
 .doc-classes { overflow-anchor: none; }
 .doc-index > .doc-root { break-inside: avoid; margin-bottom: 0.5rem; }
 .doc-index > .doc-root > a { font-weight: 600; }
-.doc-helpers { margin: 0.15rem 0 0; padding: 0 0 0 0.9rem; border-left: 1px dashed var(--line); columns: auto; list-style: none; }
+.doc-helpers { display: flex; flex-wrap: wrap; gap: 0.1rem 0.7rem; margin: 0.15rem 0 0; padding: 0 0 0 0.9rem; border-left: 1px dashed var(--line); columns: auto; list-style: none; font-size: 0.78rem; }
+.doc-helpers li { margin: 0; }
+.doc-folder { margin: 0.9rem 0 0.4rem 1.25rem; color: var(--ink-soft); font-size: 0.8rem; }
 .doc-group { margin: 0 0 1.75rem; }
 .doc-group > .doc { margin-bottom: 0.75rem; }
-.doc-helper { margin-left: 1.25rem; border-left-color: var(--line); }
+.doc.doc-helper { margin-left: 1.25rem; border-left-color: var(--line); }
 .doc { margin: 0 0 1.75rem; padding: 0.9rem 1.1rem; background: var(--panel); border-left: 0.25rem solid var(--violet); scroll-margin-top: 1rem; }
 .doc h3 { margin: 0; color: var(--cream); font-size: 1.1rem; }
 .doc p { margin: 0.4rem 0; }
