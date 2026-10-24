@@ -68,6 +68,12 @@ final class CodeRenderer extends PageRenderer
                 }
                 addEventListener('hashchange', openTarget);
                 openTarget();
+                document.querySelectorAll('.doc-classes').forEach((group) => {
+                  group.addEventListener('toggle', () => {
+                    const summary = group.querySelector('summary');
+                    if (!group.open && summary.getBoundingClientRect().top < 0) summary.scrollIntoView({ block: 'center' });
+                  });
+                });
               </script>
             HTML, false, false, false);
     }
@@ -119,13 +125,37 @@ final class CodeRenderer extends PageRenderer
      */
     private function docArea(string $title, string $prose, array $entries): string
     {
+        $groups = [];
+
+        foreach ($entries as $entry) {
+            $parts = explode('\\', $entry->name);
+            $groups[$parts[2] ?? $entry->short][] = [$entry, count($parts) - 3];
+        }
+
         $links = '';
         $articles = '';
 
-        foreach ($entries as $entry) {
-            $id = $this->e(strtolower($entry->short));
-            $links .= '<li><a href="#' . $id . '">' . $this->e($entry->short) . '</a> <span>' . $this->docText($entry->summary()) . '</span></li>';
-            $articles .= $this->docEntry($entry, $id);
+        foreach ($groups as $root => $members) {
+            $helpers = '';
+            $rootLink = '';
+            $body = '';
+
+            foreach ($members as [$entry, $depth]) {
+                $id = $this->e(strtolower($entry->short));
+                $link = '<a href="#' . $id . '">' . $this->e($entry->short) . '</a> <span>' . $this->docText($entry->summary()) . '</span>';
+                $body .= $this->docEntry($entry, $id, $depth > 0);
+
+                if ($depth > 0) {
+                    $helpers .= '<li>' . $link . '</li>';
+                } else {
+                    $rootLink = $link;
+                }
+            }
+
+            $links .= '<li class="doc-root">' . $rootLink;
+            $links .= $helpers === '' ? '' : '<ul class="doc-helpers" aria-label="' . $this->e($root) . '/">' . $helpers . '</ul>';
+            $links .= '</li>';
+            $articles .= '<div class="doc-group">' . $body . '</div>';
         }
 
         $count = count($entries);
@@ -146,10 +176,12 @@ final class CodeRenderer extends PageRenderer
         );
     }
 
-    private function docEntry(DocEntry $entry, string $id): string
+    private function docEntry(DocEntry $entry, string $id, bool $helper = false): string
     {
         $html =
-            '<article class="doc" id="'
+            '<article class="'
+            . ($helper ? 'doc doc-helper' : 'doc')
+            . '" id="'
             . $id
             . '"><h3>'
             . $this->e($entry->short)

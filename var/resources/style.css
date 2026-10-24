@@ -930,7 +930,13 @@ body.code-page::after { display: none; }
 .doc-area { margin-top: 2rem; padding-top: 1rem; border-top: 1px dashed var(--line); }
 .doc-area > h2 { margin: 0 0 0.5rem; color: var(--cream); font-size: 1.25rem; }
 .doc-classes > summary { margin: 0.5rem 0 1rem; color: var(--violet); font-weight: 600; cursor: pointer; }
-.doc-classes[open] > summary { margin-bottom: 0.5rem; }
+.doc-classes { overflow-anchor: none; }
+.doc-index > .doc-root { break-inside: avoid; margin-bottom: 0.5rem; }
+.doc-index > .doc-root > a { font-weight: 600; }
+.doc-helpers { margin: 0.15rem 0 0; padding: 0 0 0 0.9rem; border-left: 1px dashed var(--line); columns: auto; list-style: none; }
+.doc-group { margin: 0 0 1.75rem; }
+.doc-group > .doc { margin-bottom: 0.75rem; }
+.doc-helper { margin-left: 1.25rem; border-left-color: var(--line); }
 .doc { margin: 0 0 1.75rem; padding: 0.9rem 1.1rem; background: var(--panel); border-left: 0.25rem solid var(--violet); scroll-margin-top: 1rem; }
 .doc h3 { margin: 0; color: var(--cream); font-size: 1.1rem; }
 .doc p { margin: 0.4rem 0; }
