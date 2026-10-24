@@ -455,4 +455,6 @@ Eine Note ist ein Oszillator mit einer Hüllkurve. `gate` bestimmt, wie viel der
 
 Der Synth unter `+synth/` baut einen Song im Browser und gibt ihn als Songformat aus. Die Grenzen (Tempo, Raster, Spuren, Instrumente, Längen) schreibt der Build aus `SongParser` und `Fields` als JSON in die Seite, der Synth kennt sie also nicht doppelt. `synthMarkdown` macht aus dem Modell die Datei: Kopf, je Spur ein Marker mit Frontmatter und ein Raster-Block, vier Takte pro Zeile. Ein `-` bleibt nur hinter einer Note stehen, sonst würde der Parser es ablehnen.
 
+Das Textfeld lässt sich auch bearbeiten: `parseSynthMarkdown` liest den Text zurück ins Modell und meldet Fehler im Klartext, statt etwas still zu verlieren (Clips, Layer und andere Dateitypen lehnt er ab). Auf demselben Weg öffnet `+synth/#prefix/name` einen Song aus der Bibliothek, wenn er Remixe erlaubt und aus eigenen Noten besteht. Der Link „Im Synth öffnen“ auf der Song-Seite erscheint nur dann.
+
 <!-- code: var/resources/player.js#synth lines fold -->

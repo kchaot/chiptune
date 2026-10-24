@@ -21,6 +21,7 @@ final class SynthRenderer extends PageRenderer
     {
         $limits = json_encode([
             'format' => Fields::FORMAT,
+            'base' => $this->url(''),
             'bpm' => ['min' => SongParser::BPM_MIN, 'max' => SongParser::BPM_MAX, 'default' => SongParser::BPM_DEFAULT],
             'grid' => ['min' => SongParser::GRID_MIN, 'max' => SongParser::GRID_MAX, 'default' => SongParser::GRID_DEFAULT],
             'instruments' => SongParser::INSTRUMENTS,

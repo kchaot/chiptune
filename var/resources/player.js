@@ -2311,7 +2311,6 @@
       delay.connect(damp);
       damp.connect(feedback);
       feedback.connect(delay);
-      // Das Delay folgt dem Tempo, solange der Audiokontext läuft.
       setInterval(() => {
         if (ctx && ctx.state === 'running') delay.delayTime.setTargetAtTime(Math.min(1.9, beat() * 0.75), ctx.currentTime, 0.1);
       }, 250);
@@ -3632,7 +3631,6 @@
     return DRUM_ORDER.includes(token);
   }
 
-  // Ein '-' gilt nur hinter einer Note oder einem anderen '-', in Drum-Spuren gar nicht.
   function cleanCells(track) {
     const drums = track.instrument === 'drums';
     let holding = false;
@@ -3673,6 +3671,8 @@
 
     lines.push('---', '');
 
+    if (model.origin) lines.push('Basiert auf ' + model.origin + '.', '');
+
     model.tracks.forEach(track => {
       const cells = cleanCells(track);
       const bars = [];
@@ -3695,6 +3695,131 @@
     return lines.join('\n');
   }
   // docs-end
+
+  function parseSynthValue(raw) {
+    const text = raw.trim();
+
+    if (text.startsWith('"')) {
+      try {
+        return JSON.parse(text);
+      } catch (error) {
+        return text.replace(/^"|"$/g, '');
+      }
+    }
+
+    if (text.startsWith("'")) return text.replace(/^'|'$/g, '');
+
+    if (text === 'true') return true;
+
+    if (text === 'false') return false;
+
+    return /^-?\d+(\.\d+)?$/.test(text) ? Number(text) : text;
+  }
+
+  function parseSynthFields(block) {
+    const fields = {};
+
+    block.split('\n').forEach(line => {
+      const match = /^([A-Za-z][\w-]*):\s*(.*)$/.exec(line);
+
+      if (match) fields[match[1]] = match[2] === '' ? null : parseSynthValue(match[2]);
+    });
+
+    return fields;
+  }
+
+  function parseSynthMarkdown(source, limits) {
+    const text = source.replace(/\r\n?/g, '\n');
+    const head = /^---\n([\s\S]*?)\n---(?:\n|$)/.exec(text);
+
+    if (!head) throw new Error('Am Anfang fehlt der Kopf zwischen zwei „---“-Zeilen.');
+
+    const fields = parseSynthFields(head[1]);
+
+    if (fields.kind === 'layer' || fields.kind === 'set' || fields.kind === 'session' || fields.kind === 'link') throw new Error('Nur normale Songs lassen sich laden, „' + fields.kind + '“ nicht.');
+
+    if (fields.format !== undefined && fields.format !== limits.format) throw new Error('Das Format ' + fields.format + ' kennt der Synth nicht.');
+
+    const bpm = fields.bpm === undefined ? limits.bpm.default : fields.bpm;
+    const grid = fields.grid === undefined ? limits.grid.default : fields.grid;
+
+    if (!Number.isInteger(bpm) || bpm < limits.bpm.min || bpm > limits.bpm.max) throw new Error('„bpm“ muss eine ganze Zahl von ' + limits.bpm.min + ' bis ' + limits.bpm.max + ' sein.');
+
+    if (!Number.isInteger(grid) || grid < limits.grid.min || grid > limits.grid.max || grid % 4 !== 0) throw new Error('„grid“ muss durch 4 teilbar sein, von ' + limits.grid.min + ' bis ' + limits.grid.max + '.');
+
+    const rest = text.slice(head[0].length);
+
+    if (/^<!--\s*layer:/m.test(rest)) throw new Error('Layer-Songs lassen sich im Synth nicht bearbeiten.');
+
+    const marks = [...rest.matchAll(/^<!--\s*track:\s*(.*?)\s*-->[ \t]*$/gm)];
+
+    if (marks.length > limits.maxTracks) throw new Error('Höchstens ' + limits.maxTracks + ' Spuren.');
+
+    const rows = marks.map((mark, index) => {
+      const name = mark[1].replace(/[<>&"]/g, '').trim().slice(0, 32) || 'spur';
+      let chunk = rest.slice(mark.index + mark[0].length, index + 1 < marks.length ? marks[index + 1].index : rest.length).replace(/^\n+/, '');
+      let options = {};
+      const front = /^---\n([\s\S]*?)\n---(?:\n|$)/.exec(chunk);
+
+      if (front) {
+        options = parseSynthFields(front[1]);
+        chunk = chunk.slice(front[0].length);
+      }
+
+      if (Object.prototype.hasOwnProperty.call(options, 'clips')) throw new Error('Spur „' + name + '“ nutzt Clips. Die löst der Synth nicht auf.');
+
+      const instrument = options.instrument === undefined ? 'square' : options.instrument;
+
+      if (!limits.instruments.includes(instrument)) throw new Error('Spur „' + name + '“: Instrument „' + instrument + '“ gibt es nicht.');
+
+      const drums = instrument === 'drums';
+      const volume = options.volume === undefined ? (drums ? 0.3 : 0.2) : options.volume;
+      const gate = options.gate === undefined ? 0.9 : options.gate;
+      const pw = options.pw === undefined ? 0.25 : options.pw;
+
+      if (typeof volume !== 'number' || volume < 0 || volume > 1) throw new Error('Spur „' + name + '“: „volume“ liegt zwischen 0 und 1.');
+
+      if (typeof gate !== 'number' || gate < 0.05 || gate > 1) throw new Error('Spur „' + name + '“: „gate“ liegt zwischen 0,05 und 1.');
+
+      if (typeof pw !== 'number' || pw < 0.05 || pw > 0.5) throw new Error('Spur „' + name + '“: „pw“ liegt zwischen 0,05 und 0,5.');
+
+      const block = /```grid[ \t]*\n([\s\S]*?)```/.exec(chunk);
+
+      if (!block) throw new Error('Spur „' + name + '“ hat keinen Raster-Block.');
+
+      const cells = block[1].split(/\s+/).filter(token => token !== '' && token !== '|');
+
+      cells.forEach(token => {
+        const valid = token === '.' || token === '-' || (drums ? isDrumToken(token) : noteMidi(token) !== null);
+
+        if (!valid) throw new Error('Spur „' + name + '“: „' + token + '“ ist hier kein gültiges Zeichen.');
+      });
+
+      return { name, instrument, volume, gate, pw, cells };
+    });
+
+    const longest = rows.reduce((max, row) => Math.max(max, row.cells.length), 0);
+    const bars = Math.max(1, Math.ceil(longest / grid));
+
+    if (bars * grid > Math.min(limits.maxSteps, MAX_UI_STEPS)) throw new Error('Der Song hat ' + longest + ' Steps. Der Synth bearbeitet höchstens ' + Math.min(limits.maxSteps, MAX_UI_STEPS) + '.');
+
+    const tracks = rows.map(row => {
+      const midis = row.cells.map(noteMidi).filter(midi => midi !== null);
+      const base = midis.length ? Math.max(-1, Math.min(7, Math.floor(Math.min(...midis) / 12) - 1)) : 3;
+
+      return { ...row, mute: false, base, cells: row.cells.concat(Array(bars * grid - row.cells.length).fill('.')) };
+    });
+
+    return {
+      title: typeof fields.title === 'string' ? fields.title.slice(0, limits.maxTitle) : '',
+      artist: typeof fields.artist === 'string' ? fields.artist.slice(0, limits.maxArtist) : '',
+      bpm,
+      grid,
+      bars,
+      remix: fields.remix === true,
+      tracks,
+    };
+  }
 
   function mountSynth(limits) {
     const model = {
@@ -3967,8 +4092,10 @@
       rolls.forEach(draw);
     }
 
-    function refresh() {
-      output.value = synthMarkdown(model);
+    function refresh(keepText) {
+      if (!keepText) output.value = synthMarkdown(model);
+
+      status.className = 'synth-status';
       const notes = model.tracks.reduce((sum, track) => sum + cleanCells(track).filter(token => token !== '.' && token !== '-').length, 0);
       status.textContent = notes === 0 ? 'Noch keine Noten gesetzt.' : model.tracks.length + ' Spuren, ' + notes + ' Noten, ' + model.bars + ' Takte.';
       drawAll();
@@ -4287,12 +4414,89 @@
       refresh();
     });
 
+    function ensureOption(control, value, label) {
+      if (![...control.options].some(option => option.value === String(value))) {
+        const option = el('option', '', label);
+        option.value = String(value);
+        const after = [...control.options].find(existing => Number(existing.value) > value);
+        control.insertBefore(option, after || null);
+      }
+
+      control.value = String(value);
+    }
+
+    function applyModel(next) {
+      if (playing) stop();
+
+      Object.assign(model, { title: next.title, artist: next.artist, bpm: next.bpm, grid: next.grid, bars: next.bars, remix: next.remix, tracks: next.tracks });
+
+      if (next.origin !== undefined) model.origin = next.origin;
+
+      title.value = model.title;
+      artist.value = model.artist;
+      bpm.value = model.bpm;
+      remix.checked = model.remix;
+      ensureOption(grid, model.grid, model.grid + ' Steps pro Takt');
+      ensureOption(bars, model.bars, model.bars + (model.bars === 1 ? ' Takt' : ' Takte'));
+      buildTracks();
+    }
+
+    function fail(message) {
+      status.textContent = message;
+      status.className = 'synth-status synth-error';
+    }
+
+    function loadFromHash() {
+      const match = /^#([a-z0-9][a-z0-9-]*(?:\/[a-z0-9][a-z0-9-]*){1,2})$/.exec(location.hash);
+
+      if (!match) return;
+
+      status.textContent = 'Lade ' + match[1] + ' …';
+      fetch(limits.base + match[1] + '/source.md')
+        .then(response => {
+          if (!response.ok) throw new Error('„' + match[1] + '“ lässt sich nicht laden.');
+
+          return response.text();
+        })
+        .then(text => {
+          const next = parseSynthMarkdown(text, limits);
+
+          if (!next.remix) throw new Error('Dieser Song erlaubt keine Remixe.');
+
+          next.origin = match[1];
+          applyModel(next);
+          refresh();
+          status.textContent = 'Geladen aus ' + match[1] + '. Tags, Release und HQ-Angaben werden nicht übernommen.';
+        })
+        .catch(error => fail(error.message));
+    }
+
     const output = el('textarea', 'synth-output');
     output.readOnly = true;
     output.rows = 16;
     output.spellcheck = false;
     output.setAttribute('aria-label', 'Song im Songformat');
     const status = el('p', 'synth-status');
+    const editBox = input('checkbox', '');
+    let typing = 0;
+    editBox.addEventListener('change', () => {
+      output.readOnly = !editBox.checked;
+
+      if (!editBox.checked) refresh();
+    });
+    output.addEventListener('input', () => {
+      if (output.readOnly) return;
+
+      clearTimeout(typing);
+      typing = setTimeout(() => {
+        try {
+          applyModel(parseSynthMarkdown(output.value, limits));
+          refresh(true);
+        } catch (error) {
+          fail('Im Text: ' + error.message);
+        }
+      }, 350);
+    });
     const copy = el('button', 'synth-button', 'Kopieren');
     copy.type = 'button';
     copy.addEventListener('click', async () => {
@@ -4326,12 +4530,16 @@
     const result = el('section', 'synth-result');
     const actions = el('div', 'synth-actions');
     actions.append(copy, save, status);
-    result.append(el('h2', '', 'Song im Songformat'), output, actions);
+    const switchLabel = field('Text bearbeiten', editBox);
+    switchLabel.className = 'synth-field synth-switch';
+    result.append(el('h2', '', 'Song im Songformat'), switchLabel, output, actions);
 
     demo();
     root.replaceChildren(bar, settings, help, tracksHost, result);
     buildTracks();
     refresh();
+    loadFromHash();
+    addEventListener('hashchange', loadFromHash);
     addEventListener('beforeunload', () => stop());
   }
 

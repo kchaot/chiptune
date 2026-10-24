@@ -35,6 +35,7 @@ final class SongRenderer extends PageRenderer
         $layersPanel = $this->layersPanel($song);
         $badge = $this->songBadge($song);
         $mediaLinks = $this->mediaLinks($song->media);
+        $synthLink = $this->synthLink($entry, $song);
 
         return $this->page($song->title . ' – ' . $this->site['title'], 'project-page', <<<HTML
               <script type="application/json" id="project">{$payload}</script>
@@ -57,7 +58,7 @@ final class SongRenderer extends PageRenderer
                 {$trackNotes}
                 {$notes}
                 {$credits}
-                <p class="source"><a href="source.md">Quelltext dieses Songs</a></p>
+                <p class="source"><a href="source.md">Quelltext dieses Songs</a>{$synthLink}</p>
               </main>
             HTML, withScript: true);
     }
@@ -147,6 +148,21 @@ final class SongRenderer extends PageRenderer
                 return $data + ['notes' => $track->notesHtml !== ''];
             }, $song->tracks),
         ];
+    }
+
+    private function synthLink(Entry $entry, Song $song): string
+    {
+        if ($song->remix !== true || $song->layers !== []) {
+            return '';
+        }
+
+        foreach ($song->tracks as $track) {
+            if ($track->refs !== []) {
+                return '';
+            }
+        }
+
+        return ' | <a href="' . $this->url('+synth/') . '#' . $this->e($entry->prefix . '/' . $entry->slug) . '">Im +Synth öffnen</a>';
     }
 
     private function mediaLinks(Media $media): string

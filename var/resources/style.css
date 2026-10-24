@@ -978,4 +978,6 @@ table.doc-table th { color: var(--ink-soft); font-weight: 600; }
 .synth .synth-result h2 { margin: 1.4rem 0 0.5rem; color: var(--cream); font-size: 1.1rem; }
 .synth .synth-output { width: 100%; resize: vertical; line-height: 1.45; }
 .synth .synth-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem 0.8rem; margin-top: 0.5rem; }
+.synth .synth-switch { flex-direction: row; align-items: center; gap: 0.5rem; margin: 0 0 0.5rem; }
+.synth .synth-error { color: var(--pink); }
 .synth .synth-status { margin: 0; color: var(--ink-soft); font-size: 0.78rem; }
