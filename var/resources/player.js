@@ -3925,6 +3925,7 @@
       if (!playing || !ctx) return;
 
       const until = ctx.currentTime + lookahead(0.25);
+      playing.step %= stepsOf();
 
       while (playing.time < until) {
         planStep(playing.step, playing.time);
@@ -4426,8 +4427,6 @@
     }
 
     function applyModel(next) {
-      if (playing) stop();
-
       Object.assign(model, { title: next.title, artist: next.artist, bpm: next.bpm, grid: next.grid, bars: next.bars, remix: next.remix, tracks: next.tracks });
 
       if (next.origin !== undefined) model.origin = next.origin;
@@ -4495,7 +4494,7 @@
         } catch (error) {
           fail('Im Text: ' + error.message);
         }
-      }, 350);
+      }, 250);
     });
     const copy = el('button', 'synth-button', 'Kopieren');
     copy.type = 'button';
