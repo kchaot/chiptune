@@ -2,10 +2,11 @@
 
 declare(strict_types=1);
 
-namespace Chiptune\Site;
+namespace Chiptune\Site\Renderer;
 
 use Chiptune\Format\Session;
 use Chiptune\Format\Song;
+use Chiptune\Site\Entry;
 
 /**
  * Rendert den Mixer und die Seiten der Sessions.

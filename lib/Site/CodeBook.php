@@ -6,6 +6,8 @@ namespace Chiptune\Site;
 
 use Chiptune\Common\BuildError;
 use Chiptune\Common\HtmlSanitizer;
+use Chiptune\Format\SongParser;
+use Chiptune\Site\CodeBook\CodeDocs;
 use Tempest\Highlight\Highlighter;
 use Tempest\Markdown\Markdown;
 

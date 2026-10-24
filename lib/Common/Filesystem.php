@@ -2,9 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Chiptune\Site;
-
-use Chiptune\Common\BuildError;
+namespace Chiptune\Common;
 
 /**
  * Hilfen für Dateien.

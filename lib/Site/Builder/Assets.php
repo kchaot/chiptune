@@ -2,9 +2,11 @@
 
 declare(strict_types=1);
 
-namespace Chiptune\Site;
+namespace Chiptune\Site\Builder;
 
 use Chiptune\Common\BuildError;
+use Chiptune\Common\Filesystem;
+use Chiptune\Site\Renderer;
 
 /**
  * Räumt den Ausgabeordner auf und schreibt Stylesheet und Player mit Hash im Namen.

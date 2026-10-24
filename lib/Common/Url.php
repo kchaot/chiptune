@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Chiptune\Site;
+namespace Chiptune\Common;
 
 use Uri\Rfc3986\Uri;
 

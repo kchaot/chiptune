@@ -2,7 +2,9 @@
 
 declare(strict_types=1);
 
-namespace Chiptune\Site;
+namespace Chiptune\Site\Renderer;
+
+use Chiptune\Site\Entry;
 
 /**
  * Rendert die Seite eines Links, dessen Aufnahme hier abgespielt werden kann (Host in `media` der Quelle).

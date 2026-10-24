@@ -2,12 +2,17 @@
 
 declare(strict_types=1);
 
-namespace Chiptune\Site;
+namespace Chiptune\Site\Builder;
 
 use Chiptune\Common\BuildError;
+use Chiptune\Common\Url;
 use Chiptune\Format\Link;
 use Chiptune\Format\Media;
 use Chiptune\Format\Song;
+use Chiptune\Site\Entry;
+use Chiptune\Site\EntryKind;
+use Chiptune\Site\Library;
+use Chiptune\Site\Renderer;
 
 /**
  * Liest alle Dateien der Quellen über die `Library` ein und macht daraus die Einträge der Seite.

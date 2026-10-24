@@ -2,7 +2,10 @@
 
 declare(strict_types=1);
 
-namespace Chiptune\Site;
+namespace Chiptune\Site\Renderer;
+
+use Chiptune\Site\Entry;
+use Chiptune\Site\EntryKind;
 
 /**
  * Rendert die Bibliothek: die Startseite mit den Autoren und die Seite eines Autors mit Alben und Songs.

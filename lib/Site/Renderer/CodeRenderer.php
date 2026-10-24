@@ -2,9 +2,12 @@
 
 declare(strict_types=1);
 
-namespace Chiptune\Site;
+namespace Chiptune\Site\Renderer;
 
 use Chiptune\Common\BuildError;
+use Chiptune\Site\CodeBook;
+use Chiptune\Site\CodeBook\CodeDocs;
+use Chiptune\Site\CodeBook\DocEntry;
 
 /**
  * Rendert die Code-Seite aus dem `CodeBook` und den Klassenbeschreibungen von `CodeDocs`.

@@ -2,12 +2,14 @@
 
 declare(strict_types=1);
 
-namespace Chiptune\Site;
+namespace Chiptune\Site\Renderer;
 
+use Chiptune\Common\Url;
 use Chiptune\Format\Credit;
 use Chiptune\Format\Set;
 use Chiptune\Format\Song;
 use Chiptune\Format\Track;
+use Chiptune\Site\Renderer;
 
 /**
  * Das Gemeinsame aller Seiten: Kopf, Fuß, Rahmen und kleine Bausteine.

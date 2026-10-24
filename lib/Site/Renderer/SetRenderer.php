@@ -2,10 +2,12 @@
 
 declare(strict_types=1);
 
-namespace Chiptune\Site;
+namespace Chiptune\Site\Renderer;
 
 use Chiptune\Format\SetPart;
 use Chiptune\Format\Track;
+use Chiptune\Site\Entry;
+use Chiptune\Site\EntryKind;
 
 /**
  * Rendert die Seite eines Sets oder Albums mit den Abschnitten.

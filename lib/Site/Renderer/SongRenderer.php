@@ -2,11 +2,12 @@
 
 declare(strict_types=1);
 
-namespace Chiptune\Site;
+namespace Chiptune\Site\Renderer;
 
 use Chiptune\Format\Media;
 use Chiptune\Format\Song;
 use Chiptune\Format\Track;
+use Chiptune\Site\Entry;
 
 /**
  * Rendert die Seite eines Songs und die JSON-Daten für den Player.

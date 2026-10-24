@@ -2,10 +2,11 @@
 
 declare(strict_types=1);
 
-namespace Chiptune\Site;
+namespace Chiptune\Site\Builder;
 
 use Chiptune\Common\BuildError;
 use Chiptune\Common\HtmlSanitizer;
+use Chiptune\Site\Entry;
 use Tempest\Markdown\Markdown;
 
 /**

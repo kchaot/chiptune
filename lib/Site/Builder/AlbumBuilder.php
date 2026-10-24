@@ -2,12 +2,16 @@
 
 declare(strict_types=1);
 
-namespace Chiptune\Site;
+namespace Chiptune\Site\Builder;
 
 use Chiptune\Common\BuildError;
 use Chiptune\Common\HtmlSanitizer;
+use Chiptune\Format\Set;
 use Chiptune\Format\SetParser;
 use Chiptune\Format\Song;
+use Chiptune\Site\Entry;
+use Chiptune\Site\EntryKind;
+use Chiptune\Site\Library;
 use Tempest\Markdown\Markdown;
 
 /**
