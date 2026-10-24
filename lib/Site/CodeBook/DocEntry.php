@@ -2,7 +2,9 @@
 
 declare(strict_types=1);
 
-namespace Chiptune\Site;
+namespace Chiptune\Site\CodeBook;
+
+use Chiptune\Site\Renderer;
 
 /**
  * Die Beschreibung einer Klasse für die Code-Übersicht.

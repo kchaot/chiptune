@@ -23,7 +23,7 @@ interface Described
 
     public string $notesHtml { get; }
 
-    /** @var list<array{prefix: string, slug: string, title: string}> */
+    /** @var list<Credit> */
     public array $credits { get; }
 
     /** @var list<string> */

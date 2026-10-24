@@ -3,7 +3,7 @@
 
 declare(strict_types=1);
 
-use Chiptune\Site\CodeDocs;
+use Chiptune\Site\CodeBook\CodeDocs;
 
 $root = dirname(__DIR__);
 

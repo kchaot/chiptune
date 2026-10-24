@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Chiptune\Format;
 
+use Chiptune\Format\Set\SetPart;
+
 /**
  * Ein Set oder Album: mehrere Songs hintereinander, mit Gesamtdauer.
  *
@@ -14,7 +16,7 @@ final readonly class Set implements Described
     /**
      * @param list<string> $tags
      * @param list<SetPart> $parts
-     * @param list<array{prefix: string, slug: string, title: string}> $credits
+     * @param list<Credit> $credits
      * @param list<string> $warnings
      */
     public function __construct(

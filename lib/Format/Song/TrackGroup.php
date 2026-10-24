@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Chiptune\Format;
+namespace Chiptune\Format\Song;
 
 /**
  * Fasst die Tracks zusammen, die ein Layer-Song aus demselben Quell-Song übernommen hat.

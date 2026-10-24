@@ -2,7 +2,11 @@
 
 declare(strict_types=1);
 
-namespace Chiptune\Format;
+namespace Chiptune\Format\Set;
+
+use Chiptune\Format\Set;
+use Chiptune\Format\Song;
+use Chiptune\Format\Song\Track;
 
 /**
  * Ein Abschnitt eines Sets: ein Song oder ein Ausschnitt davon, der `repeat`-mal gespielt wird.

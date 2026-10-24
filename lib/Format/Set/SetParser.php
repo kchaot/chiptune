@@ -2,10 +2,15 @@
 
 declare(strict_types=1);
 
-namespace Chiptune\Format;
+namespace Chiptune\Format\Set;
 
 use Chiptune\Common\BuildError;
 use Chiptune\Common\HtmlSanitizer;
+use Chiptune\Format\Credit;
+use Chiptune\Format\Fields;
+use Chiptune\Format\Set;
+use Chiptune\Format\Song;
+use Chiptune\Format\Song\ClipParser;
 use Tempest\Markdown\Markdown;
 
 /**
@@ -16,12 +21,10 @@ use Tempest\Markdown\Markdown;
  */
 final class SetParser
 {
-    public const FORMAT = 1;
     public const MAX_BYTES = 65_536;
     public const MAX_PARTS = 32;
 
     public function __construct(
-        private readonly SongParser $songs,
         private readonly Markdown $markdown = new Markdown(null),
         private readonly HtmlSanitizer $sanitizer = new HtmlSanitizer(),
     ) {}
@@ -31,29 +34,15 @@ final class SetParser
      */
     public function parse(string $source, string $fallbackTitle, \Closure $resolve): Set
     {
-        if (strlen($source) > self::MAX_BYTES) {
-            throw new BuildError(sprintf('Die Datei ist größer als %d KB.', self::MAX_BYTES / 1024));
-        }
+        Fields::size($source, self::MAX_BYTES);
 
-        $chunks = [];
-
-        foreach ($this->markdown->parseMany($source, 'song', 'part') as $chunk) {
-            $chunks[] = $chunk;
-        }
-
-        $head = null;
-
-        if ($chunks !== [] && ($chunks[0]->name === null || $chunks[0]->name === 'song-1')) {
-            $head = array_shift($chunks);
-        }
+        [$head, $chunks] = Fields::blocks($this->markdown, $source, 'part');
 
         /** @var array<string, mixed> $meta */
 
         $meta = $head->frontmatter ?? [];
 
-        if (($meta['format'] ?? self::FORMAT) !== self::FORMAT) {
-            throw new BuildError('Nicht unterstütztes format: ' . (string) json_encode($meta['format']) . '. Unterstützt wird format: ' . self::FORMAT . '.');
-        }
+        Fields::version($meta);
 
         if ($chunks === []) {
             throw new BuildError('Keine Parts gefunden. Jeder Part beginnt mit einem Marker <!-- part: prefix/slug -->.');
@@ -63,7 +52,7 @@ final class SetParser
             throw new BuildError(sprintf('Mehr als %d Parts.', self::MAX_PARTS));
         }
 
-        $loop = $this->songs->flag($meta, 'loop', false, 'Set');
+        $loop = Fields::flag($meta, 'loop', false, 'Set');
 
         $parts = [];
         $credits = [];
@@ -73,27 +62,16 @@ final class SetParser
             $ref = trim((string) $chunk->name);
             $where = 'Part ' . ($index + 1) . " („{$ref}“)";
 
-            $m = [];
-            if (preg_match('/^([a-z0-9][a-z0-9-]*)\/([a-z0-9][a-z0-9-]*(?:\/[a-z0-9][a-z0-9-]*)?)$/', $ref, $m) !== 1) {
-                throw new BuildError("{$where}: Der Marker muss die Form <!-- part: prefix/slug --> haben.");
-            }
+            Fields::marker($ref, $where, 'part');
 
             $resolved = $resolve($ref);
             $song = $resolved['song'];
             /** @var array<string, mixed> $fm */
             $fm = $chunk->frontmatter;
 
-            $unknown = array_diff(array_keys($fm), ['bars', 'repeat']);
+            Fields::keys($fm, ['bars', 'repeat'], $where);
 
-            if ($unknown !== []) {
-                throw new BuildError("{$where}: unbekannter Schlüssel „" . implode('“, „', array_map('strval', $unknown)) . '“ (erlaubt: bars, repeat).');
-            }
-
-            $repeat = $fm['repeat'] ?? 1;
-
-            if (!is_int($repeat) || $repeat < 1 || $repeat > SongParser::MAX_REPEAT) {
-                throw new BuildError("{$where}: „repeat“ muss eine ganze Zahl von 1 bis " . SongParser::MAX_REPEAT . ' sein.');
-            }
+            $repeat = Fields::integer($fm['repeat'] ?? 1, "{$where}: „repeat“", 1, ClipParser::MAX_REPEAT);
 
             $bar = $song->stepsPerBar;
             $startBar = 1;
@@ -101,7 +79,7 @@ final class SetParser
             $stop = $song->steps;
 
             if (isset($fm['bars'])) {
-                [$startBar, $endBar] = $this->songs->range($fm['bars'], "{$where}: „bars“");
+                [$startBar, $endBar] = Fields::range($fm['bars'], "{$where}: „bars“");
 
                 $start = ($startBar - 1) * $bar;
                 $stop = $endBar * $bar;
@@ -133,10 +111,10 @@ final class SetParser
                 notesHtml: $this->sanitizer->clean($chunk->html),
             );
 
-            $credits[$ref] = ['prefix' => $resolved['prefix'], 'slug' => $resolved['slug'], 'title' => $song->title];
+            $credits[$ref] = new Credit($resolved['prefix'], $resolved['slug'], $song->title);
         }
 
-        $info = $this->songs->describe($meta, $fallbackTitle);
+        $info = Fields::describe($meta, $fallbackTitle);
 
         return new Set(
             title: $info['title'],

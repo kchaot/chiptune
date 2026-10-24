@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Chiptune\Format;
 
+use Chiptune\Format\Media\ReleaseInfo;
+
 /**
  * Audio und Bilder zu einem Song oder Link.
  *

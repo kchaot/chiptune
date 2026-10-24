@@ -40,5 +40,4 @@ jobs:
         run: php bin/build.php
 
       - name: Ausgabe mit dem Zielzweig vergleichen (nur Information)
-        continue-on-error: true
-        run: php bin/compare.php origin/${{ github.base_ref }}
+        run: php bin/compare.php --info origin/${{ github.base_ref }}

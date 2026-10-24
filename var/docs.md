@@ -58,10 +58,10 @@ Diese Schlüssel kennen alle Typen (ein Album nur `title`, `artist`, `group` und
 | --- | --- | --- |
 | `format` | Version des Formats | nur `1` |
 | `kind` | Dateityp, siehe oben | |
-| `title` | Titel | bis {{SongParser::MAX_TITLE}} Zeichen, sonst der Dateiname |
-| `artist` | Künstler | bis {{SongParser::MAX_ARTIST}} Zeichen |
-| `group` | Gruppe | bis {{SongParser::MAX_GROUP}} Zeichen |
-| `tags` | Schlagworte | höchstens {{SongParser::MAX_TAGS}}, je Buchstaben, Ziffern, Leerzeichen, Bindestrich, bis 24 Zeichen |
+| `title` | Titel | bis {{Fields::MAX_TITLE}} Zeichen, sonst der Dateiname |
+| `artist` | Künstler | bis {{Fields::MAX_ARTIST}} Zeichen |
+| `group` | Gruppe | bis {{Fields::MAX_GROUP}} Zeichen |
+| `tags` | Schlagworte | höchstens {{Fields::MAX_TAGS}}, je Buchstaben, Ziffern, Leerzeichen, Bindestrich, bis 24 Zeichen |
 
 Wahrheitswerte (`loop`, `auto`, `remix`) sind echtes `true` oder `false`, nichts anderes.
 
@@ -95,7 +95,7 @@ Marker `<!-- track: name -->`, der Name hat 1 bis 32 Zeichen ohne `< > & "`. Hö
 | `volume` | Lautstärke | 0 bis 1 | 0,2 (Drums 0,3) |
 | `gate` | Anteil der Notenlänge, der klingt | 0,05 bis 1 | 0,9 |
 | `pw` | Pulsbreite (bei `pulse`) | 0,05 bis 0,5 | 0,25 |
-| `clips` | Teile aus anderen Songs | 1 bis {{SongParser::MAX_CLIPS}} Einträge | |
+| `clips` | Teile aus anderen Songs | 1 bis {{ClipParser::MAX_CLIPS}} Einträge | |
 
 ### Steps und Takt
 
@@ -142,9 +142,9 @@ Ein Clip kopiert Noten einer Spur aus einem anderen Song. Er steht in der Frontm
 | --- | --- | --- |
 | `from` | `prefix/name#spur` | Pflicht |
 | `bars` oder `steps` | Ausschnitt, Zahl oder Bereich wie `3-6` | nicht beides |
-| `at` oder `at-step` | Ziel im Takt oder im Step | 1 bis {{SongParser::MAX_AT}}, nicht beides. Ohne Angabe direkt hinter dem Vorigen |
-| `transpose` | Halbtöne | −{{SongParser::MAX_TRANSPOSE}} bis {{SongParser::MAX_TRANSPOSE}}, nicht bei Drums |
-| `repeat` | Wiederholungen | 1 bis {{SongParser::MAX_REPEAT}} |
+| `at` oder `at-step` | Ziel im Takt oder im Step | 1 bis {{ClipParser::MAX_AT}}, nicht beides. Ohne Angabe direkt hinter dem Vorigen |
+| `transpose` | Halbtöne | −{{ClipParser::MAX_TRANSPOSE}} bis {{ClipParser::MAX_TRANSPOSE}}, nicht bei Drums |
+| `repeat` | Wiederholungen | 1 bis {{ClipParser::MAX_REPEAT}} |
 
 `at_step` ist der alte Name von `at-step` und gilt weiter. Passt das Raster der Quelle nicht zum Raster des Songs, meldet der Build das. Ganze Takte gehen immer.
 
@@ -152,16 +152,16 @@ Ein Clip kopiert Noten einer Spur aus einem anderen Song. Er steht in der Frontm
 
 Gelesen ebenfalls von [SongParser](#songparser), das Ergebnis enthält [SongLayer](#songlayer)s.
 
-Mehrere Songs übereinander. Jeder Block ist ein Layer, Marker `<!-- layer: prefix/name -->`. Höchstens {{SongParser::MAX_LAYERS}} Layer und {{SongParser::MAX_LAYER_TRACKS}} Spuren insgesamt. Der Kopf ist der des Songs. `bpm` ist standardmäßig das Tempo des ersten Layers, `grid` das gemeinsame Raster der Layer (höchstens {{SongParser::GRID_MAX}}).
+Mehrere Songs übereinander. Jeder Block ist ein Layer, Marker `<!-- layer: prefix/name -->`. Höchstens {{LayerParser::MAX_LAYERS}} Layer und {{LayerParser::MAX_LAYER_TRACKS}} Spuren insgesamt. Der Kopf ist der des Songs. `bpm` ist standardmäßig das Tempo des ersten Layers, `grid` das gemeinsame Raster der Layer (höchstens {{SongParser::GRID_MAX}}).
 
 | Schlüssel im Layer | Bedeutung | Grenzen | Standard |
 | --- | --- | --- | --- |
 | `name` | Anzeigename | 1 bis 32 Zeichen | Titel des Quell-Songs |
 | `tracks` | Auswahl der Spuren (Liste von Spurnamen) | | alle |
-| `at` | Start im Takt | 1 bis {{SongParser::MAX_AT}} | 1 |
+| `at` | Start im Takt | 1 bis {{ClipParser::MAX_AT}} | 1 |
 | `bars` | Ausschnitt | Zahl oder Bereich | alles |
-| `repeat` | Wiederholungen oder `fill` | 1 bis {{SongParser::MAX_REPEAT}} | 1 |
-| `transpose` | Halbtöne | −{{SongParser::MAX_TRANSPOSE}} bis {{SongParser::MAX_TRANSPOSE}} | 0 |
+| `repeat` | Wiederholungen oder `fill` | 1 bis {{ClipParser::MAX_REPEAT}} | 1 |
+| `transpose` | Halbtöne | −{{ClipParser::MAX_TRANSPOSE}} bis {{ClipParser::MAX_TRANSPOSE}} | 0 |
 
 Mindestens ein Layer braucht eine feste Länge, also nicht `fill`.
 
@@ -187,7 +187,7 @@ Ein Set spielt Songs nacheinander. Jeder Abschnitt hat den Marker `<!-- part: pr
 | Schlüssel | Bedeutung | Grenzen | Standard |
 | --- | --- | --- | --- |
 | `bars` | Ausschnitt | Zahl oder Bereich wie `1-8` | alles |
-| `repeat` | Wiederholungen | 1 bis {{SongParser::MAX_REPEAT}} | 1 |
+| `repeat` | Wiederholungen | 1 bis {{ClipParser::MAX_REPEAT}} | 1 |
 
 ```markdown
 ---
@@ -286,13 +286,16 @@ php bin/docs.php --check           # Klassen ohne Beschreibung? Dann Code 1
 
 ## compare.php
 
-Baut einen Git-Stand (Standard: `HEAD`) und den Arbeitsstand und vergleicht jede Ausgabedatei per SHA-1. Code 0 heißt: Die Seite ist bitgleich. So lässt sich nach einem Umbau zeigen, dass sich die Ausgabe nicht geändert hat.
+Baut einen Git-Stand (Standard: `HEAD`) und den Arbeitsstand und vergleicht jede Ausgabedatei per SHA-1. Code 0 heißt: Die Seite ist bitgleich, Code 1: Es gibt Unterschiede. So lässt sich nach einem Umbau zeigen, dass sich die Ausgabe nicht geändert hat.
 
 ```bash
 php bin/build.php --local-only     # legt .cache/sources an, falls es fehlt
 php bin/compare.php                # Arbeitsstand gegen HEAD
 php bin/compare.php origin/main    # gegen den Stand auf main
+php bin/compare.php --info origin/main   # Unterschiede nur melden, Code bleibt 0
 ```
+
+Mit `--info` endet der Vergleich auch bei Unterschieden mit Code 0. Die CI nutzt das: Der Schritt bleibt grün und zeigt in GitHub nur einen Hinweis. Echte Fehler (Bau schlägt fehl, Stand fehlt) enden weiter mit Code 2.
 
 ## pull.sh
 
@@ -364,17 +367,23 @@ group: Verzeichnisse
 ---
 Der gesamte PHP-Code liegt unter `lib/`, in drei Ordnern. Die Richtung ist **IN → OUT**: Das Format liest, die Site baut, und Gemeinsames brauchen beide. Format und Gemeinsames kennen die Site nicht. Was die Parser lesen, beschreibt der Tab [Songformat](#tab-songformat).
 
+Die Ordner folgen einer Regel: Die Klasse in der Wurzel eines Ordners ist der Einstieg, der gleichnamige Unterordner enthält ihre Helfer, zum Beispiel `Format/Song.php` und `Format/Song/`. Auf dieser Seite steht jede Klasse direkt vor ihren Helfern.
+
 ## Das Format (IN)
 
 Liest Markdown und macht daraus unveränderliche Value Objects. Es kennt weder Seiten noch Dateisystem und ließe sich als eigenes Paket herauslösen.
+
+Jeder Dateityp hat seine Wurzelklasse und einen Ordner mit Parsern und Teilen: `Song` (mit `Song/`: Spuren, Layer, Clips und der Zusammenbau), `Set`, `Session`, `Link` und `Media` (Aufnahmen und Veröffentlichung). Was alle Typen teilen, liegt in der Wurzel: `Fields` (die gemeinsamen Prüfungen), `Credit` und `Described`.
 
 ## Die Site (OUT)
 
 Die Referenz-Implementierung: Sie holt die Quellen, baut daraus die Seite und rendert sie. Eine andere Ausgabe könnte dieselben Value Objects anders verwenden.
 
+Drei Einstiege: `Builder` (der Ablauf, mit `Builder/`: Einstellungen, Assets, Einlesen, Alben, Fehlersammler), `Renderer` (mit `Renderer/`: eine Klasse je Seitenart, dazu `PageRenderer` mit dem Gemeinsamen) und `CodeBook` (diese Seite, mit `CodeBook/`: die Klassenbeschreibungen). `Library` und `Sources` holen und lesen die Dateien der Quellen.
+
 ## Gemeinsames
 
-Was Format und Site beide brauchen: Fehler beim Bauen und das Säubern von HTML.
+Was Format und Site beide brauchen: Fehler beim Bauen, das Säubern von HTML, das Schreiben von Dateien und Adressen.
 
 <!-- next: var -->
 ---

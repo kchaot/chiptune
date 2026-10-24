@@ -2,14 +2,18 @@
 
 declare(strict_types=1);
 
-namespace Chiptune\Site;
+namespace Chiptune\Site\CodeBook;
 
+use FilesystemIterator;
+use RecursiveDirectoryIterator;
+use RecursiveIteratorIterator;
 use ReflectionClass;
 use ReflectionClassConstant;
 use ReflectionMethod;
 use ReflectionParameter;
 use ReflectionProperty;
 use ReflectionType;
+use SplFileInfo;
 
 /**
  * Sammelt die Klassenbeschreibungen aus `lib/` zu einer Code-Übersicht.
@@ -111,8 +115,17 @@ final class CodeDocs
     {
         $found = [];
 
-        foreach (glob("{$this->root}/lib/{$area}/*.php") ?: [] as $file) {
-            $name = "Chiptune\\{$area}\\" . basename($file, '.php');
+        $base = "{$this->root}/lib/{$area}";
+        $files = is_dir($base) ? new RecursiveIteratorIterator(new RecursiveDirectoryIterator($base, FilesystemIterator::SKIP_DOTS)) : [];
+
+        foreach ($files as $file) {
+            /** @var SplFileInfo $file */
+            if ($file->getExtension() !== 'php') {
+                continue;
+            }
+
+            $path = substr($file->getPathname(), strlen($base) + 1, -4);
+            $name = "Chiptune\\{$area}\\" . str_replace('/', '\\', $path);
 
             if (class_exists($name) || interface_exists($name) || enum_exists($name)) {
                 $found[] = $name;

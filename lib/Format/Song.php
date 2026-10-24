@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 namespace Chiptune\Format;
 
+use Chiptune\Format\Song\SongLayer;
+use Chiptune\Format\Song\Track;
+
 /**
  * Ein Song: Tracks mit Noten auf einem festen Raster.
  *
@@ -18,7 +21,7 @@ final readonly class Song implements Described
      * @param list<string> $tags
      * @param list<Track> $tracks
      * @param list<string> $warnings
-     * @param list<array{prefix: string, slug: string, title: string}> $credits
+     * @param list<Credit> $credits
      * @param list<SongLayer> $layers
      */
     public function __construct(
