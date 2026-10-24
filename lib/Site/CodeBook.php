@@ -13,11 +13,13 @@ use Tempest\Markdown\Markdown;
  * Liest `var/docs.md`, den handgeschriebenen Teil der Code-Übersicht.
  *
  * Die Datei ist ein Multi-Content-Markdown: Alles vor dem ersten `<!-- next: name -->` ist die Einleitung,
- * jedes weitere Dokument ein Tab mit `title` in der Frontmatter. Eine `##`-Überschrift, die wie ein Ordner
+ * jedes weitere Dokument ein Tab mit `title` in der Frontmatter. Optional: `group` (höchstens 24 Zeichen) fasst
+ * aufeinanderfolgende Tabs unter einer Beschriftung zusammen, `featured: true` hebt einen Tab hervor (höchstens einen). Eine `##`-Überschrift, die wie ein Ordner
  * unter `lib/` heißt (oder wie dessen Titel in `CodeDocs::AREAS`), bekommt später die Klassen dieses Ordners
  * darunter. Ordner, die in der Datei fehlen, hängt das Buch am Ende des Tabs `lib` automatisch an.
  *
- * Code in Fenced Blocks wird gefärbt. Eine Zeile `<!-- code: var/resources/player.js#tone -->` holt einen
+ * Zahlen aus den Parsern setzt `{{SongParser::MAX_TRACKS}}` ein (mit `|kb` als Kilobyte), damit der Text nicht
+ * vom Code abweicht. Code in Fenced Blocks wird gefärbt. Eine Zeile `<!-- code: var/resources/player.js#tone -->` holt einen
  * Ausschnitt live aus der Datei: Dort steht er zwischen `// docs: tone` und `// docs-end`. Ohne `#name`
  * kommt eine kleine Beispieldatei ganz (zum Beispiel aus `var/songs/`). Danach dürfen `lines` (Zeilennummern, bei Ausschnitten mit
  * den echten Zeilen der Datei) und `fold` (eingeklappt) stehen.
@@ -34,7 +36,7 @@ final class CodeBook
      * @return array{
      *     title: string,
      *     intro: string,
-     *     tabs: list<array{slug: string, title: string, html: string, sections: list<array{area: string|null, title: string, html: string}>}>
+     *     tabs: list<array{slug: string, title: string, group: string|null, featured: bool, html: string, sections: list<array{area: string|null, title: string, html: string}>}>
      * }
      */
     public function read(): array
@@ -53,6 +55,22 @@ final class CodeBook
 
         $sanitizer = new HtmlSanitizer();
         $chunks = [];
+        $content = (string) preg_replace_callback(
+            '/\{\{(\w+)::(\w+)(\|kb)?\}\}/',
+            function (array $match): string {
+                $name = "Chiptune\\Format\\{$match[1]}::{$match[2]}";
+
+                if (!defined($name) || !is_int(constant($name))) {
+                    throw new BuildError("var/docs.md: {$match[1]}::{$match[2]} ist keine Zahl-Konstante in lib/Format.");
+                }
+
+                $value = (int) constant($name);
+
+                return (string) (($match[3] ?? '') === '|kb' ? intdiv($value, 1024) : $value);
+            },
+            $content,
+        );
+
         $blocks = [];
         $content = (string) preg_replace_callback(
             '/^<!-- code: ([^\s#]+)(?:#([a-z0-9-]+))?((?: (?:lines|fold))*) -->[ \t]*$/m',
@@ -105,9 +123,30 @@ final class CodeBook
                 throw new BuildError("var/docs.md: Tab „{$slug}“ braucht einen „title“ bis 30 Zeichen.");
             }
 
-            [$html, $sections] = $this->split($fill($sanitizer->clean($chunk->html)));
-            $tabs[$slug] = ['slug' => $slug, 'title' => trim($tabTitle), 'html' => $html, 'sections' => $sections];
+            $group = $chunk->frontmatter['group'] ?? null;
+
+            if ($group !== null && (!is_string($group) || trim($group) === '' || mb_strlen($group) > 24)) {
+                throw new BuildError("var/docs.md: Tab „{$slug}“: „group“ muss ein Text bis 24 Zeichen sein.");
+            }
+
+            $featured = $chunk->frontmatter['featured'] ?? false;
+
+            if (!is_bool($featured) && $featured !== 'true' && $featured !== 'false') {
+                throw new BuildError("var/docs.md: Tab „{$slug}“: „featured“ muss true oder false sein.");
+            }
+
+            [$html, $sections] = $this->split($this->anchors($fill($sanitizer->clean($chunk->html)), $slug));
+            $tabs[$slug] = [
+                'slug' => $slug,
+                'title' => trim($tabTitle),
+                'group' => $group === null ? null : trim($group),
+                'featured' => $featured === true || $featured === 'true',
+                'html' => $html,
+                'sections' => $sections,
+            ];
         }
+
+        $this->checkTabs($tabs);
 
         $tabs = $this->appendMissingAreas($tabs);
 
@@ -211,9 +250,61 @@ final class CodeBook
         return null;
     }
 
+    private function anchors(string $html, string $tab): string
+    {
+        $seen = [];
+
+        return (string) preg_replace_callback(
+            '~<(h[23])>(.*?)</\1>~s',
+            static function (array $match) use ($tab, &$seen): string {
+                $text = html_entity_decode(strip_tags($match[2]), ENT_QUOTES | ENT_HTML5, 'UTF-8');
+                $text = strtr(mb_strtolower($text), ['ä' => 'ae', 'ö' => 'oe', 'ü' => 'ue', 'ß' => 'ss']);
+                $slug = trim((string) preg_replace('/[^a-z0-9]+/', '-', $text), '-');
+                $id = $tab . '-' . ($slug === '' ? 'abschnitt' : $slug);
+                $seen[$id] = ($seen[$id] ?? 0) + 1;
+
+                if ($seen[$id] > 1) {
+                    $id .= '-' . $seen[$id];
+                }
+
+                return '<' . $match[1] . ' id="' . $id . '">' . $match[2] . '</' . $match[1] . '>';
+            },
+            $html,
+        );
+    }
+
     /**
-     * @param array<string, array{slug: string, title: string, html: string, sections: list<array{area: string|null, title: string, html: string}>}> $tabs
-     * @return array<string, array{slug: string, title: string, html: string, sections: list<array{area: string|null, title: string, html: string}>}>
+     * @param array<string, array{slug: string, title: string, group: string|null, featured: bool, html: string, sections: list<array{area: string|null, title: string, html: string}>}> $tabs
+     */
+    private function checkTabs(array $tabs): void
+    {
+        $featured = array_filter($tabs, static fn(array $tab): bool => $tab['featured']);
+
+        if (count($featured) > 1) {
+            throw new BuildError('var/docs.md: Nur ein Tab darf „featured“ sein.');
+        }
+
+        $seen = [];
+        $last = null;
+
+        foreach ($tabs as $tab) {
+            $group = $tab['group'];
+
+            if ($group !== null && $group !== $last && isset($seen[$group])) {
+                throw new BuildError("var/docs.md: Die Gruppe „{$group}“ muss aus aufeinanderfolgenden Tabs bestehen.");
+            }
+
+            if ($group !== null) {
+                $seen[$group] = true;
+            }
+
+            $last = $group;
+        }
+    }
+
+    /**
+     * @param array<string, array{slug: string, title: string, group: string|null, featured: bool, html: string, sections: list<array{area: string|null, title: string, html: string}>}> $tabs
+     * @return array<string, array{slug: string, title: string, group: string|null, featured: bool, html: string, sections: list<array{area: string|null, title: string, html: string}>}>
      */
     private function appendMissingAreas(array $tabs): array
     {

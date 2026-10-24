@@ -63,11 +63,7 @@ final class SetParser
             throw new BuildError(sprintf('Mehr als %d Parts.', self::MAX_PARTS));
         }
 
-        $loop = filter_var($meta['loop'] ?? false, FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE);
-
-        if ($loop === null) {
-            throw new BuildError('Set: „loop“ muss true oder false sein.');
-        }
+        $loop = $this->songs->flag($meta, 'loop', false, 'Set');
 
         $parts = [];
         $credits = [];
@@ -95,8 +91,8 @@ final class SetParser
 
             $repeat = $fm['repeat'] ?? 1;
 
-            if (!is_int($repeat) || $repeat < 1 || $repeat > 16) {
-                throw new BuildError("{$where}: „repeat“ muss eine ganze Zahl von 1 bis 16 sein.");
+            if (!is_int($repeat) || $repeat < 1 || $repeat > SongParser::MAX_REPEAT) {
+                throw new BuildError("{$where}: „repeat“ muss eine ganze Zahl von 1 bis " . SongParser::MAX_REPEAT . ' sein.');
             }
 
             $bar = $song->stepsPerBar;
@@ -105,19 +101,7 @@ final class SetParser
             $stop = $song->steps;
 
             if (isset($fm['bars'])) {
-                $value = is_int($fm['bars']) ? (string) $fm['bars'] : $fm['bars'];
-
-                $r = [];
-                if (!is_string($value) || preg_match('/^\s*(\d{1,4})\s*(?:-\s*(\d{1,4}))?\s*$/', $value, $r) !== 1) {
-                    throw new BuildError("{$where}: „bars“ muss eine Zahl oder ein Bereich wie 1-8 sein.");
-                }
-
-                $startBar = (int) $r[1];
-                $endBar = isset($r[2]) && $r[2] !== '' ? (int) $r[2] : $startBar;
-
-                if ($startBar < 1 || $endBar < $startBar) {
-                    throw new BuildError("{$where}: „bars“ muss bei 1 beginnen und aufsteigen.");
-                }
+                [$startBar, $endBar] = $this->songs->range($fm['bars'], "{$where}: „bars“");
 
                 $start = ($startBar - 1) * $bar;
                 $stop = $endBar * $bar;

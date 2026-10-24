@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Chiptune\Site;
 
+use Chiptune\Common\BuildError;
 use Chiptune\Format\Media;
 use Chiptune\Format\Session;
 use Chiptune\Format\Set;
@@ -1046,7 +1047,7 @@ final class Renderer
      * @param array{
      *     title: string,
      *     intro: string,
-     *     tabs: list<array{slug: string, title: string, html: string, sections: list<array{area: string|null, title: string, html: string}>}>
+     *     tabs: list<array{slug: string, title: string, group: string|null, featured: bool, html: string, sections: list<array{area: string|null, title: string, html: string}>}>
      * } $book
      * @param array<string, list<DocEntry>> $areas
      */
@@ -1057,17 +1058,6 @@ final class Renderer
         $tabs = '';
 
         foreach ($book['tabs'] as $index => $tab) {
-            $bar = '';
-
-            foreach ($book['tabs'] as $other) {
-                $bar .= sprintf(
-                    '<a href="#tab-%s"%s>%s</a>',
-                    $this->e($other['slug']),
-                    $other['slug'] === $tab['slug'] ? ' class="current" aria-current="page"' : '',
-                    $this->e($other['title']),
-                );
-            }
-
             $body = $tab['html'];
 
             foreach ($tab['sections'] as $section) {
@@ -1078,10 +1068,12 @@ final class Renderer
                 "\n    <section class=\"code-tab%s\" id=\"tab-%s\"><nav class=\"tabs\" aria-label=\"Bereiche\">%s</nav><div class=\"doc-text\">%s</div></section>",
                 $index === 0 ? ' first' : '',
                 $this->e($tab['slug']),
-                $bar,
+                $this->codeTabBar($book['tabs'], $tab['slug']),
                 $body,
             );
         }
+
+        $this->checkCodeLinks($tabs);
 
         return $this->page($book['title'] . ' – ' . $this->site['title'], 'library code-page', <<<HTML
               {$head}
@@ -1105,6 +1097,48 @@ final class Renderer
                 openTarget();
               </script>
             HTML, false, false, false);
+    }
+
+    /**
+     * @param list<array{slug: string, title: string, group: string|null, featured: bool, html: string, sections: list<array{area: string|null, title: string, html: string}>}> $tabs
+     */
+    private function codeTabBar(array $tabs, string $current): string
+    {
+        $bar = '';
+        $open = null;
+
+        foreach ($tabs as $tab) {
+            if ($tab['group'] !== $open) {
+                $bar .= $open === null ? '' : '</span>';
+                $bar .= $tab['group'] === null ? '' : '<span class="tab-group"><span class="tab-group-label">' . $this->e($tab['group']) . '</span>';
+                $open = $tab['group'];
+            }
+
+            $classes = trim(($tab['featured'] ? 'featured ' : '') . ($tab['slug'] === $current ? 'current' : ''));
+            $bar .= sprintf(
+                '<a href="#tab-%s"%s%s>%s</a>',
+                $this->e($tab['slug']),
+                $classes === '' ? '' : ' class="' . $classes . '"',
+                $tab['slug'] === $current ? ' aria-current="page"' : '',
+                $this->e($tab['title']),
+            );
+        }
+
+        return $bar . ($open === null ? '' : '</span>');
+    }
+
+    private function checkCodeLinks(string $html): void
+    {
+        $ids = [];
+        $links = [];
+        preg_match_all('/\sid="([^"]+)"/', $html, $ids);
+        preg_match_all('/\shref="#([^"]+)"/', $html, $links);
+
+        $missing = array_diff(array_unique($links[1]), $ids[1]);
+
+        if ($missing !== []) {
+            throw new BuildError('var/docs.md: Verweis ins Leere: #' . implode(', #', $missing));
+        }
     }
 
     /**

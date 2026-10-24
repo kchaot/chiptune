@@ -80,11 +80,7 @@ final class SessionParser
             throw new BuildError("Session: „start“ ist der Takt von Deck A, auf dem Deck B einsteigt, eine ganze Zahl von 1 bis {$decks['a']->bars}.");
         }
 
-        $auto = filter_var($meta['auto'] ?? true, FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE);
-
-        if ($auto === null) {
-            throw new BuildError('Session: „auto“ muss true oder false sein.');
-        }
+        $auto = $this->songs->flag($meta, 'auto', true, 'Session');
 
         $fader = $meta['fader'] ?? 50;
 

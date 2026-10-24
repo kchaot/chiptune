@@ -24,6 +24,20 @@ final class SongParser
     public const MAX_STEPS = 4096;
     public const MAX_LAYERS = 8;
     public const MAX_LAYER_TRACKS = 32;
+    public const MAX_CLIPS = 16;
+    public const MAX_REPEAT = 64;
+    public const MAX_AT = 4096;
+    public const MAX_TRANSPOSE = 36;
+    public const MAX_TAGS = 6;
+    public const MAX_TITLE = 80;
+    public const MAX_ARTIST = 60;
+    public const MAX_GROUP = 40;
+    public const BPM_MIN = 20;
+    public const BPM_MAX = 300;
+    public const BPM_DEFAULT = 120;
+    public const GRID_MIN = 4;
+    public const GRID_MAX = 64;
+    public const GRID_DEFAULT = 16;
 
     private const INSTRUMENTS = ['square', 'pulse', 'triangle', 'saw', 'sine', 'drums'];
     private const DRUMS = ['k', 's', 'c', 'h', 'o'];
@@ -88,8 +102,8 @@ final class SongParser
             throw new BuildError('Nicht unterstütztes format: ' . (string) json_encode($format) . '. Unterstützt wird format: ' . self::FORMAT . '.');
         }
 
-        $bpm = $this->number($meta, 'bpm', 120, 20, 300);
-        $grid = (int) $this->number($meta, 'grid', 16, 4, 64);
+        $bpm = $this->number($meta, 'bpm', self::BPM_DEFAULT, self::BPM_MIN, self::BPM_MAX);
+        $grid = (int) $this->number($meta, 'grid', self::GRID_DEFAULT, self::GRID_MIN, self::GRID_MAX);
 
         if (($grid % 4) !== 0) {
             throw new BuildError('Song: „grid“ muss durch 4 teilbar sein (zum Beispiel 8, 16 oder 32).');
@@ -146,11 +160,7 @@ final class SongParser
             $warnings[] = "Die Länge von {$steps} Steps ist kein ganzes Vielfaches von {$stepsPerBar} Steps pro Bar.";
         }
 
-        $loop = filter_var($meta['loop'] ?? true, FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE);
-
-        if ($loop === null) {
-            throw new BuildError('Song: „loop“ muss true oder false sein.');
-        }
+        $loop = $this->flag($meta, 'loop', true, 'Song');
 
         $info = $this->describe($meta, $fallbackTitle);
 
@@ -281,7 +291,7 @@ final class SongParser
             $repeat = $fm['repeat'] ?? 1;
 
             if ($repeat !== 'fill') {
-                $repeat = $this->integer($repeat, "{$where}: „repeat“", 1, 64);
+                $repeat = $this->integer($repeat, "{$where}: „repeat“", 1, self::MAX_REPEAT);
             }
 
             $layers[] = [
@@ -291,9 +301,9 @@ final class SongParser
                 'source' => $source,
                 'name' => $name,
                 'tracks' => array_values($selected),
-                'at' => isset($fm['at']) ? $this->integer($fm['at'], "{$where}: „at“", 1, 1024) : 1,
+                'at' => isset($fm['at']) ? $this->integer($fm['at'], "{$where}: „at“", 1, self::MAX_AT) : 1,
                 'bars' => $fm['bars'] ?? null,
-                'transpose' => isset($fm['transpose']) ? $this->integer($fm['transpose'], "{$where}: „transpose“", -36, 36) : 0,
+                'transpose' => isset($fm['transpose']) ? $this->integer($fm['transpose'], "{$where}: „transpose“", -self::MAX_TRANSPOSE, self::MAX_TRANSPOSE) : 0,
                 'repeat' => $repeat,
                 'where' => $where,
                 'description' => $this->sanitizer->clean($chunk->html),
@@ -302,10 +312,10 @@ final class SongParser
             ];
         }
 
-        $bpm = $this->number($meta, 'bpm', (float) $layers[0]['source']->bpm, 20, 300);
+        $bpm = $this->number($meta, 'bpm', (float) $layers[0]['source']->bpm, self::BPM_MIN, self::BPM_MAX);
 
         if (isset($meta['grid'])) {
-            $grid = (int) $this->number($meta, 'grid', 16, 4, 64);
+            $grid = (int) $this->number($meta, 'grid', self::GRID_DEFAULT, self::GRID_MIN, self::GRID_MAX);
 
             if (($grid % 4) !== 0) {
                 throw new BuildError('Layer-Song: „grid“ muss durch 4 teilbar sein (zum Beispiel 8, 16 oder 32).');
@@ -320,7 +330,7 @@ final class SongParser
                 $stepsPerBeat = intdiv($stepsPerBeat * $other, $this->gcd($stepsPerBeat, $other));
             }
 
-            if (($stepsPerBeat * 4) > 64) {
+            if (($stepsPerBeat * 4) > self::GRID_MAX) {
                 throw new BuildError(
                     'Die Raster der Layer (grid '
                     . implode(', ', array_map(fn(array $l): string => (string) ($l['source']->stepsPerBeat * 4), $layers))
@@ -557,8 +567,8 @@ final class SongParser
      */
     private function clips(mixed $clips, string $where, int $dstSpb, ?\Closure $resolve, string $owner, array &$credits): array
     {
-        if (!is_array($clips) || $clips === [] || !array_is_list($clips) || count($clips) > 16) {
-            throw new BuildError("{$where}: „clips“ muss eine Liste mit 1 bis 16 Einträgen sein.");
+        if (!is_array($clips) || $clips === [] || !array_is_list($clips) || count($clips) > self::MAX_CLIPS) {
+            throw new BuildError("{$where}: „clips“ muss eine Liste mit 1 bis " . self::MAX_CLIPS . ' Einträgen sein.');
         }
 
         if ($resolve === null) {
@@ -580,11 +590,11 @@ final class SongParser
                 throw new BuildError("{$label}: Ein Clip braucht Schlüssel wie from, bars und at.");
             }
 
-            $unknown = array_diff(array_keys($clip), ['from', 'bars', 'steps', 'at', 'at_step', 'transpose', 'repeat']);
+            $unknown = array_diff(array_keys($clip), ['from', 'bars', 'steps', 'at', 'at-step', 'at_step', 'transpose', 'repeat']);
 
             if ($unknown !== []) {
                 throw new BuildError(
-                    "{$label}: unbekannter Schlüssel „" . implode('“, „', array_map('strval', $unknown)) . '“ (erlaubt: from, bars, steps, at, at_step, transpose, repeat).',
+                    "{$label}: unbekannter Schlüssel „" . implode('“, „', array_map('strval', $unknown)) . '“ (erlaubt: from, bars, steps, at, at-step, transpose, repeat).',
                 );
             }
 
@@ -656,20 +666,26 @@ final class SongParser
 
             $length = intdiv(($stop - $start) * $dstSpb, $srcSpb);
 
-            if (isset($clip['at'], $clip['at_step'])) {
-                throw new BuildError("{$label}: „at“ und „at_step“ schließen sich aus.");
+            if (isset($clip['at_step'], $clip['at-step'])) {
+                throw new BuildError("{$label}: „at-step“ und „at_step“ sind derselbe Schlüssel (at_step ist der alte Name). Bitte nur „at-step“ verwenden.");
+            }
+
+            $atStep = $clip['at-step'] ?? $clip['at_step'] ?? null;
+
+            if (isset($clip['at']) && $atStep !== null) {
+                throw new BuildError("{$label}: „at“ und „at-step“ schließen sich aus.");
             }
 
             $at = $cursor;
 
             if (isset($clip['at'])) {
-                $at = ($this->integer($clip['at'], "{$label}: „at“", 1, 4096) - 1) * $dstBar;
-            } elseif (isset($clip['at_step'])) {
-                $at = $this->integer($clip['at_step'], "{$label}: „at_step“", 1, self::MAX_STEPS) - 1;
+                $at = ($this->integer($clip['at'], "{$label}: „at“", 1, self::MAX_AT) - 1) * $dstBar;
+            } elseif ($atStep !== null) {
+                $at = $this->integer($atStep, "{$label}: „at-step“", 1, self::MAX_STEPS) - 1;
             }
 
-            $repeat = isset($clip['repeat']) ? $this->integer($clip['repeat'], "{$label}: „repeat“", 1, 64) : 1;
-            $transpose = isset($clip['transpose']) ? $this->integer($clip['transpose'], "{$label}: „transpose“", -36, 36) : 0;
+            $repeat = isset($clip['repeat']) ? $this->integer($clip['repeat'], "{$label}: „repeat“", 1, self::MAX_REPEAT) : 1;
+            $transpose = isset($clip['transpose']) ? $this->integer($clip['transpose'], "{$label}: „transpose“", -self::MAX_TRANSPOSE, self::MAX_TRANSPOSE) : 0;
             $isDrums = $sourceTrack->isDrums();
 
             if ($isDrums && $transpose !== 0) {
@@ -719,7 +735,7 @@ final class SongParser
     }
 
     /** @return array{0: int, 1: int} */
-    private function range(mixed $value, string $where): array
+    public function range(mixed $value, string $where): array
     {
         if (is_int($value)) {
             $value = (string) $value;
@@ -802,9 +818,9 @@ final class SongParser
     public function describe(array $meta, string $fallbackTitle): array
     {
         return [
-            'title' => $this->text($meta, 'title', 80, $fallbackTitle) ?: $fallbackTitle,
-            'artist' => $this->text($meta, 'artist', 60),
-            'group' => $this->text($meta, 'group', 40),
+            'title' => $this->text($meta, 'title', self::MAX_TITLE, $fallbackTitle) ?: $fallbackTitle,
+            'artist' => $this->text($meta, 'artist', self::MAX_ARTIST),
+            'group' => $this->text($meta, 'group', self::MAX_GROUP),
             'tags' => $this->tags($meta['tags'] ?? []),
         ];
     }
@@ -964,6 +980,20 @@ final class SongParser
         return (float) $value;
     }
 
+    /**
+     * @param array<string, mixed> $meta
+     */
+    public function flag(array $meta, string $key, bool $default, string $where): bool
+    {
+        $value = $meta[$key] ?? $default;
+
+        if (!is_bool($value)) {
+            throw new BuildError("{$where}: „{$key}“ muss true oder false sein.");
+        }
+
+        return $value;
+    }
+
     /** @param array<string, mixed> $meta */
     private function text(array $meta, string $key, int $max, string $default = ''): string
     {
@@ -989,8 +1019,8 @@ final class SongParser
     /** @return list<string> */
     private function tags(mixed $tags): array
     {
-        if (!is_array($tags) || count($tags) > 6) {
-            throw new BuildError('Song: „tags“ muss eine Liste mit höchstens 6 Einträgen sein.');
+        if (!is_array($tags) || count($tags) > self::MAX_TAGS) {
+            throw new BuildError(sprintf('Song: „tags“ muss eine Liste mit höchstens %d Einträgen sein.', self::MAX_TAGS));
         }
 
         $clean = [];
