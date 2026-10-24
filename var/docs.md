@@ -27,6 +27,12 @@ title: bin
 ---
 Die Skripte im Ordner `bin/`. Die Composer-Skripte (`composer qa` und andere) rufen sie auf.
 
+```bash
+composer qa          # Format prüfen, Lint, Analyse, Klassenbeschreibungen, Build
+composer fmt         # Code formatieren
+composer compare     # Ausgabe gegen einen Git-Stand vergleichen
+```
+
 ## build.php
 
 Baut die ganze Seite nach `tmp/public`. Optionen:
@@ -36,13 +42,31 @@ Baut die ganze Seite nach `tmp/public`. Optionen:
 
 Eine unbekannte Option beendet das Skript mit Code 2, ein Fehler in den Daten mit Code 1.
 
+```bash
+php bin/build.php                  # alles bauen, Git-Quellen neu holen
+php bin/build.php --local-only     # nur mit dem Cache, ohne Netz
+php bin/build.php --local-only --serve   # bauen und auf http://localhost:8000 ansehen
+```
+
 ## docs.php
 
 Schreibt die Klassenbeschreibungen als Markdown, auf die Konsole oder in die angegebene Datei. Mit `--check` meldet es Klassen ohne Beschreibung und endet dann mit Code 1. `composer qa` und die CI rufen den Check auf.
 
+```bash
+php bin/docs.php                   # Markdown der Klassenbeschreibungen auf die Konsole
+php bin/docs.php tmp/code.md       # oder in eine Datei
+php bin/docs.php --check           # Klassen ohne Beschreibung? Dann Code 1
+```
+
 ## compare.php
 
 Baut einen Git-Stand (Standard: `HEAD`) und den Arbeitsstand und vergleicht jede Ausgabedatei per SHA-1. Code 0 heißt: Die Seite ist bitgleich. So lässt sich nach einem Umbau zeigen, dass sich die Ausgabe nicht geändert hat.
+
+```bash
+php bin/build.php --local-only     # legt .cache/sources an, falls es fehlt
+php bin/compare.php                # Arbeitsstand gegen HEAD
+php bin/compare.php origin/main    # gegen den Stand auf main
+```
 
 ## pull.sh
 
@@ -54,6 +78,14 @@ Läuft auf dem Server, per Cron alle fünf Minuten. Es holt das Release `build` 
 | `CHIPTUNE_REPO` | Repo mit dem Release, Standard `kchaot/chiptune`. |
 | `CHIPTUNE_URL` | Download-Adresse, Standard das Release `build` des Repos. |
 | `CHIPTUNE_KEEP` | Wie viele alte Stände bleiben, Standard 3. |
+
+```bash
+# einmal von Hand
+CHIPTUNE_BASE=$HOME/www/chiptune bash bin/pull.sh
+
+# alle fünf Minuten per Cron
+*/5 * * * * CHIPTUNE_BASE=$HOME/www/chiptune /pfad/zu/pull.sh >> /pfad/zu/pull.log 2>&1
+```
 
 <!-- next: etc -->
 ---
@@ -110,7 +142,19 @@ Die Seiten im Fuß (Format, Kontakt, Weiterkommen). Eine Markdown-Datei pro Seit
 
 ## projects
 
-Die eigenen Songs, im selben Aufbau wie jede andere Quelle. Ein Song ist eine Markdown-Datei aus mehreren Teilen: Kopf mit Titel und Tempo, dann pro Spur ein `<!-- track: name -->`-Block. Ein Ordner mit `_album.md` ist ein Album. `README.md` beschreibt den Autor (`tagline`, `author`, `url`), `_profile.md` ist sein Profil.
+Die eigenen Songs, im selben Aufbau wie jede andere Quelle. Ein Song ist eine Markdown-Datei aus mehreren Teilen: Kopf mit Titel und Tempo, dann pro Spur ein `<!-- track: name -->`-Block mit den Einstellungen des Instruments und dem Raster.
+
+<!-- code: var/projects/kchaot/erster-puls.md fold -->
+
+Ein Ordner mit `_album.md` ist ein Album.
+
+<!-- code: var/projects/kchaot/skizzen/_album.md -->
+
+Die Datei `_profile.md` im Wurzelordner einer Quelle beschreibt den Autor: `tagline`, `author` und `url` in der Frontmatter, darunter ein kurzer Text für die Autorenseite.
+
+<!-- code: var/projects/kchaot/_profile.md -->
+
+Die `README.md` im Wurzelordner liest der Build nicht. Er überspringt sie wie `LICENSE`, `CHANGELOG` und ähnliche Dateien. Sie ist für Menschen gedacht, die das Repo auf GitHub öffnen, und darf deshalb frei bleiben.
 
 ## resources
 
@@ -135,16 +179,16 @@ Am Ende der Datei entscheidet, was in der Seite steckt: Mixer (`mix`), Set (`set
 
 Jedes Deck hält seinen Zustand in einem Objekt: Tempo (`rate`), Feinabgleich (`nudge`), die Effekte (`fx`), die abgeschalteten Bänder (`kill`) und die Schleife (`hold`).
 
-<!-- code: var/resources/player.js#state -->
+<!-- code: var/resources/player.js#state lines -->
 
 ## Ein Ton
 
 Eine Note ist ein Oszillator mit einer Hüllkurve. `gate` bestimmt, wie viel der Notenlänge klingt. Geplant wird der Ton auf der Zeitachse des Audio-Kontexts (`when`), nicht auf der Uhr der Seite.
 
-<!-- code: var/resources/player.js#tone -->
+<!-- code: var/resources/player.js#tone lines -->
 
 ## Planung im Voraus
 
 `tick()` schaut ein Stück voraus (`LOOKAHEAD`, im Mixer kürzer, bei versteckter Seite länger) und plant alle Noten, die in dieses Fenster fallen. Damit läuft die Musik auch dann sauber, wenn der Browser die Seite im Hintergrund drosselt.
 
-<!-- code: var/resources/player.js#tick -->
+<!-- code: var/resources/player.js#tick lines fold -->

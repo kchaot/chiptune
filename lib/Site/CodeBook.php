@@ -6,6 +6,7 @@ namespace Chiptune\Site;
 
 use Chiptune\Common\BuildError;
 use Chiptune\Common\HtmlSanitizer;
+use Tempest\Highlight\Highlighter;
 use Tempest\Markdown\Markdown;
 
 /**
@@ -17,7 +18,9 @@ use Tempest\Markdown\Markdown;
  * darunter. Ordner, die in der Datei fehlen, hängt das Buch am Ende des Tabs `lib` automatisch an.
  *
  * Code in Fenced Blocks wird gefärbt. Eine Zeile `<!-- code: var/resources/player.js#tone -->` holt einen
- * Ausschnitt live aus der Datei: Dort steht er zwischen `// docs: tone` und `// docs-end`.
+ * Ausschnitt live aus der Datei: Dort steht er zwischen `// docs: tone` und `// docs-end`. Ohne `#name`
+ * kommt eine kleine Beispieldatei ganz (zum Beispiel aus `var/projects/`). Danach dürfen `lines` (Zeilennummern, bei Ausschnitten mit
+ * den echten Zeilen der Datei) und `fold` (eingeklappt) stehen.
  */
 final class CodeBook
 {
@@ -50,15 +53,32 @@ final class CodeBook
 
         $sanitizer = new HtmlSanitizer();
         $chunks = [];
+        $blocks = [];
         $content = (string) preg_replace_callback(
-            '/^<!-- code: (\S+?)#([a-z0-9-]+) -->[ \t]*$/m',
-            fn(array $match): string => $this->snippet($match[1], $match[2]),
+            '/^<!-- code: ([^\s#]+)(?:#([a-z0-9-]+))?((?: (?:lines|fold))*) -->[ \t]*$/m',
+            function (array $match) use (&$blocks): string {
+                [$language, $code, $first] = $this->snippet($match[1], $match[2] !== '' ? $match[2] : null);
+                $highlighter = str_contains($match[3], 'lines') ? new Highlighter()->withGutter($first) : new Highlighter();
+                $html = '<pre>' . $highlighter->parse($code, $language) . '</pre>';
+                $count = substr_count($code, "\n") + 1;
+                $blocks[] = str_contains($match[3], 'fold') ? '<details class="doc-fold"><summary>Code anzeigen (' . $count . ' Zeilen)</summary>' . $html . '</details>' : $html;
+
+                return "*Aus {$match[1]}:*\n\nCODESNIPPET" . (count($blocks) - 1) . 'END';
+            },
             $content,
         );
 
         foreach (new Markdown()->parseMany($content, 'docs', 'next') as $chunk) {
             $chunks[] = $chunk;
         }
+
+        $fill = static function (string $html) use ($blocks): string {
+            foreach ($blocks as $index => $block) {
+                $html = str_replace("<p>CODESNIPPET{$index}END</p>", $block, $html);
+            }
+
+            return $html;
+        };
 
         $head = array_shift($chunks) ?? throw new BuildError('var/docs.md: Die Datei ist leer.');
         $title = $head->frontmatter['title'] ?? 'Code-Übersicht';
@@ -85,32 +105,53 @@ final class CodeBook
                 throw new BuildError("var/docs.md: Tab „{$slug}“ braucht einen „title“ bis 30 Zeichen.");
             }
 
-            [$html, $sections] = $this->split($sanitizer->clean($chunk->html));
+            [$html, $sections] = $this->split($fill($sanitizer->clean($chunk->html)));
             $tabs[$slug] = ['slug' => $slug, 'title' => trim($tabTitle), 'html' => $html, 'sections' => $sections];
         }
 
         $tabs = $this->appendMissingAreas($tabs);
 
-        return ['title' => trim($title), 'intro' => $sanitizer->clean($head->html), 'tabs' => array_values($tabs)];
+        return ['title' => trim($title), 'intro' => $fill($sanitizer->clean($head->html)), 'tabs' => array_values($tabs)];
     }
 
-    private function snippet(string $file, string $name): string
+    /**
+     * @return array{string, string, int}
+     */
+    private function snippet(string $file, ?string $name): array
     {
         $path = $this->root . '/' . $file;
         $parts = [];
 
-        if (preg_match('~^(lib|bin|etc|var/resources)/[A-Za-z0-9_./-]+\.(php|js|json|sh)$~', $file, $parts) !== 1 || str_contains($file, '..') || !is_file($path)) {
+        if (
+            preg_match('~^(lib|bin|etc|var/resources|var/projects|var/pages)/[A-Za-z0-9_./-]+\.(php|js|json|sh|md)$~', $file, $parts) !== 1
+            || str_contains($file, '..')
+            || !is_file($path)
+            || is_link($path)
+        ) {
             throw new BuildError("var/docs.md: „{$file}“ ist keine Datei, aus der Ausschnitte geholt werden dürfen.");
+        }
+
+        $language = ['php' => 'php', 'js' => 'js', 'json' => 'json', 'sh' => 'bash', 'md' => 'markdown'][$parts[2]];
+        $all = preg_split('/\R/', rtrim((string) file_get_contents($path))) ?: [];
+
+        if ($name === null) {
+            if (count($all) > 80) {
+                throw new BuildError("var/docs.md: {$file} ist zu lang für ein ganzes Beispiel (mehr als 80 Zeilen). Besser einen Ausschnitt mit Marke nehmen.");
+            }
+
+            return [$language, implode("\n", $all), 1];
         }
 
         $lines = [];
         $inside = false;
         $found = false;
+        $first = 1;
 
-        foreach (preg_split('/\R/', (string) file_get_contents($path)) ?: [] as $line) {
+        foreach ($all as $number => $line) {
             if (preg_match('~^\s*//\s*docs:\s*' . preg_quote($name, '~') . '\s*$~', $line) === 1) {
                 $inside = true;
                 $found = true;
+                $first = $number + 2;
 
                 continue;
             }
@@ -129,15 +170,8 @@ final class CodeBook
         }
 
         $indent = min(array_map(static fn(string $line): int => trim($line) === '' ? PHP_INT_MAX : strlen($line) - strlen(ltrim($line)), $lines));
-        $code = implode("\n", array_map(static fn(string $line): string => substr($line, min($indent, strlen($line))), $lines));
 
-        if (str_contains($code, '```')) {
-            throw new BuildError("var/docs.md: Der Ausschnitt „{$name}“ aus {$file} enthält drei Backticks.");
-        }
-
-        $language = ['php' => 'php', 'js' => 'js', 'json' => 'json', 'sh' => 'bash'][$parts[2]];
-
-        return "*Aus {$file}:*\n\n```{$language}\n" . rtrim($code) . "\n```";
+        return [$language, rtrim(implode("\n", array_map(static fn(string $line): string => substr($line, min($indent, strlen($line))), $lines))), $first];
     }
 
     /**

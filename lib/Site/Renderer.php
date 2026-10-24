@@ -1121,8 +1121,21 @@ final class Renderer
             $articles .= $this->docEntry($entry, $id);
         }
 
+        $count = count($entries);
+        $label = $count . ($count === 1 ? ' Klasse' : ' Klassen') . ' anzeigen';
+
         return (
-            '<details class="doc-area" open><summary><h2>' . $this->e($title) . '</h2></summary>' . $prose . '<ul class="doc-index">' . $links . '</ul>' . $articles . '</details>'
+            '<section class="doc-area"><h2>'
+            . $this->e($title)
+            . '</h2>'
+            . $prose
+            . '<details class="doc-classes"><summary>'
+            . $label
+            . '</summary><ul class="doc-index">'
+            . $links
+            . '</ul>'
+            . $articles
+            . '</details></section>'
         );
     }
 

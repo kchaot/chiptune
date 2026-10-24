@@ -900,6 +900,9 @@ body.code-page::after { display: none; }
 .doc-text code { padding: 0.05em 0.35em; background: var(--panel-raised); color: var(--lime); font-size: 0.9em; }
 .doc-text pre { margin: 0.6rem 0 1.1rem; padding: 0.75rem 1rem; overflow-x: auto; background: var(--panel); border-left: 0.25rem solid var(--line); font-size: 0.85rem; line-height: 1.5; }
 .doc-text em { color: var(--ink-soft); }
+.hl-gutter { display: inline-block; min-width: 2.5em; margin-right: 1em; color: var(--dim); text-align: right; user-select: none; }
+.doc-fold > summary { margin: 0.6rem 0; color: var(--violet); font-weight: 600; cursor: pointer; }
+.doc-fold > pre { margin-top: 0.4rem; }
 .hl-keyword { color: var(--violet); }
 .hl-property { color: var(--cyan); }
 .hl-type { color: var(--pink); }
@@ -913,12 +916,10 @@ body.code-page::after { display: none; }
 .doc-index { margin: 0 0 1rem; padding: 0; list-style: none; columns: 2 24rem; font-size: 0.85rem; }
 .doc-index li { break-inside: avoid; margin-bottom: 0.2rem; }
 .doc-index span { color: var(--ink-soft); }
-.doc-area { margin-top: 2rem; border-top: 1px dashed var(--line); }
-.doc-area > summary { padding: 1rem 0 0.5rem; cursor: pointer; list-style: none; }
-.doc-area > summary::-webkit-details-marker { display: none; }
-.doc-area > summary h2 { display: inline; margin: 0; color: var(--cream); font-size: 1.25rem; }
-.doc-area > summary::before { content: "▾ "; color: var(--violet); }
-.doc-area:not([open]) > summary::before { content: "▸ "; }
+.doc-area { margin-top: 2rem; padding-top: 1rem; border-top: 1px dashed var(--line); }
+.doc-area > h2 { margin: 0 0 0.5rem; color: var(--cream); font-size: 1.25rem; }
+.doc-classes > summary { margin: 0.5rem 0 1rem; color: var(--violet); font-weight: 600; cursor: pointer; }
+.doc-classes[open] > summary { margin-bottom: 0.5rem; }
 .doc { margin: 0 0 1.75rem; padding: 0.9rem 1.1rem; background: var(--panel); border-left: 0.25rem solid var(--violet); scroll-margin-top: 1rem; }
 .doc h3 { margin: 0; color: var(--cream); font-size: 1.1rem; }
 .doc p { margin: 0.4rem 0; }
