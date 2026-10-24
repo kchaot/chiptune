@@ -130,7 +130,7 @@ final class Builder
 
         Filesystem::write($this->public . '/index.html', $renderer->library([...$entries, ...$albumEntries]));
         Filesystem::write($this->public . '/404.html', $renderer->notFound());
-        Filesystem::write($this->public . '/+code/index.html', $renderer->code(new CodeDocs($this->root)->areas()));
+        Filesystem::write($this->public . '/+code/index.html', $renderer->code(new CodeBook($this->root)->read(), new CodeDocs($this->root)->areas()));
 
         foreach (array_map(strval(...), array_keys($authors)) as $prefix) {
             $ownAlbums = array_values(array_filter($albumEntries, fn(Entry $entry): bool => $entry->prefix === $prefix));

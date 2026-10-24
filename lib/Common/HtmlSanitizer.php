@@ -10,8 +10,8 @@ use Dom\HTMLDocument;
 /**
  * Säubert HTML, das aus Markdown entstanden ist.
  *
- * Erlaubt sind nur bekannte Elemente und bei Links ein sicheres `href`. Alles andere fällt weg,
- * Skripte und Ähnliches samt Inhalt, ebenso Kommentare.
+ * Erlaubt sind nur bekannte Elemente, bei Links ein sicheres `href` und bei `span` die `hl-`-Klassen der
+ * Code-Färbung. Alles andere fällt weg, Skripte und Ähnliches samt Inhalt, ebenso Kommentare.
  */
 final class HtmlSanitizer
 {
@@ -123,6 +123,10 @@ final class HtmlSanitizer
         }
 
         foreach ($names as $name) {
+            if ($tag === 'span' && $name === 'class' && preg_match('/^hl-[a-z-]+( hl-[a-z-]+)*$/', $element->getAttribute('class') ?? '') === 1) {
+                continue;
+            }
+
             if ($tag === 'a' && $name === 'href' && $this->isSafeHref($element->getAttribute('href'))) {
                 continue;
             }

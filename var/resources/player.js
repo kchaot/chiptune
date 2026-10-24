@@ -20,6 +20,7 @@
   let master = null;
   let noise = null;
 
+  // docs: state
   function makeState() {
     return {
       rate: 1,
@@ -31,6 +32,7 @@
       nodes: null,
     };
   }
+  // docs-end
 
   const S = makeState();
 
@@ -533,6 +535,7 @@
     return pulseCache.get(width);
   }
 
+  // docs: tone
   function tone(track, bus, event, when, stepSeconds) {
     const osc = ctx.createOscillator();
     const gain = ctx.createGain();
@@ -553,6 +556,7 @@
     osc.start(when);
     osc.stop(end + 0.02);
   }
+  // docs-end
 
   function noiseHit(bus, when, { type, frequency, q = 0.7, decay, volume, bursts = [0] }) {
     const source = ctx.createBufferSource();
@@ -1003,6 +1007,7 @@
       frameId = requestAnimationFrame(frame);
     }
 
+    // docs: tick
     function tick() {
       if (!ctx) return;
 
@@ -1037,6 +1042,7 @@
 
       if (ended && ctx.currentTime > nextTime) stop(false);
     }
+    // docs-end
 
     async function play(when) {
       if (playing || starting) return;
