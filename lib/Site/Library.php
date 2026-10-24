@@ -6,6 +6,7 @@ namespace Chiptune\Site;
 
 use Chiptune\Common\BuildError;
 use Chiptune\Format\Described;
+use Chiptune\Format\LayerParser;
 use Chiptune\Format\LinkParser;
 use Chiptune\Format\SessionParser;
 use Chiptune\Format\SetParser;
@@ -39,6 +40,7 @@ final class Library
         private readonly SetParser $sets,
         private readonly ?SessionParser $sessions = null,
         private readonly ?LinkParser $links = null,
+        private readonly ?LayerParser $layers = null,
     ) {
         foreach ($files as $file) {
             $this->files["{$file['prefix']}/{$file['slug']}"] = $file;
@@ -81,7 +83,7 @@ final class Library
                 $data = $this->sets->parse($source, basename($file['slug']), $resolve);
             } elseif ($fileKind === 'layer') {
                 $kind = 'song';
-                $data = $this->songs->parseLayer($source, basename($file['slug']), $resolve, $file['prefix']);
+                $data = ($this->layers ?? new LayerParser())->parse($source, basename($file['slug']), $resolve, $file['prefix']);
             } else {
                 $kind = 'song';
                 $data = $this->songs->parse($source, basename($file['slug']), $resolve, $file['prefix']);

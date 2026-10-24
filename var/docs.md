@@ -95,7 +95,7 @@ Marker `<!-- track: name -->`, der Name hat 1 bis 32 Zeichen ohne `< > & "`. Hö
 | `volume` | Lautstärke | 0 bis 1 | 0,2 (Drums 0,3) |
 | `gate` | Anteil der Notenlänge, der klingt | 0,05 bis 1 | 0,9 |
 | `pw` | Pulsbreite (bei `pulse`) | 0,05 bis 0,5 | 0,25 |
-| `clips` | Teile aus anderen Songs | 1 bis {{SongParser::MAX_CLIPS}} Einträge | |
+| `clips` | Teile aus anderen Songs | 1 bis {{ClipParser::MAX_CLIPS}} Einträge | |
 
 ### Steps und Takt
 
@@ -142,9 +142,9 @@ Ein Clip kopiert Noten einer Spur aus einem anderen Song. Er steht in der Frontm
 | --- | --- | --- |
 | `from` | `prefix/name#spur` | Pflicht |
 | `bars` oder `steps` | Ausschnitt, Zahl oder Bereich wie `3-6` | nicht beides |
-| `at` oder `at-step` | Ziel im Takt oder im Step | 1 bis {{SongParser::MAX_AT}}, nicht beides. Ohne Angabe direkt hinter dem Vorigen |
-| `transpose` | Halbtöne | −{{SongParser::MAX_TRANSPOSE}} bis {{SongParser::MAX_TRANSPOSE}}, nicht bei Drums |
-| `repeat` | Wiederholungen | 1 bis {{SongParser::MAX_REPEAT}} |
+| `at` oder `at-step` | Ziel im Takt oder im Step | 1 bis {{ClipParser::MAX_AT}}, nicht beides. Ohne Angabe direkt hinter dem Vorigen |
+| `transpose` | Halbtöne | −{{ClipParser::MAX_TRANSPOSE}} bis {{ClipParser::MAX_TRANSPOSE}}, nicht bei Drums |
+| `repeat` | Wiederholungen | 1 bis {{ClipParser::MAX_REPEAT}} |
 
 `at_step` ist der alte Name von `at-step` und gilt weiter. Passt das Raster der Quelle nicht zum Raster des Songs, meldet der Build das. Ganze Takte gehen immer.
 
@@ -152,16 +152,16 @@ Ein Clip kopiert Noten einer Spur aus einem anderen Song. Er steht in der Frontm
 
 Gelesen ebenfalls von [SongParser](#songparser), das Ergebnis enthält [SongLayer](#songlayer)s.
 
-Mehrere Songs übereinander. Jeder Block ist ein Layer, Marker `<!-- layer: prefix/name -->`. Höchstens {{SongParser::MAX_LAYERS}} Layer und {{SongParser::MAX_LAYER_TRACKS}} Spuren insgesamt. Der Kopf ist der des Songs. `bpm` ist standardmäßig das Tempo des ersten Layers, `grid` das gemeinsame Raster der Layer (höchstens {{SongParser::GRID_MAX}}).
+Mehrere Songs übereinander. Jeder Block ist ein Layer, Marker `<!-- layer: prefix/name -->`. Höchstens {{LayerParser::MAX_LAYERS}} Layer und {{LayerParser::MAX_LAYER_TRACKS}} Spuren insgesamt. Der Kopf ist der des Songs. `bpm` ist standardmäßig das Tempo des ersten Layers, `grid` das gemeinsame Raster der Layer (höchstens {{SongParser::GRID_MAX}}).
 
 | Schlüssel im Layer | Bedeutung | Grenzen | Standard |
 | --- | --- | --- | --- |
 | `name` | Anzeigename | 1 bis 32 Zeichen | Titel des Quell-Songs |
 | `tracks` | Auswahl der Spuren (Liste von Spurnamen) | | alle |
-| `at` | Start im Takt | 1 bis {{SongParser::MAX_AT}} | 1 |
+| `at` | Start im Takt | 1 bis {{ClipParser::MAX_AT}} | 1 |
 | `bars` | Ausschnitt | Zahl oder Bereich | alles |
-| `repeat` | Wiederholungen oder `fill` | 1 bis {{SongParser::MAX_REPEAT}} | 1 |
-| `transpose` | Halbtöne | −{{SongParser::MAX_TRANSPOSE}} bis {{SongParser::MAX_TRANSPOSE}} | 0 |
+| `repeat` | Wiederholungen oder `fill` | 1 bis {{ClipParser::MAX_REPEAT}} | 1 |
+| `transpose` | Halbtöne | −{{ClipParser::MAX_TRANSPOSE}} bis {{ClipParser::MAX_TRANSPOSE}} | 0 |
 
 Mindestens ein Layer braucht eine feste Länge, also nicht `fill`.
 
@@ -187,7 +187,7 @@ Ein Set spielt Songs nacheinander. Jeder Abschnitt hat den Marker `<!-- part: pr
 | Schlüssel | Bedeutung | Grenzen | Standard |
 | --- | --- | --- | --- |
 | `bars` | Ausschnitt | Zahl oder Bereich wie `1-8` | alles |
-| `repeat` | Wiederholungen | 1 bis {{SongParser::MAX_REPEAT}} | 1 |
+| `repeat` | Wiederholungen | 1 bis {{ClipParser::MAX_REPEAT}} | 1 |
 
 ```markdown
 ---

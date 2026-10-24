@@ -66,7 +66,7 @@ final class SetParser
 
             Fields::keys($fm, ['bars', 'repeat'], $where);
 
-            $repeat = Fields::integer($fm['repeat'] ?? 1, "{$where}: „repeat“", 1, SongParser::MAX_REPEAT);
+            $repeat = Fields::integer($fm['repeat'] ?? 1, "{$where}: „repeat“", 1, ClipParser::MAX_REPEAT);
 
             $bar = $song->stepsPerBar;
             $startBar = 1;
