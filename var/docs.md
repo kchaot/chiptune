@@ -58,10 +58,10 @@ Diese Schlüssel kennen alle Typen (ein Album nur `title`, `artist`, `group` und
 | --- | --- | --- |
 | `format` | Version des Formats | nur `1` |
 | `kind` | Dateityp, siehe oben | |
-| `title` | Titel | bis {{SongParser::MAX_TITLE}} Zeichen, sonst der Dateiname |
-| `artist` | Künstler | bis {{SongParser::MAX_ARTIST}} Zeichen |
-| `group` | Gruppe | bis {{SongParser::MAX_GROUP}} Zeichen |
-| `tags` | Schlagworte | höchstens {{SongParser::MAX_TAGS}}, je Buchstaben, Ziffern, Leerzeichen, Bindestrich, bis 24 Zeichen |
+| `title` | Titel | bis {{Fields::MAX_TITLE}} Zeichen, sonst der Dateiname |
+| `artist` | Künstler | bis {{Fields::MAX_ARTIST}} Zeichen |
+| `group` | Gruppe | bis {{Fields::MAX_GROUP}} Zeichen |
+| `tags` | Schlagworte | höchstens {{Fields::MAX_TAGS}}, je Buchstaben, Ziffern, Leerzeichen, Bindestrich, bis 24 Zeichen |
 
 Wahrheitswerte (`loop`, `auto`, `remix`) sind echtes `true` oder `false`, nichts anderes.
 

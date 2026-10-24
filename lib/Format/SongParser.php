@@ -18,7 +18,6 @@ use Tempest\Markdown\ParsedMarkdown;
  */
 final class SongParser
 {
-    public const FORMAT = 1;
     public const MAX_BYTES = 65_536;
     public const MAX_TRACKS = 16;
     public const MAX_STEPS = 4096;
@@ -28,10 +27,6 @@ final class SongParser
     public const MAX_REPEAT = 64;
     public const MAX_AT = 4096;
     public const MAX_TRANSPOSE = 36;
-    public const MAX_TAGS = 6;
-    public const MAX_TITLE = 80;
-    public const MAX_ARTIST = 60;
-    public const MAX_GROUP = 40;
     public const BPM_MIN = 20;
     public const BPM_MAX = 300;
     public const BPM_DEFAULT = 120;
@@ -46,6 +41,7 @@ final class SongParser
     public function __construct(
         private readonly Markdown $markdown = new Markdown(null),
         private readonly HtmlSanitizer $sanitizer = new HtmlSanitizer(),
+        private readonly MediaParser $media = new MediaParser(),
     ) {}
 
     public function kind(string $source): string
@@ -69,21 +65,9 @@ final class SongParser
      */
     public function parse(string $source, string $fallbackTitle = 'Untitled', ?\Closure $resolve = null, string $owner = ''): Song
     {
-        if (strlen($source) > self::MAX_BYTES) {
-            throw new BuildError(sprintf('Die Datei ist größer als %d KB.', self::MAX_BYTES / 1024));
-        }
+        Fields::size($source, self::MAX_BYTES);
 
-        $chunks = [];
-
-        foreach ($this->markdown->parseMany($source, 'song', 'track') as $chunk) {
-            $chunks[] = $chunk;
-        }
-
-        $head = null;
-
-        if ($chunks !== [] && ($chunks[0]->name === null || $chunks[0]->name === 'song-1')) {
-            $head = array_shift($chunks);
-        }
+        [$head, $chunks] = Fields::blocks($this->markdown, $source, 'track');
 
         if ($chunks === []) {
             throw new BuildError('Keine Tracks gefunden. Jeder Track beginnt mit einem Marker <!-- track: name -->.');
@@ -96,14 +80,10 @@ final class SongParser
         /** @var array<string, mixed> $meta */
 
         $meta = $head->frontmatter ?? [];
-        $format = $meta['format'] ?? self::FORMAT;
+        Fields::version($meta);
 
-        if ($format !== self::FORMAT) {
-            throw new BuildError('Nicht unterstütztes format: ' . (string) json_encode($format) . '. Unterstützt wird format: ' . self::FORMAT . '.');
-        }
-
-        $bpm = $this->number($meta, 'bpm', self::BPM_DEFAULT, self::BPM_MIN, self::BPM_MAX);
-        $grid = (int) $this->number($meta, 'grid', self::GRID_DEFAULT, self::GRID_MIN, self::GRID_MAX);
+        $bpm = Fields::number($meta, 'bpm', self::BPM_DEFAULT, self::BPM_MIN, self::BPM_MAX);
+        $grid = (int) Fields::number($meta, 'grid', self::GRID_DEFAULT, self::GRID_MIN, self::GRID_MAX);
 
         if (($grid % 4) !== 0) {
             throw new BuildError('Song: „grid“ muss durch 4 teilbar sein (zum Beispiel 8, 16 oder 32).');
@@ -112,11 +92,7 @@ final class SongParser
         $stepsPerBeat = intdiv($grid, 4);
         $stepsPerBar = $stepsPerBeat * 4;
 
-        $remix = $meta['remix'] ?? null;
-
-        if ($remix !== null && !is_bool($remix)) {
-            throw new BuildError('Song: „remix“ muss true oder false sein.');
-        }
+        $remix = Fields::optionalFlag($meta, 'remix', 'Song');
 
         $credits = [];
         $tracks = [];
@@ -160,9 +136,9 @@ final class SongParser
             $warnings[] = "Die Länge von {$steps} Steps ist kein ganzes Vielfaches von {$stepsPerBar} Steps pro Bar.";
         }
 
-        $loop = $this->flag($meta, 'loop', true, 'Song');
+        $loop = Fields::flag($meta, 'loop', true, 'Song');
 
-        $info = $this->describe($meta, $fallbackTitle);
+        $info = Fields::describe($meta, $fallbackTitle);
 
         return new Song(
             title: $info['title'],
@@ -179,7 +155,7 @@ final class SongParser
             tracks: $tracks,
             warnings: $warnings,
             notesHtml: $this->sanitizer->clean($head->html ?? ''),
-            media: $this->media($meta),
+            media: $this->media->parse($meta),
             remix: $remix,
             credits: array_values($credits),
             layers: $layers,
@@ -191,29 +167,15 @@ final class SongParser
      */
     public function parseLayer(string $source, string $fallbackTitle, \Closure $resolve, string $owner): Song
     {
-        if (strlen($source) > self::MAX_BYTES) {
-            throw new BuildError(sprintf('Die Datei ist größer als %d KB.', self::MAX_BYTES / 1024));
-        }
+        Fields::size($source, self::MAX_BYTES);
 
-        $chunks = [];
-
-        foreach ($this->markdown->parseMany($source, 'song', 'layer') as $chunk) {
-            $chunks[] = $chunk;
-        }
-
-        $head = null;
-
-        if ($chunks !== [] && ($chunks[0]->name === null || $chunks[0]->name === 'song-1')) {
-            $head = array_shift($chunks);
-        }
+        [$head, $chunks] = Fields::blocks($this->markdown, $source, 'layer');
 
         /** @var array<string, mixed> $meta */
 
         $meta = $head->frontmatter ?? [];
 
-        if (($meta['format'] ?? self::FORMAT) !== self::FORMAT) {
-            throw new BuildError('Nicht unterstütztes format: ' . (string) json_encode($meta['format']) . '. Unterstützt wird format: ' . self::FORMAT . '.');
-        }
+        Fields::version($meta);
 
         if ($chunks === []) {
             throw new BuildError('Keine Layer gefunden. Jeder Layer beginnt mit einem Marker <!-- layer: prefix/slug -->.');
@@ -223,11 +185,7 @@ final class SongParser
             throw new BuildError(sprintf('Mehr als %d Layer.', self::MAX_LAYERS));
         }
 
-        $remix = $meta['remix'] ?? null;
-
-        if ($remix !== null && !is_bool($remix)) {
-            throw new BuildError('Layer-Song: „remix“ muss true oder false sein.');
-        }
+        $remix = Fields::optionalFlag($meta, 'remix', 'Layer-Song');
 
         /** @var list<array{ref: string, prefix: string, slug: string, source: Song, name: string, tracks: list<string>, at: int, bars: mixed, transpose: int, repeat: int|'fill', where: string, description: string, length: int, start: int}> $layers */
         $layers = [];
@@ -236,27 +194,16 @@ final class SongParser
             $ref = trim((string) $chunk->name);
             $where = 'Layer ' . ($index + 1) . " („{$ref}“)";
 
-            $m = [];
-            if (preg_match('/^([a-z0-9][a-z0-9-]*)\/([a-z0-9][a-z0-9-]*(?:\/[a-z0-9][a-z0-9-]*)?)$/', $ref, $m) !== 1) {
-                throw new BuildError("{$where}: Der Marker muss die Form <!-- layer: prefix/slug --> haben.");
-            }
+            [$prefix, $slug] = Fields::marker($ref, $where, 'layer');
 
             /** @var array<string, mixed> $fm */
 
             $fm = $chunk->frontmatter;
-            $unknown = array_diff(array_keys($fm), ['at', 'bars', 'repeat', 'transpose', 'tracks', 'name']);
-
-            if ($unknown !== []) {
-                throw new BuildError(
-                    "{$where}: unbekannter Schlüssel „" . implode('“, „', array_map('strval', $unknown)) . '“ (erlaubt: at, bars, repeat, transpose, tracks, name).',
-                );
-            }
+            Fields::keys($fm, ['at', 'bars', 'repeat', 'transpose', 'tracks', 'name'], $where);
 
             $source = $resolve($ref)['song'];
 
-            if ($m[1] !== $owner && $source->remix !== true) {
-                throw new BuildError("{$where}: „{$ref}“ erlaubt kein Remixen. Der Autor müsste „remix: true“ in seinen Song schreiben.");
-            }
+            Fields::mayRemix($where, $ref, $prefix, $owner, $source->remix);
 
             $name = $fm['name'] ?? $source->title;
 
@@ -291,19 +238,19 @@ final class SongParser
             $repeat = $fm['repeat'] ?? 1;
 
             if ($repeat !== 'fill') {
-                $repeat = $this->integer($repeat, "{$where}: „repeat“", 1, self::MAX_REPEAT);
+                $repeat = Fields::integer($repeat, "{$where}: „repeat“", 1, self::MAX_REPEAT);
             }
 
             $layers[] = [
                 'ref' => $ref,
-                'prefix' => $m[1],
-                'slug' => $m[2],
+                'prefix' => $prefix,
+                'slug' => $slug,
                 'source' => $source,
                 'name' => $name,
                 'tracks' => array_values($selected),
-                'at' => isset($fm['at']) ? $this->integer($fm['at'], "{$where}: „at“", 1, self::MAX_AT) : 1,
+                'at' => isset($fm['at']) ? Fields::integer($fm['at'], "{$where}: „at“", 1, self::MAX_AT) : 1,
                 'bars' => $fm['bars'] ?? null,
-                'transpose' => isset($fm['transpose']) ? $this->integer($fm['transpose'], "{$where}: „transpose“", -self::MAX_TRANSPOSE, self::MAX_TRANSPOSE) : 0,
+                'transpose' => isset($fm['transpose']) ? Fields::integer($fm['transpose'], "{$where}: „transpose“", -self::MAX_TRANSPOSE, self::MAX_TRANSPOSE) : 0,
                 'repeat' => $repeat,
                 'where' => $where,
                 'description' => $this->sanitizer->clean($chunk->html),
@@ -312,10 +259,10 @@ final class SongParser
             ];
         }
 
-        $bpm = $this->number($meta, 'bpm', (float) $layers[0]['source']->bpm, self::BPM_MIN, self::BPM_MAX);
+        $bpm = Fields::number($meta, 'bpm', (float) $layers[0]['source']->bpm, self::BPM_MIN, self::BPM_MAX);
 
         if (isset($meta['grid'])) {
-            $grid = (int) $this->number($meta, 'grid', self::GRID_DEFAULT, self::GRID_MIN, self::GRID_MAX);
+            $grid = (int) Fields::number($meta, 'grid', self::GRID_DEFAULT, self::GRID_MIN, self::GRID_MAX);
 
             if (($grid % 4) !== 0) {
                 throw new BuildError('Layer-Song: „grid“ muss durch 4 teilbar sein (zum Beispiel 8, 16 oder 32).');
@@ -345,7 +292,7 @@ final class SongParser
             $src = $layer['source'];
 
             if ($layer['bars'] !== null) {
-                [$a, $b] = $this->range($layer['bars'], "{$layer['where']}: „bars“");
+                [$a, $b] = Fields::range($layer['bars'], "{$layer['where']}: „bars“");
 
                 if (($b * $src->stepsPerBar) > $src->steps) {
                     throw new BuildError("{$layer['where']}: Der Ausschnitt reicht bis Bar {$b}, „{$layer['ref']}“ hat nur {$src->bars} Bars.");
@@ -550,9 +497,9 @@ final class SongParser
         return new Track(
             name: $name,
             instrument: $instrument,
-            volume: $this->number($fm, 'volume', $inherit->volume ?? ($isDrums ? 0.3 : 0.2), 0, 1, $where),
-            gate: $this->number($fm, 'gate', $inherit->gate ?? 0.9, 0.05, 1, $where),
-            pw: $this->number($fm, 'pw', $inherit->pw ?? 0.25, 0.05, 0.5, $where),
+            volume: Fields::number($fm, 'volume', $inherit->volume ?? ($isDrums ? 0.3 : 0.2), 0, 1, $where),
+            gate: Fields::number($fm, 'gate', $inherit->gate ?? 0.9, 0.05, 1, $where),
+            pw: Fields::number($fm, 'pw', $inherit->pw ?? 0.25, 0.05, 0.5, $where),
             steps: max($step, $clipEnd),
             events: $events,
             refs: $bands,
@@ -590,18 +537,12 @@ final class SongParser
                 throw new BuildError("{$label}: Ein Clip braucht Schlüssel wie from, bars und at.");
             }
 
-            $unknown = array_diff(array_keys($clip), ['from', 'bars', 'steps', 'at', 'at-step', 'at_step', 'transpose', 'repeat']);
-
-            if ($unknown !== []) {
-                throw new BuildError(
-                    "{$label}: unbekannter Schlüssel „" . implode('“, „', array_map('strval', $unknown)) . '“ (erlaubt: from, bars, steps, at, at-step, transpose, repeat).',
-                );
-            }
+            Fields::keys($clip, ['from', 'bars', 'steps', 'at', 'at-step', 'transpose', 'repeat'], $label, ['at_step']);
 
             $from = $clip['from'] ?? null;
 
             $m = [];
-            if (!is_string($from) || preg_match('/^([a-z0-9][a-z0-9-]*)\/([a-z0-9][a-z0-9-]*(?:\/[a-z0-9][a-z0-9-]*)?)#(.{1,32})$/', trim($from), $m) !== 1) {
+            if (!is_string($from) || preg_match(Fields::TRACK_REF, trim($from), $m) !== 1) {
                 throw new BuildError("{$label}: „from“ muss die Form prefix/slug#track haben.");
             }
 
@@ -610,9 +551,7 @@ final class SongParser
             $resolved = $resolve("{$prefix}/{$slug}");
             $source = $resolved['song'];
 
-            if ($prefix !== $owner && $source->remix !== true) {
-                throw new BuildError("{$label}: „{$prefix}/{$slug}“ erlaubt kein Remixen. Der Autor müsste „remix: true“ in seinen Song schreiben.");
-            }
+            Fields::mayRemix($label, "{$prefix}/{$slug}", $prefix, $owner, $source->remix);
 
             $sourceTrack = null;
 
@@ -641,10 +580,10 @@ final class SongParser
             }
 
             if (isset($clip['bars'])) {
-                [$a, $b] = $this->range($clip['bars'], "{$label}: „bars“");
+                [$a, $b] = Fields::range($clip['bars'], "{$label}: „bars“");
                 [$start, $stop] = [($a - 1) * $srcBar, $b * $srcBar];
             } elseif (isset($clip['steps'])) {
-                [$a, $b] = $this->range($clip['steps'], "{$label}: „steps“");
+                [$a, $b] = Fields::range($clip['steps'], "{$label}: „steps“");
                 [$start, $stop] = [$a - 1, $b];
             } else {
                 [$start, $stop] = [0, $srcSteps];
@@ -679,13 +618,13 @@ final class SongParser
             $at = $cursor;
 
             if (isset($clip['at'])) {
-                $at = ($this->integer($clip['at'], "{$label}: „at“", 1, self::MAX_AT) - 1) * $dstBar;
+                $at = (Fields::integer($clip['at'], "{$label}: „at“", 1, self::MAX_AT) - 1) * $dstBar;
             } elseif ($atStep !== null) {
-                $at = $this->integer($atStep, "{$label}: „at-step“", 1, self::MAX_STEPS) - 1;
+                $at = Fields::integer($atStep, "{$label}: „at-step“", 1, self::MAX_STEPS) - 1;
             }
 
-            $repeat = isset($clip['repeat']) ? $this->integer($clip['repeat'], "{$label}: „repeat“", 1, self::MAX_REPEAT) : 1;
-            $transpose = isset($clip['transpose']) ? $this->integer($clip['transpose'], "{$label}: „transpose“", -self::MAX_TRANSPOSE, self::MAX_TRANSPOSE) : 0;
+            $repeat = isset($clip['repeat']) ? Fields::integer($clip['repeat'], "{$label}: „repeat“", 1, self::MAX_REPEAT) : 1;
+            $transpose = isset($clip['transpose']) ? Fields::integer($clip['transpose'], "{$label}: „transpose“", -self::MAX_TRANSPOSE, self::MAX_TRANSPOSE) : 0;
             $isDrums = $sourceTrack->isDrums();
 
             if ($isDrums && $transpose !== 0) {
@@ -734,37 +673,6 @@ final class SongParser
         return ['events' => $events, 'end' => $end, 'first' => $first, 'drums' => $drums, 'bands' => $bands];
     }
 
-    /** @return array{0: int, 1: int} */
-    public function range(mixed $value, string $where): array
-    {
-        if (is_int($value)) {
-            $value = (string) $value;
-        }
-
-        $m = [];
-        if (!is_string($value) || preg_match('/^\s*(\d{1,5})\s*(?:-\s*(\d{1,5}))?\s*$/', $value, $m) !== 1) {
-            throw new BuildError("{$where} muss eine Zahl oder ein Bereich wie 3-6 sein.");
-        }
-
-        $a = (int) $m[1];
-        $b = isset($m[2]) && $m[2] !== '' ? (int) $m[2] : $a;
-
-        if ($a < 1 || $b < $a) {
-            throw new BuildError("{$where}: Der Bereich muss bei 1 beginnen und aufsteigen.");
-        }
-
-        return [$a, $b];
-    }
-
-    private function integer(mixed $value, string $where, int $min, int $max): int
-    {
-        if (!is_int($value) || $value < $min || $value > $max) {
-            throw new BuildError("{$where} muss eine ganze Zahl von {$min} bis {$max} sein.");
-        }
-
-        return $value;
-    }
-
     /**
      * @return array{0: string|null, 1: string}
      */
@@ -809,232 +717,5 @@ final class SongParser
         $midi = (12 * ((int) $m[3] + 1)) + self::SEMITONES[$m[1]] + $accidental;
 
         return 440.0 * (2 ** (($midi - 69) / 12));
-    }
-
-    /**
-     * @param array<string, mixed> $meta
-     * @return array{title: string, artist: string, group: string, tags: list<string>}
-     */
-    public function describe(array $meta, string $fallbackTitle): array
-    {
-        return [
-            'title' => $this->text($meta, 'title', self::MAX_TITLE, $fallbackTitle) ?: $fallbackTitle,
-            'artist' => $this->text($meta, 'artist', self::MAX_ARTIST),
-            'group' => $this->text($meta, 'group', self::MAX_GROUP),
-            'tags' => $this->tags($meta['tags'] ?? []),
-        ];
-    }
-
-    /**
-     * @param array<string, mixed> $meta
-     */
-    public function media(array $meta): Media
-    {
-        $urls = [];
-        $release = $meta['release'] ?? null;
-        $details = [];
-
-        if (is_array($release)) {
-            $unknown = array_diff(array_keys($release), ['url', 'cover', 'title', 'date', 'label', 'catalog', 'license', 'credits']);
-
-            if ($unknown !== []) {
-                throw new BuildError(
-                    'Song: „release“ kennt nur url, cover, title, date, label, catalog, license und credits (unbekannt: ' . implode(', ', array_map('strval', $unknown)) . ').',
-                );
-            }
-
-            if (!isset($release['url'])) {
-                throw new BuildError('Song: „release“ braucht eine „url“.');
-            }
-
-            /** @var array<string, mixed> $release */
-            $details = $release;
-            $release = $release['url'];
-        }
-
-        foreach (['hq' => $meta['hq'] ?? null, 'release' => $release, 'cover' => $details['cover'] ?? null] as $key => $url) {
-            if ($url === null) {
-                continue;
-            }
-
-            $name = $key === 'hq' ? 'hq' : ($key === 'release' ? 'release' : 'release: cover');
-
-            if (
-                !is_string($url)
-                || strlen($url) > 300
-                || preg_match(
-                    '~^https://(?=[a-z0-9.-]{3,100}(?::\d{1,5})?(?:/|$))[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)+(?::\d{1,5})?(?:/[^\s<>"\'\\\\\x00-\x1F\x7F]*)?$~',
-                    $url,
-                ) !== 1
-            ) {
-                throw new BuildError("Song: „{$name}“ muss eine https-Adresse mit Kleinbuchstaben im Hostnamen sein (höchstens 300 Zeichen, ohne Leerzeichen).");
-            }
-
-            $urls[$key] = $url;
-        }
-
-        $info = $this->releaseInfo($details);
-        $hqOffset = null;
-
-        if (isset($meta['hq-offset'])) {
-            if (!isset($urls['hq'])) {
-                throw new BuildError('Song: „hq-offset“ gehört zu „hq“.');
-            }
-
-            $hqOffset = $this->number($meta, 'hq-offset', 0, -10, 10);
-        }
-
-        return new Media(
-            hq: $urls['hq'] ?? null,
-            hqOffset: $hqOffset,
-            release: $urls['release'] ?? null,
-            cover: $urls['cover'] ?? null,
-            info: $info,
-        );
-    }
-
-    /**
-     * @param array<string, mixed> $details
-     */
-    private function releaseInfo(array $details): ReleaseInfo
-    {
-        $texts = [];
-
-        foreach (['title' => 120, 'label' => 80, 'catalog' => 40, 'license' => 60] as $key => $max) {
-            if (isset($details[$key])) {
-                $texts[$key] = $this->text($details, $key, $max);
-            }
-        }
-
-        $formatted = null;
-
-        if (isset($details['date'])) {
-            $date = $details['date'];
-
-            if (is_int($date) && $date > 0) {
-                $date = gmdate('Y-m-d', $date);
-            }
-
-            if (!is_string($date) || preg_match('/^\d{4}(-\d{2}(-\d{2})?)?$/', $date) !== 1) {
-                throw new BuildError('Song: „release: date“ muss JJJJ, JJJJ-MM oder JJJJ-MM-TT sein.');
-            }
-
-            $formatted = $date;
-        }
-
-        $roles = [];
-
-        if (isset($details['credits'])) {
-            $credits = $details['credits'];
-
-            if (!is_array($credits) || array_is_list($credits) || count($credits) > 12) {
-                throw new BuildError('Song: „release: credits“ muss eine Zuordnung Rolle: Name sein (höchstens 12 Rollen).');
-            }
-
-            foreach ($credits as $role => $names) {
-                $names = is_array($names) ? $names : [$names];
-
-                if (!is_string($role) || $names === [] || count($names) > 6 || !array_is_list($names)) {
-                    throw new BuildError('Song: „release: credits“ braucht je Rolle einen Namen oder eine Liste mit höchstens 6 Namen.');
-                }
-
-                $role = trim((string) preg_replace('/\s+/u', ' ', $role));
-
-                if ($role === '' || mb_strlen($role) > 40) {
-                    throw new BuildError('Song: „release: credits“ hat eine leere oder zu lange Rolle (höchstens 40 Zeichen).');
-                }
-
-                foreach ($names as $name) {
-                    if (!is_string($name) || trim($name) === '' || mb_strlen($name) > 80) {
-                        throw new BuildError("Song: „release: credits“, Rolle „{$role}“: jeder Name ist Text mit höchstens 80 Zeichen.");
-                    }
-
-                    $roles[$role][] = trim((string) preg_replace('/\s+/u', ' ', $name));
-                }
-            }
-        }
-
-        return new ReleaseInfo(
-            title: $texts['title'] ?? null,
-            label: $texts['label'] ?? null,
-            catalog: $texts['catalog'] ?? null,
-            license: $texts['license'] ?? null,
-            date: $formatted,
-            credits: $roles,
-        );
-    }
-
-    /** @param array<string, mixed> $meta */
-    private function number(array $meta, string $key, float $default, float $min, float $max, string $where = 'Song'): float
-    {
-        $value = $meta[$key] ?? $default;
-
-        if (!is_int($value) && !is_float($value)) {
-            throw new BuildError("{$where}: „{$key}“ muss eine Zahl sein.");
-        }
-
-        if ($value < $min || $value > $max) {
-            throw new BuildError("{$where}: „{$key}“ muss zwischen {$min} und {$max} liegen.");
-        }
-
-        return (float) $value;
-    }
-
-    /**
-     * @param array<string, mixed> $meta
-     */
-    public function flag(array $meta, string $key, bool $default, string $where): bool
-    {
-        $value = $meta[$key] ?? $default;
-
-        if (!is_bool($value)) {
-            throw new BuildError("{$where}: „{$key}“ muss true oder false sein.");
-        }
-
-        return $value;
-    }
-
-    /** @param array<string, mixed> $meta */
-    private function text(array $meta, string $key, int $max, string $default = ''): string
-    {
-        $value = $meta[$key] ?? $default;
-
-        if (is_int($value) || is_float($value)) {
-            $value = (string) $value;
-        }
-
-        if (!is_string($value)) {
-            throw new BuildError("Song: „{$key}“ muss Text sein.");
-        }
-
-        $value = trim((string) preg_replace('/\s+/u', ' ', $value));
-
-        if (mb_strlen($value) > $max) {
-            throw new BuildError("Song: „{$key}“ ist länger als {$max} Zeichen.");
-        }
-
-        return $value;
-    }
-
-    /** @return list<string> */
-    private function tags(mixed $tags): array
-    {
-        if (!is_array($tags) || count($tags) > self::MAX_TAGS) {
-            throw new BuildError(sprintf('Song: „tags“ muss eine Liste mit höchstens %d Einträgen sein.', self::MAX_TAGS));
-        }
-
-        $clean = [];
-
-        foreach ($tags as $tag) {
-            $tag = is_int($tag) ? (string) $tag : $tag;
-
-            if (!is_string($tag) || preg_match('/^[\p{L}\p{N}][\p{L}\p{N} -]{0,23}$/u', $tag) !== 1) {
-                throw new BuildError('Song: ungültiger Tag. Erlaubt sind Buchstaben, Ziffern, Leerzeichen und Bindestrich, höchstens 24 Zeichen.');
-            }
-
-            $clean[] = $tag;
-        }
-
-        return $clean;
     }
 }

@@ -38,7 +38,7 @@ final class Builder
         $collected = $sources->collect($this->readJson($this->root . '/etc/sources.json'), $fetch);
 
         $songs = new SongParser();
-        $sets = new SetParser($songs);
+        $sets = new SetParser();
         $library = new Library($collected['files'], $songs, $sets);
         $entries = [];
         $errors = [];

@@ -72,10 +72,10 @@ final class Library
 
             if ($fileKind === 'session') {
                 $kind = 'session';
-                $data = ($this->sessions ?? new SessionParser($this->songs))->parse($source, basename($file['slug']), $resolve);
+                $data = ($this->sessions ?? new SessionParser())->parse($source, basename($file['slug']), $resolve);
             } elseif ($fileKind === 'link') {
                 $kind = 'link';
-                $data = ($this->links ?? new LinkParser($this->songs))->parse($source, basename($file['slug']), $resolve, $file['prefix']);
+                $data = ($this->links ?? new LinkParser())->parse($source, basename($file['slug']), $resolve, $file['prefix']);
             } elseif ($fileKind === 'set') {
                 $kind = 'set';
                 $data = $this->sets->parse($source, basename($file['slug']), $resolve);
