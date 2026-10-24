@@ -421,9 +421,9 @@ Die `README.md` im Wurzelordner liest der Build nicht. Er überspringt sie wie `
 title: player.js
 group: resources
 ---
-Der Player gehört zu den Ressourcen der Stage (`var/resources/`, siehe [var](#tab-var)). Die Datei `var/resources/player.js` ist ein einziges JavaScript ohne Abhängigkeiten, rund 3600 Zeilen, und läuft vollständig im Browser: Audio über die Web Audio API, Oberfläche aus einfachen DOM-Elementen und SVG. Die Daten bekommt sie als JSON, das der Build in die Seiten schreibt (`project`, `set`, `mix`). Ohne diese Daten tut sie nichts. Der Build minimiert die Datei, Kommentare fallen dabei weg.
+Der Player gehört zu den Ressourcen der Stage (`var/resources/`, siehe [var](#tab-var)). Die Datei `var/resources/player.js` ist ein einziges JavaScript ohne Abhängigkeiten, rund 4300 Zeilen, und läuft vollständig im Browser: Audio über die Web Audio API, Oberfläche aus einfachen DOM-Elementen und SVG. Die Daten bekommt sie als JSON, das der Build in die Seiten schreibt (`project`, `set`, `mix`). Ohne diese Daten tut sie nichts. Der Build minimiert die Datei, Kommentare fallen dabei weg.
 
-Am Ende der Datei entscheidet, was in der Seite steckt: Mixer (`mix`), Set (`set`) oder einzelner Song (`project`). Die Datei ist in dieser Reihenfolge aufgebaut:
+Am Ende der Datei entscheidet, was in der Seite steckt: Synth (`synth`), Mixer (`mix`), Set (`set`) oder einzelner Song (`project`). Die Datei ist in dieser Reihenfolge aufgebaut:
 
 - Zustand und kleine Helfer (`makeState`, `el`, `svgNode`) und die Regler eines Decks (`deskControl`)
 - die Audio-Kette: Limiter, Rauschen, Kanal, Bus, und die Stimmen (`tone`, `kick`, `drum`)
@@ -431,6 +431,7 @@ Am Ende der Datei entscheidet, was in der Seite steckt: Mixer (`mix`), Set (`set
 - Export als MIDI-Datei und als Strudel-Code
 - `studioPanel` und `mountProject` für die Song-Seite
 - `buildMachine` und `mountMix` für den Mixer, `mountSet` für Sets und Alben
+- `mountSynth` für den Synth unter `+synth/`: Raster-Editor mit eigener Abspielplanung, die dieselben Stimmen (`tone`, `drum`) nutzt wie die Decks
 
 ## Zustand eines Decks
 
@@ -449,3 +450,9 @@ Eine Note ist ein Oszillator mit einer Hüllkurve. `gate` bestimmt, wie viel der
 `tick()` schaut ein Stück voraus (`LOOKAHEAD`, im Mixer kürzer, bei versteckter Seite länger) und plant alle Noten, die in dieses Fenster fallen. Damit läuft die Musik auch dann sauber, wenn der Browser die Seite im Hintergrund drosselt.
 
 <!-- code: var/resources/player.js#tick lines fold -->
+
+## Der Synth schreibt das Songformat
+
+Der Synth unter `+synth/` baut einen Song im Browser und gibt ihn als Songformat aus. Die Grenzen (Tempo, Raster, Spuren, Instrumente, Längen) schreibt der Build aus `SongParser` und `Fields` als JSON in die Seite, der Synth kennt sie also nicht doppelt. `synthMarkdown` macht aus dem Modell die Datei: Kopf, je Spur ein Marker mit Frontmatter und ein Raster-Block, vier Takte pro Zeile. Ein `-` bleibt nur hinter einer Note stehen, sonst würde der Parser es ablehnen.
+
+<!-- code: var/resources/player.js#synth lines fold -->

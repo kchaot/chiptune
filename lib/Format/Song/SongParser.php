@@ -31,8 +31,8 @@ final class SongParser
     public const GRID_MAX = 64;
     public const GRID_DEFAULT = 16;
 
-    private const INSTRUMENTS = ['square', 'pulse', 'triangle', 'saw', 'sine', 'drums'];
-    private const DRUMS = ['k', 's', 'c', 'h', 'o'];
+    public const INSTRUMENTS = ['square', 'pulse', 'triangle', 'saw', 'sine', 'drums'];
+    public const DRUMS = ['k', 's', 'c', 'h', 'o'];
     private const SEMITONES = ['C' => 0, 'D' => 2, 'E' => 4, 'F' => 5, 'G' => 7, 'A' => 9, 'B' => 11];
 
     public function __construct(

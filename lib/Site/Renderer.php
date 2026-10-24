@@ -16,13 +16,14 @@ use Chiptune\Site\Renderer\MixRenderer;
 use Chiptune\Site\Renderer\PageRenderer;
 use Chiptune\Site\Renderer\SetRenderer;
 use Chiptune\Site\Renderer\SongRenderer;
+use Chiptune\Site\Renderer\SynthRenderer;
 
 /**
  * Erzeugt alle HTML-Seiten und die JSON-Daten für den Player.
  *
- * Dazu gehören Bibliothek, Song, Set, Session, Link, Mixer, Code-Seite und die Fehlerseite. Der Renderer
+ * Dazu gehören Bibliothek, Song, Set, Session, Link, Mixer, Synth, Code-Seite und die Fehlerseite. Der Renderer
  * bekommt fertige Value Objects und kennt das Markdown nicht mehr. Er ist der Einstieg für den `Builder` und übergibt
- * an `LibraryRenderer`, `SongRenderer`, `SetRenderer`, `LinkRenderer`, `MixRenderer` und `CodeRenderer`. Das Gemeinsame
+ * an `LibraryRenderer`, `SongRenderer`, `SetRenderer`, `LinkRenderer`, `MixRenderer`, `SynthRenderer` und `CodeRenderer`. Das Gemeinsame
  * steckt in `PageRenderer`.
  */
 final class Renderer extends PageRenderer
@@ -82,6 +83,11 @@ final class Renderer extends PageRenderer
     public function mix(array $catalog): string
     {
         return new MixRenderer($this->site, $this->assets, $this->authors, $this->pages)->mix($catalog);
+    }
+
+    public function synth(): string
+    {
+        return new SynthRenderer($this->site, $this->assets, $this->authors, $this->pages)->synth();
     }
 
     public static function mixId(string $prefix, string $slug): string

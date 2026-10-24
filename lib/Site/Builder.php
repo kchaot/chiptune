@@ -18,7 +18,7 @@ use Chiptune\Site\CodeBook\CodeDocs;
  * Baut die ganze Seite.
  *
  * Er holt die Quellen, lässt `EntryLoader` und `AlbumBuilder` alles einlesen und verknüpfen, rendert
- * mit dem `Renderer` und schreibt Seiten, Mixer und Serverdateien. Ein Fehler in einer strikten Quelle
+ * mit dem `Renderer` und schreibt Seiten, Mixer, Synth und Serverdateien. Ein Fehler in einer strikten Quelle
  * bricht den Bau ab, bei den anderen wird die Datei übersprungen (`Problems`).
  */
 final class Builder
@@ -62,6 +62,7 @@ final class Builder
 
         $this->writePages($renderer, $entries, $albumEntries, $authors);
         $this->writeMixer($renderer, $site['base_path'], $entries, $albumEntries, $authors);
+        Filesystem::write($this->public . '/+synth/index.html', $renderer->synth());
         $this->writeServerFiles($site['noindex'], $site['assets_origin'], $site['base_path'], $collected['media']);
         $this->report($entries, $albumEntries, $authors);
 

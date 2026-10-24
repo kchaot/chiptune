@@ -5,8 +5,9 @@
   const projectData = document.getElementById('project');
   const setData = document.getElementById('set');
   const mixData = document.getElementById('mix');
+  const synthData = document.getElementById('synth');
 
-  if (!root || !(projectData || setData || mixData)) return;
+  if (!root || !(projectData || setData || mixData || synthData)) return;
 
   const WAVES = { square: 'square', triangle: 'triangle', saw: 'sawtooth', sine: 'sine' };
   const DRUM_ORDER = ['k', 'c', 's', 'o', 'h'];
@@ -3598,7 +3599,744 @@
     renderState();
   }
 
-  if (mixData) mountMix(JSON.parse(mixData.textContent));
+
+  const NOTE_NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
+  const SEMITONES = { C: 0, D: 2, E: 4, F: 5, G: 7, A: 9, B: 11 };
+  const BLACK_KEYS = [1, 3, 6, 8, 10];
+  const INSTRUMENT_LABELS = { square: 'Rechteck', pulse: 'Puls', triangle: 'Dreieck', saw: 'Säge', sine: 'Sinus', drums: 'Drums' };
+  const DRUM_LABELS = { k: 'Kick', c: 'Clap', s: 'Snare', o: 'Open Hat', h: 'Hi-Hat' };
+  const ROLL_CELL = 20;
+  const ROLL_ROW = 13;
+  const ROLL_ROWS = 24;
+  const DRUM_ROW = 24;
+  const MAX_UI_STEPS = 256;
+
+  function noteMidi(token) {
+    const match = /^([A-G])([#b]?)(-?\d)$/.exec(token);
+
+    if (!match) return null;
+
+    const shift = match[2] === '#' ? 1 : match[2] === 'b' ? -1 : 0;
+    return 12 * (Number(match[3]) + 1) + SEMITONES[match[1]] + shift;
+  }
+
+  function midiName(midi) {
+    return NOTE_NAMES[midi % 12] + (Math.floor(midi / 12) - 1);
+  }
+
+  function midiFrequency(midi) {
+    return 440 * Math.pow(2, (midi - 69) / 12);
+  }
+
+  function isDrumToken(token) {
+    return DRUM_ORDER.includes(token);
+  }
+
+  // Ein '-' gilt nur hinter einer Note oder einem anderen '-', in Drum-Spuren gar nicht.
+  function cleanCells(track) {
+    const drums = track.instrument === 'drums';
+    let holding = false;
+
+    return track.cells.map(token => {
+      if (token === '-') return holding && !drums ? '-' : '.';
+      holding = !drums && noteMidi(token) !== null;
+      return token;
+    });
+  }
+
+  function eventStart(cells, index) {
+    let start = index;
+    while (start > 0 && cells[start] === '-') start--;
+    return noteMidi(cells[start]) === null ? -1 : start;
+  }
+
+  function eventEnd(cells, start) {
+    let end = start;
+    while (end + 1 < cells.length && cells[end + 1] === '-') end++;
+    return end;
+  }
+
+  // docs: synth
+  function synthMarkdown(model) {
+    const text = value => {
+      const plain = /^[\p{L}\p{N}][\p{L}\p{N} ._-]*$/u.test(value) && !/\s$/.test(value) && !/^(true|false|null|yes|no|on|off)$/i.test(value) && !/^\d+(\.\d+)?$/.test(value);
+      return plain ? value : JSON.stringify(value);
+    };
+    const number = value => String(Number(value.toFixed(2)));
+    const lines = ['---', 'format: ' + model.limits.format, 'title: ' + text(model.title || 'Ohne Titel')];
+
+    if (model.artist) lines.push('artist: ' + text(model.artist));
+
+    lines.push('bpm: ' + model.bpm, 'grid: ' + model.grid);
+
+    if (model.remix) lines.push('remix: true');
+
+    lines.push('---', '');
+
+    model.tracks.forEach(track => {
+      const cells = cleanCells(track);
+      const bars = [];
+
+      for (let i = 0; i < cells.length; i += model.grid) bars.push(cells.slice(i, i + model.grid).join(' '));
+
+      const rows = [];
+
+      for (let i = 0; i < bars.length; i += 4) rows.push(bars.slice(i, i + 4).join(' | '));
+
+      lines.push('<!-- track: ' + track.name + ' -->', '---', 'instrument: ' + track.instrument, 'volume: ' + number(track.volume));
+
+      if (track.gate !== 0.9) lines.push('gate: ' + number(track.gate));
+
+      if (track.instrument === 'pulse' && track.pw !== 0.25) lines.push('pw: ' + number(track.pw));
+
+      lines.push('---', '```grid', ...rows, '```', '');
+    });
+
+    return lines.join('\n');
+  }
+  // docs-end
+
+  function mountSynth(limits) {
+    const model = {
+      limits,
+      title: 'Mein Synth-Song',
+      artist: '',
+      bpm: limits.bpm.default,
+      grid: limits.grid.default,
+      bars: 2,
+      remix: false,
+      tracks: [],
+    };
+    const stepsOf = () => model.bars * model.grid;
+    const stepSeconds = () => 60 / model.bpm / (model.grid / 4);
+    const rolls = [];
+    let bus = null;
+    let playing = null;
+    let timer = 0;
+    let frame = 0;
+
+    function uniqueName(base) {
+      const taken = model.tracks.map(track => track.name);
+      let name = base;
+
+      for (let n = 2; taken.includes(name); n++) name = base + '-' + n;
+
+      return name;
+    }
+
+    function newTrack(instrument) {
+      const drums = instrument === 'drums';
+
+      return {
+        name: uniqueName(drums ? 'drums' : instrument),
+        instrument,
+        volume: drums ? 0.3 : 0.2,
+        gate: 0.9,
+        pw: 0.25,
+        mute: false,
+        base: instrument === 'saw' || instrument === 'triangle' ? 1 : 3,
+        cells: Array(stepsOf()).fill('.'),
+      };
+    }
+
+    function fit(track) {
+      const steps = stepsOf();
+      track.cells = track.cells.slice(0, steps);
+      while (track.cells.length < steps) track.cells.push('.');
+    }
+
+    function demo() {
+      const kick = newTrack('drums');
+      kick.name = 'kick';
+      const bass = newTrack('saw');
+      bass.name = 'bass';
+      bass.gate = 0.5;
+      bass.volume = 0.26;
+      const lead = newTrack('pulse');
+      lead.name = 'lead';
+      lead.volume = 0.14;
+      lead.base = 3;
+
+      for (let i = 0; i < stepsOf(); i += 4) kick.cells[i] = 'k';
+      [[2, 'E2'], [6, 'E2'], [10, 'G2'], [14, 'D2'], [18, 'E2'], [22, 'E2'], [26, 'A2'], [30, 'D2']].forEach(([i, note]) => (bass.cells[i] = note));
+      [[0, 'E4'], [1, '-'], [4, 'G4'], [8, 'B4'], [9, '-'], [10, '-'], [16, 'A4'], [20, 'G4'], [24, 'E4'], [25, '-'], [26, '-'], [27, '-']].forEach(([i, token]) => (lead.cells[i] = token));
+      model.tracks = [kick, bass, lead];
+    }
+
+    function ensureAudio() {
+      if (!ctx) initAudio();
+
+      return ctx.resume().then(() => {
+        if (!bus || bus.context !== ctx) bus = makeBus(master);
+      });
+    }
+
+    function sound(track, token, when, length) {
+      if (track.mute) return;
+
+      if (track.instrument === 'drums') {
+        if (isDrumToken(token)) drum(track, bus, { d: token }, when);
+        return;
+      }
+
+      const midi = noteMidi(token);
+
+      if (midi !== null) tone(track, bus, { f: midiFrequency(midi), len: length }, when, stepSeconds());
+    }
+
+    function planStep(step, when) {
+      model.tracks.forEach(track => {
+        const token = track.cells[step];
+
+        if (token === undefined || token === '.' || token === '-') return;
+
+        const cells = cleanCells(track);
+        const end = eventEnd(cells, step);
+        sound(track, token, when, end - step + 1);
+      });
+    }
+
+    function tick() {
+      if (!playing || !ctx) return;
+
+      const until = ctx.currentTime + lookahead(0.25);
+
+      while (playing.time < until) {
+        planStep(playing.step, playing.time);
+        playing.marks.push({ time: playing.time, step: playing.step });
+        playing.time += stepSeconds();
+        playing.step = (playing.step + 1) % stepsOf();
+      }
+    }
+
+    function follow() {
+      if (!playing) return;
+
+      let changed = false;
+
+      while (playing.marks.length && playing.marks[0].time <= ctx.currentTime) {
+        playing.head = playing.marks.shift().step;
+        changed = true;
+      }
+
+      if (changed) drawAll();
+
+      frame = requestAnimationFrame(follow);
+    }
+
+    async function start() {
+      await ensureAudio();
+      playing = { step: 0, time: ctx.currentTime + 0.08, marks: [], head: -1 };
+      timer = setInterval(tick, 25);
+      tick();
+      frame = requestAnimationFrame(follow);
+      playButton.textContent = '■ Stopp';
+      playButton.setAttribute('aria-pressed', 'true');
+    }
+
+    function stop() {
+      clearInterval(timer);
+      cancelAnimationFrame(frame);
+      playing = null;
+
+      if (bus) {
+        bus.disconnect();
+        bus = null;
+      }
+
+      playButton.textContent = '▶ Abspielen';
+      playButton.setAttribute('aria-pressed', 'false');
+      drawAll();
+    }
+
+    const colors = () => {
+      const style = getComputedStyle(document.documentElement);
+      const read = name => style.getPropertyValue(name).trim();
+
+      return { lane: read('--lane'), raised: read('--panel-raised'), line: read('--line'), dim: read('--dim'), ink: read('--ink-soft'), note: read('--lime'), drum: read('--cyan'), head: read('--pink') };
+    };
+
+    function rowCount(track) {
+      return track.instrument === 'drums' ? DRUM_ORDER.length : ROLL_ROWS;
+    }
+
+    function rowHeight(track) {
+      return track.instrument === 'drums' ? DRUM_ROW : ROLL_ROW;
+    }
+
+    function rowToken(track, row) {
+      if (track.instrument === 'drums') return DRUM_ORDER[row];
+
+      return midiName(12 * (track.base + 1) + ROLL_ROWS - 1 - row);
+    }
+
+    function drawLabels(roll) {
+      const { track, labels } = roll;
+      const palette = colors();
+      const scale = window.devicePixelRatio || 1;
+      const height = rowCount(track) * rowHeight(track);
+      labels.width = 64 * scale;
+      labels.height = height * scale;
+      labels.style.width = '64px';
+      labels.style.height = height + 'px';
+
+      const g = labels.getContext('2d');
+      g.scale(scale, scale);
+      g.font = '10px ui-monospace, monospace';
+      g.textBaseline = 'middle';
+
+      for (let row = 0; row < rowCount(track); row++) {
+        const top = row * rowHeight(track);
+        const token = rowToken(track, row);
+        const midi = noteMidi(token);
+        const black = midi !== null && BLACK_KEYS.includes(midi % 12);
+        g.fillStyle = black ? palette.lane : palette.raised;
+        g.fillRect(0, top, 64, rowHeight(track));
+        g.fillStyle = midi === null || !black ? palette.ink : palette.dim;
+
+        if (midi === null) g.fillText(DRUM_LABELS[token], 4, top + rowHeight(track) / 2);
+        else g.fillText(token, 4, top + rowHeight(track) / 2);
+      }
+    }
+
+    function draw(roll) {
+      const { track, canvas } = roll;
+      const palette = colors();
+      const scale = window.devicePixelRatio || 1;
+      const steps = stepsOf();
+      const width = steps * ROLL_CELL;
+      const rows = rowCount(track);
+      const height = rows * rowHeight(track);
+      const drums = track.instrument === 'drums';
+      const cells = cleanCells(track);
+
+      canvas.width = width * scale;
+      canvas.height = height * scale;
+      canvas.style.width = width + 'px';
+      canvas.style.height = height + 'px';
+
+      const g = canvas.getContext('2d');
+      g.scale(scale, scale);
+      g.font = '9px ui-monospace, monospace';
+      g.textBaseline = 'middle';
+
+      for (let row = 0; row < rows; row++) {
+        const midi = drums ? null : noteMidi(rowToken(track, row));
+        g.fillStyle = midi !== null && BLACK_KEYS.includes(midi % 12) ? palette.lane : palette.raised;
+        g.fillRect(0, row * rowHeight(track), width, rowHeight(track));
+        g.fillStyle = palette.line;
+        g.fillRect(0, (row + 1) * rowHeight(track) - 1, width, 1);
+      }
+
+      for (let step = 0; step <= steps; step++) {
+        const bar = step % model.grid === 0;
+        const beat = step % (model.grid / 4) === 0;
+        g.fillStyle = bar ? palette.dim : palette.line;
+
+        if (bar || beat) g.fillRect(step * ROLL_CELL, 0, bar ? 2 : 1, height);
+      }
+
+      cells.forEach((token, step) => {
+        if (token === '.' || token === '-') return;
+
+        const row = drums ? DRUM_ORDER.indexOf(token) : 12 * (track.base + 1) + ROLL_ROWS - 1 - noteMidi(token);
+
+        if (row < 0 || row >= rows) return;
+
+        const length = drums ? 1 : eventEnd(cells, step) - step + 1;
+        g.fillStyle = drums ? palette.drum : palette.note;
+        g.globalAlpha = track.mute ? 0.35 : 1;
+        g.fillRect(step * ROLL_CELL + 1, row * rowHeight(track) + 1, length * ROLL_CELL - 2, rowHeight(track) - 2);
+        g.globalAlpha = 1;
+      });
+
+      if (playing && playing.head >= 0) {
+        g.fillStyle = palette.head;
+        g.globalAlpha = 0.28;
+        g.fillRect(playing.head * ROLL_CELL, 0, ROLL_CELL, height);
+        g.globalAlpha = 1;
+
+        const box = roll.scroller;
+        const left = playing.head * ROLL_CELL;
+
+        if (left < box.scrollLeft || left > box.scrollLeft + box.clientWidth - ROLL_CELL * 2) box.scrollLeft = Math.max(0, left - ROLL_CELL * 2);
+      }
+    }
+
+    function drawAll() {
+      rolls.forEach(draw);
+    }
+
+    function refresh() {
+      output.value = synthMarkdown(model);
+      const notes = model.tracks.reduce((sum, track) => sum + cleanCells(track).filter(token => token !== '.' && token !== '-').length, 0);
+      status.textContent = notes === 0 ? 'Noch keine Noten gesetzt.' : model.tracks.length + ' Spuren, ' + notes + ' Noten, ' + model.bars + ' Takte.';
+      drawAll();
+    }
+
+    function preview(track, token) {
+      ensureAudio().then(() => sound(track, token, ctx.currentTime + 0.01, 1));
+    }
+
+    function placeNote(track, step, token) {
+      const cells = track.cells;
+
+      if (cells[step] === '-' || noteMidi(cells[step]) !== null) {
+        for (let i = step + 1; i < cells.length && cells[i] === '-'; i++) cells[i] = '.';
+      }
+
+      cells[step] = token;
+    }
+
+    function clearEvent(track, step) {
+      const cells = cleanCells(track);
+      const start = eventStart(cells, step);
+
+      if (start < 0) return;
+
+      const end = eventEnd(cells, start);
+      for (let i = start; i <= end; i++) track.cells[i] = '.';
+    }
+
+    function bindRoll(roll) {
+      const { track, canvas } = roll;
+      let drag = null;
+
+      const hit = event => {
+        const box = canvas.getBoundingClientRect();
+        const step = Math.max(0, Math.min(stepsOf() - 1, Math.floor((event.clientX - box.left) / ROLL_CELL)));
+        const row = Math.max(0, Math.min(rowCount(track) - 1, Math.floor((event.clientY - box.top) / rowHeight(track))));
+
+        return { step, row };
+      };
+
+      canvas.addEventListener('pointerdown', event => {
+        const { step, row } = hit(event);
+        const token = rowToken(track, row);
+        canvas.setPointerCapture(event.pointerId);
+
+        if (track.instrument === 'drums') {
+          const erase = track.cells[step] === token;
+          track.cells[step] = erase ? '.' : token;
+          drag = { kind: 'drum', erase };
+
+          if (!erase) preview(track, token);
+        } else {
+          const cells = cleanCells(track);
+          const start = eventStart(cells, step);
+
+          if (start >= 0 && cells[start] === token && eventEnd(cells, start) >= step) {
+            clearEvent(track, step);
+            drag = null;
+          } else {
+            placeNote(track, step, token);
+            drag = { kind: 'note', step, end: step };
+            preview(track, token);
+          }
+        }
+
+        refresh();
+      });
+
+      canvas.addEventListener('pointermove', event => {
+        if (!drag) return;
+
+        const { step, row } = hit(event);
+
+        if (drag.kind === 'drum') {
+          const token = rowToken(track, row);
+          const value = drag.erase ? (track.cells[step] === token ? '.' : track.cells[step]) : token;
+
+          if (track.cells[step] !== value) {
+            track.cells[step] = value;
+            refresh();
+          }
+
+          return;
+        }
+
+        let limit = stepsOf() - 1;
+
+        for (let i = drag.step + 1; i <= limit; i++) {
+          if (i > drag.end && track.cells[i] !== '.') {
+            limit = i - 1;
+            break;
+          }
+        }
+
+        const target = Math.max(drag.step, Math.min(step, limit));
+
+        if (target === drag.end) return;
+
+        for (let i = drag.step + 1; i <= Math.max(target, drag.end); i++) track.cells[i] = i <= target ? '-' : '.';
+
+        drag.end = target;
+        refresh();
+      });
+
+      const release = () => {
+        drag = null;
+      };
+
+      canvas.addEventListener('pointerup', release);
+      canvas.addEventListener('pointercancel', release);
+    }
+
+    function field(label, control) {
+      const wrap = el('label', 'synth-field');
+      wrap.append(el('span', 'synth-field-label', label), control);
+
+      return wrap;
+    }
+
+    function input(type, value, attributes = {}) {
+      const control = el('input');
+      control.type = type;
+      Object.entries(attributes).forEach(([key, v]) => control.setAttribute(key, v));
+      control.value = value;
+
+      return control;
+    }
+
+    function select(options, value) {
+      const control = el('select');
+      options.forEach(([key, label]) => {
+        const option = el('option', '', label);
+        option.value = String(key);
+        control.append(option);
+      });
+      control.value = String(value);
+
+      return control;
+    }
+
+    function slider(track, key, min, max, step, label) {
+      const control = input('range', track[key], { min, max, step });
+      const wrap = field(label, control);
+      const read = el('span', 'synth-value', ' ' + track[key]);
+      wrap.firstChild.append(read);
+      control.addEventListener('input', () => {
+        track[key] = Number(control.value);
+        read.textContent = ' ' + track[key];
+        refresh();
+      });
+
+      return wrap;
+    }
+
+    function trackRow(track) {
+      const section = el('section', 'synth-track');
+      const head = el('div', 'synth-track-head');
+      const roll = { track, canvas: el('canvas', 'synth-canvas'), labels: el('canvas', 'synth-labels'), scroller: el('div', 'synth-scroll') };
+      const name = input('text', track.name, { maxlength: 32, 'aria-label': 'Name der Spur' });
+      name.className = 'synth-name';
+      name.addEventListener('input', () => {
+        track.name = name.value.replace(/[<>&"]/g, '').trim() || 'spur';
+        refresh();
+      });
+
+      const kind = select(limits.instruments.map(key => [key, INSTRUMENT_LABELS[key] || key]), track.instrument);
+      kind.addEventListener('change', () => {
+        const wasDrums = track.instrument === 'drums';
+        track.instrument = kind.value;
+
+        if ((track.instrument === 'drums') !== wasDrums) {
+          track.cells = Array(stepsOf()).fill('.');
+          track.volume = track.instrument === 'drums' ? 0.3 : 0.2;
+        }
+
+        buildTracks();
+        refresh();
+      });
+
+      const mute = el('button', 'synth-button', track.mute ? 'Stumm an' : 'Stumm');
+      mute.type = 'button';
+      mute.setAttribute('aria-pressed', String(track.mute));
+      mute.addEventListener('click', () => {
+        track.mute = !track.mute;
+        mute.textContent = track.mute ? 'Stumm an' : 'Stumm';
+        mute.setAttribute('aria-pressed', String(track.mute));
+        refresh();
+      });
+
+      const clear = el('button', 'synth-button', 'Leeren');
+      clear.type = 'button';
+      clear.addEventListener('click', () => {
+        track.cells = Array(stepsOf()).fill('.');
+        refresh();
+      });
+
+      const remove = el('button', 'synth-button', 'Entfernen');
+      remove.type = 'button';
+      remove.addEventListener('click', () => {
+        model.tracks.splice(model.tracks.indexOf(track), 1);
+        buildTracks();
+        refresh();
+      });
+
+      head.append(name, kind, slider(track, 'volume', 0, 1, 0.01, 'Lautstärke'));
+
+      if (track.instrument !== 'drums') head.append(slider(track, 'gate', 0.05, 1, 0.05, 'Gate'));
+
+      if (track.instrument === 'pulse') head.append(slider(track, 'pw', 0.05, 0.5, 0.05, 'Pulsbreite'));
+
+      if (track.instrument !== 'drums') {
+        const lower = el('button', 'synth-button', '−');
+        const higher = el('button', 'synth-button', '+');
+        const octave = el('span', 'synth-octave', 'Oktave ' + track.base);
+        lower.type = higher.type = 'button';
+        lower.setAttribute('aria-label', 'Zwei Oktaven tiefer anzeigen');
+        higher.setAttribute('aria-label', 'Zwei Oktaven höher anzeigen');
+        const move = by => {
+          track.base = Math.max(-1, Math.min(7, track.base + by));
+          octave.textContent = 'Oktave ' + track.base;
+          drawLabels(roll);
+          draw(roll);
+        };
+        lower.addEventListener('click', () => move(-1));
+        higher.addEventListener('click', () => move(1));
+        head.append(lower, octave, higher);
+      }
+
+      head.append(mute, clear, remove);
+      roll.scroller.append(roll.canvas);
+      const body = el('div', 'synth-roll');
+      body.append(roll.labels, roll.scroller);
+      section.append(head, body);
+      rolls.push(roll);
+      bindRoll(roll);
+      drawLabels(roll);
+
+      return section;
+    }
+
+    const tracksHost = el('div', 'synth-tracks');
+
+    function buildTracks() {
+      rolls.length = 0;
+      tracksHost.replaceChildren(...model.tracks.map(trackRow));
+      addMelodic.disabled = addDrums.disabled = model.tracks.length >= limits.maxTracks;
+    }
+
+    const playButton = el('button', 'play', '▶ Abspielen');
+    playButton.type = 'button';
+    playButton.setAttribute('aria-pressed', 'false');
+    playButton.addEventListener('click', () => (playing ? stop() : start()));
+
+    const bpm = input('number', model.bpm, { min: limits.bpm.min, max: limits.bpm.max, step: 1 });
+    bpm.addEventListener('change', () => {
+      model.bpm = Math.max(limits.bpm.min, Math.min(limits.bpm.max, Math.round(Number(bpm.value)) || limits.bpm.default));
+      bpm.value = model.bpm;
+      refresh();
+    });
+
+    const gridSizes = [4, 8, 12, 16, 24, 32, 48, 64].filter(size => size >= limits.grid.min && size <= limits.grid.max);
+    const grid = select(gridSizes.map(size => [size, size + ' Steps pro Takt']), model.grid);
+    const barOptions = [1, 2, 4, 8, 16];
+    const bars = select(barOptions.map(count => [count, count + (count === 1 ? ' Takt' : ' Takte')]), model.bars);
+
+    function resize() {
+      model.grid = Number(grid.value);
+      model.bars = Math.min(Number(bars.value), Math.floor(Math.min(limits.maxSteps, MAX_UI_STEPS) / model.grid));
+      bars.value = String(model.bars);
+      model.tracks.forEach(fit);
+      buildTracks();
+      refresh();
+    }
+
+    grid.addEventListener('change', resize);
+    bars.addEventListener('change', resize);
+
+    const title = input('text', model.title, { maxlength: limits.maxTitle, 'aria-label': 'Titel' });
+    title.addEventListener('input', () => {
+      model.title = title.value;
+      refresh();
+    });
+
+    const artist = input('text', model.artist, { maxlength: limits.maxArtist, 'aria-label': 'Künstler', placeholder: 'optional' });
+    artist.addEventListener('input', () => {
+      model.artist = artist.value;
+      refresh();
+    });
+
+    const remix = input('checkbox', '');
+    remix.addEventListener('change', () => {
+      model.remix = remix.checked;
+      refresh();
+    });
+
+    const addMelodic = el('button', 'synth-button', '+ Melodie-Spur');
+    const addDrums = el('button', 'synth-button', '+ Drum-Spur');
+    addMelodic.type = addDrums.type = 'button';
+    addMelodic.addEventListener('click', () => {
+      model.tracks.push(newTrack('square'));
+      buildTracks();
+      refresh();
+    });
+    addDrums.addEventListener('click', () => {
+      model.tracks.push(newTrack('drums'));
+      buildTracks();
+      refresh();
+    });
+
+    const reset = el('button', 'synth-button', 'Neu beginnen');
+    reset.type = 'button';
+    reset.addEventListener('click', () => {
+      model.tracks = [];
+      buildTracks();
+      refresh();
+    });
+
+    const output = el('textarea', 'synth-output');
+    output.readOnly = true;
+    output.rows = 16;
+    output.spellcheck = false;
+    output.setAttribute('aria-label', 'Song im Songformat');
+    const status = el('p', 'synth-status');
+    const copy = el('button', 'synth-button', 'Kopieren');
+    copy.type = 'button';
+    copy.addEventListener('click', async () => {
+      try {
+        await navigator.clipboard.writeText(output.value);
+        status.textContent = 'In die Zwischenablage kopiert.';
+      } catch (error) {
+        output.select();
+        status.textContent = 'Markiert, bitte mit Strg+C kopieren.';
+      }
+    });
+
+    const save = el('button', 'synth-button', 'Als Datei laden');
+    save.type = 'button';
+    save.addEventListener('click', () => {
+      const slug = (model.title || 'song').toLowerCase().replace(/ä/g, 'ae').replace(/ö/g, 'oe').replace(/ü/g, 'ue').replace(/ß/g, 'ss').replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'song';
+      const link = el('a');
+      link.href = URL.createObjectURL(new Blob([output.value], { type: 'text/markdown' }));
+      link.download = slug + '.md';
+      link.click();
+      URL.revokeObjectURL(link.href);
+    });
+
+    const settings = el('div', 'synth-settings');
+    settings.append(field('Titel', title), field('Künstler', artist), field('Tempo (BPM)', bpm), field('Raster', grid), field('Länge', bars), field('Remix erlaubt', remix));
+
+    const bar = el('div', 'synth-bar');
+    bar.append(playButton, addMelodic, addDrums, reset);
+
+    const help = el('p', 'synth-help', 'Klick setzt eine Note, ein zweiter Klick auf dieselbe Note löscht sie. Ziehen nach rechts macht sie länger. Eine Spur spielt pro Step einen Ton, für Akkorde oder mehrere Drums legst du weitere Spuren an.');
+    const result = el('section', 'synth-result');
+    const actions = el('div', 'synth-actions');
+    actions.append(copy, save, status);
+    result.append(el('h2', '', 'Song im Songformat'), output, actions);
+
+    demo();
+    root.replaceChildren(bar, settings, help, tracksHost, result);
+    buildTracks();
+    refresh();
+    addEventListener('beforeunload', () => stop());
+  }
+
+  if (synthData) mountSynth(JSON.parse(synthData.textContent));
+  else if (mixData) mountMix(JSON.parse(mixData.textContent));
   else if (setData) mountSet(JSON.parse(setData.textContent));
   else mountProject(JSON.parse(projectData.textContent));
 })();
